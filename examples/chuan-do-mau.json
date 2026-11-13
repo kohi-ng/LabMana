@@ -1,0 +1,68 @@
+{
+  "schema_version": 1,
+  "title": "Chuẩn độ HCl bằng NaOH (bài mẫu)",
+  "description": "Bài mẫu để thử rẽ nhánh: V NaOH bình thường thì bỏ qua bước cảnh báo.",
+  "roles": ["Người lấy hóa chất", "Người chuẩn độ", "Người ghi chép"],
+  "sections": [
+    {
+      "id": "p_chuanbi",
+      "section_name": "Chuẩn bị",
+      "steps": [
+        {
+          "id": "s_hoachat",
+          "text": "Lấy dung dịch $\\ce{HCl}$ cần chuẩn độ và dung dịch chuẩn $\\ce{NaOH}$ $0{,}1\\,\\text{M}$. Đeo kính và găng tay.",
+          "images": [],
+          "assigned_role": "Người lấy hóa chất",
+          "require_input": null,
+          "require_photo": false,
+          "branch_logic": []
+        },
+        {
+          "id": "s_hut",
+          "text": "Hút chính xác $10{,}00\\,\\text{mL}$ dung dịch $\\ce{HCl}$ vào bình tam giác, thêm 2 giọt phenolphtalein. Chụp ảnh bình trước khi chuẩn độ.",
+          "images": [],
+          "assigned_role": "Người lấy hóa chất",
+          "require_input": null,
+          "require_photo": true,
+          "branch_logic": []
+        }
+      ]
+    },
+    {
+      "id": "p_chuando",
+      "section_name": "Chuẩn độ",
+      "steps": [
+        {
+          "id": "s_chuando",
+          "text": "Chuẩn độ bằng $\\ce{NaOH}$ đến khi dung dịch chuyển hồng nhạt bền 30 giây. Ghi thể tích $\\ce{NaOH}$ đã dùng.",
+          "images": [],
+          "assigned_role": "Người chuẩn độ",
+          "require_input": { "label": "V NaOH", "unit": "mL", "type": "number" },
+          "require_photo": true,
+          "branch_logic": [
+            { "op": "<", "value": 5, "goto_step_id": "s_canhbao" },
+            { "op": "<=", "value": 25, "goto_step_id": "s_tinh" }
+          ]
+        },
+        {
+          "id": "s_canhbao",
+          "text": "⚠ Thể tích bất thường (quá nhỏ hoặc quá lớn, > 25 mL). Kiểm tra lại nồng độ NaOH và lượng HCl đã hút, rồi báo giảng viên trước khi tính.",
+          "images": [],
+          "assigned_role": "Người ghi chép",
+          "require_input": { "label": "Ghi chú nguyên nhân", "unit": "", "type": "text" },
+          "require_photo": false,
+          "branch_logic": []
+        },
+        {
+          "id": "s_tinh",
+          "text": "Tính nồng độ $\\ce{HCl}$: $C_{HCl} = \\dfrac{C_{NaOH}\\,V_{NaOH}}{V_{HCl}}$. Ghi kết quả.",
+          "images": [],
+          "assigned_role": "Người ghi chép",
+          "require_input": { "label": "C HCl", "unit": "M", "type": "number" },
+          "require_photo": false,
+          "branch_logic": []
+        }
+      ]
+    }
+  ]
+}

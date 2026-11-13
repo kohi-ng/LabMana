@@ -1,0 +1,78 @@
+{
+  "schema_version": 2,
+  "title": "Bài 1 — Phân nhóm IIA, IIIA (bài mẫu trích giáo trình)",
+  "description": "Bài mẫu minh họa cấu trúc Thí nghiệm → Thao tác, ghi nhận hiện tượng/giải thích, và rẽ nhánh logic theo thể tích HCl tiêu tốn.",
+  "roles": ["Người lấy hóa chất", "Người quan sát & ghi chép", "Người tính toán"],
+  "sections": [
+    {
+      "id": "p_tn1",
+      "section_name": "Thí nghiệm 1: tính chất của muối kim loại kiềm thổ",
+      "steps": [
+        {
+          "id": "s_1a",
+          "text": "Lấy 3 ống nghiệm, mỗi ống chứa khoảng $1\\,\\text{mL}$ dung dịch muối $\\ce{MgCl2}$, $\\ce{CaCl2}$, $\\ce{BaCl2}$ $0{,}1\\,\\text{M}$. Nhỏ từ từ vào mỗi ống 5 giọt dung dịch $\\ce{Na2SO4}$ $0{,}1\\,\\text{M}$ và quan sát hiện tượng xảy ra.",
+          "images": [],
+          "assigned_role": "Người lấy hóa chất",
+          "observation": { "enabled": true, "label": "Hiện tượng quan sát thực tế" },
+          "explanation": { "enabled": true, "label": "Giải thích và PTPƯ minh họa" },
+          "require_input": null,
+          "require_photo": true,
+          "branch_logic": []
+        },
+        {
+          "id": "s_1b",
+          "text": "Thêm tiếp vào mỗi ống nghiệm khoảng $1\\,\\text{mL}$ dung dịch $\\ce{HCl}$ $1\\,\\text{M}$. Ghi nhận thể tích HCl đã dùng để hòa tan hết kết tủa (nếu có) và giải thích.",
+          "images": [],
+          "assigned_role": "Người quan sát & ghi chép",
+          "observation": { "enabled": true, "label": "Hiện tượng quan sát thực tế" },
+          "explanation": { "enabled": true, "label": "Giải thích và PTPƯ minh họa" },
+          "require_input": { "label": "V HCl đã dùng để hòa tan kết tủa", "unit": "mL", "type": "number" },
+          "require_photo": false,
+          "branch_logic": [
+            { "op": "<", "value": 0.5, "goto_step_id": "s_canhbao" },
+            { "op": "<=", "value": 5, "goto_step_id": "s_tn2" }
+          ]
+        },
+        {
+          "id": "s_canhbao",
+          "text": "⚠ Lượng HCl tiêu tốn bất thường (quá ít, có thể kết tủa chưa tan hết hoặc đã tan ngay từ đầu). Kiểm tra lại nồng độ muối và HCl đã dùng, báo giảng viên trước khi tiếp tục.",
+          "images": [],
+          "assigned_role": "Người quan sát & ghi chép",
+          "observation": { "enabled": false, "label": "Hiện tượng quan sát thực tế" },
+          "explanation": { "enabled": true, "label": "Giải thích và PTPƯ minh họa" },
+          "require_input": { "label": "Ghi chú nguyên nhân", "unit": "", "type": "text" },
+          "require_photo": false,
+          "branch_logic": []
+        }
+      ]
+    },
+    {
+      "id": "p_tn2",
+      "section_name": "Thí nghiệm 2: điều chế và tính chất của các hydroxid kim loại kiềm thổ",
+      "steps": [
+        {
+          "id": "s_tn2",
+          "text": "Lấy 3 ống nghiệm, cho vào mỗi ống $1\\,\\text{mL}$ dung dịch muối $\\ce{MgCl2}$, $\\ce{CaCl2}$, $\\ce{BaCl2}$ $0{,}1\\text{M}$. Sau đó cho vào mỗi ống $2\\,\\text{mL}$ dung dịch $\\ce{NaOH}$ $0{,}1\\,\\text{M}$. Quan sát và so sánh độ tan của các hydroxid tạo thành.",
+          "images": [],
+          "assigned_role": "Người lấy hóa chất",
+          "observation": { "enabled": true, "label": "Hiện tượng quan sát thực tế" },
+          "explanation": { "enabled": true, "label": "Giải thích và PTPƯ minh họa" },
+          "require_input": null,
+          "require_photo": true,
+          "branch_logic": []
+        },
+        {
+          "id": "s_tn2b",
+          "text": "Gạn lấy kết tủa $\\ce{Mg(OH)2}$, chia làm 3 phần và cho tác dụng thử với các dung dịch $\\ce{H2SO4}$, $\\ce{NaOH}$, $\\ce{NH4Cl}$. Ghi nhận hiện tượng và viết phương trình phản ứng giải thích (nếu có).",
+          "images": [],
+          "assigned_role": "Người tính toán",
+          "observation": { "enabled": true, "label": "Hiện tượng quan sát thực tế" },
+          "explanation": { "enabled": true, "label": "Giải thích và PTPƯ minh họa" },
+          "require_input": null,
+          "require_photo": false,
+          "branch_logic": []
+        }
+      ]
+    }
+  ]
+}
