@@ -118,10 +118,6 @@ function render() {
   const defaultPurity = x.purity ?? 99;
   const solid = x.state === "solid";
   root.innerHTML = `
-    <div class="page-head">
-      <h2>Trạm pha chế</h2>
-      <p class="muted small">Tính pha loãng, quy đổi nồng độ và pha từ chất rắn khan/ngậm nước. Hoạt động ngoại tuyến.</p>
-    </div>
     <div class="card">
       <label class="lbl">Tìm hóa chất<input class="inp" id="cc-search" placeholder="Tên hoặc công thức: H₂SO₄, CuSO₄·5H₂O..."></label>
       <label class="lbl">Hóa chất<select class="inp" id="cc-chem">${chemicalOptions()}</select></label>

@@ -210,7 +210,7 @@ export function statusCard(st) {
   if (!e) return `<div class="empty">⏳ Đang kết nối Firebase…</div>`;
   if (e === "NOT_CONFIGURED") return `<div class="card"><h3>Chưa cấu hình Firebase</h3>
     <p>Mở <code>js/firebase.js</code> và dán <code>firebaseConfig</code> của dự án (Firebase Console → Project settings → Your apps → Web). Xem README.md.</p>
-    <p class="muted small">Trạm pha chế vẫn dùng được ngoại tuyến.</p></div>`;
+    <p class="muted small">Bartender vẫn dùng được ngoại tuyến.</p></div>`;
   if (/operation-not-allowed|admin-restricted/.test(e)) return `<div class="card"><h3>Chưa bật đăng nhập ẩn danh</h3>
     <p>Firebase Console → Authentication → Sign-in method → bật <b>Anonymous</b>.</p></div>`;
   if (/permission-denied/.test(e)) return `<div class="card"><h3>Bị từ chối quyền (permission-denied)</h3>

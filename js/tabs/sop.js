@@ -4,7 +4,7 @@ import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, isDriveConfigured } from "../drive.js";
-import { esc, snippet, richHtml, renderMath, toast, openModal, confirmBox, compressImage, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
+import { esc, richHtml, renderMath, toast, openModal, confirmBox, compressImage, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null;
@@ -33,7 +33,9 @@ function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(ren
 export async function openProgressTarget(expId, sectionId = null, stepId = null) {
   const opened = await openExperiment(expId);
   if (!opened) return;
-  selectedSectionId = sectionId;
+  const raw = state.experiments.find(item => item.id === expId);
+  const sections = raw ? normalizeExperiment(raw).sections : [];
+  selectedSectionId = sectionId || sections[0]?.id || null;
   expanded.clear();
   if (stepId) expanded.add(stepId);
   else if (sectionId) {
@@ -64,22 +66,23 @@ function render() {
   curFlow = computeFlow(curExp, state.logs);
   curFlat = curFlow.flat;
 
-  const selectedSection = curExp.sections.find(sec => sec.id === selectedSectionId);
-  let html = `<div class="page-head sop-active-title"><h2>${esc(curExp.title || "Bài thí nghiệm")}</h2></div>`;
-  if (!selectedSection) {
-    html += sectionListHtml();
-  } else {
-    const sectionIndex = curExp.sections.indexOf(selectedSection);
-    const sectionFlat = curFlat.filter(f => f.sec.id === selectedSection.id);
-    const sectionDone = sectionFlat.filter(f => isProgressDone(f.step.id)).length;
-    html += `${sectionTabsHtml()}<div class="section-run-head">
+  const selectedSection = curExp.sections.find(sec => sec.id === selectedSectionId) || curExp.sections[0];
+  if (!selectedSection) { root.innerHTML = startHtml(); return; }
+  if (selectedSection.id !== selectedSectionId) selectedSectionId = selectedSection.id;
+  const sectionIndex = curExp.sections.indexOf(selectedSection);
+  const sectionFlat = curFlat.filter(f => f.sec.id === selectedSection.id);
+  const sectionDone = sectionFlat.filter(f => isProgressDone(f.step.id)).length;
+  let html = `<div class="sop-active-head">
+      <button class="btn sm" data-act="sop-home">← Trang chính</button>
+      <h2>${esc(curExp.title || "Bài thí nghiệm")}</h2>
+    </div>
+    ${sectionTabsHtml()}<div class="section-run-head">
       <h2>TN ${sectionIndex + 1} · ${richHtml(selectedSection.section_name)}</h2>
       <p class="muted small">${sectionDone}/${sectionFlat.length} bước đã thực hiện</p>
       ${tocStrip(sectionFlat)}
     </div>`;
-    if (sectionFlat.every(f => state.logs[f.step.id])) html += `<div class="done-banner">🎉 Đã hoàn thành thí nghiệm này!</div>`;
-    html += sectionFlat.map(f => stepAccordion(f, flowStatus(f.step.id))).join("");
-  }
+  if (sectionFlat.length && sectionFlat.every(f => state.logs[f.step.id])) html += `<div class="done-banner">🎉 Đã hoàn thành thí nghiệm này!</div>`;
+  html += sectionFlat.map(f => stepAccordion(f, flowStatus(f.step.id))).join("");
   root.innerHTML = html;
   renderMath(root);
   restoreFocus(focus);
@@ -89,22 +92,9 @@ function sectionTabsHtml() {
   return `<nav class="section-tabs" aria-label="Thí nghiệm trong bài">
     ${curExp.sections.map((section, index) => `<button type="button" class="section-tab ${section.id === selectedSectionId ? "active" : ""}"
       data-act="open-section" data-section="${esc(section.id)}" aria-selected="${section.id === selectedSectionId}">
-      <span>TN ${index + 1}</span><span>${esc(section.section_name || "Chưa đặt tên")}</span>
+      <span>TN ${index + 1} · ${esc(section.section_name || "Chưa đặt tên")}</span>
     </button>`).join("")}
   </nav>`;
-}
-
-function sectionListHtml() {
-  return `<div class="page-head"><h2>Các thí nghiệm</h2><p class="muted small">Chọn một thí nghiệm để xem lần lượt các bước. Bạn vẫn có thể mở bất kỳ bước nào.</p></div>
-    ${curExp.sections.map((sec, index) => {
-      const steps = curFlat.filter(f => f.sec.id === sec.id);
-      const done = steps.filter(f => isProgressDone(f.step.id)).length;
-      return `<button type="button" class="card plan-card section-card" data-act="open-section" data-section="${esc(sec.id)}">
-        <span class="item-title">TN ${index + 1} · ${richHtml(sec.section_name || "Thí nghiệm chưa đặt tên")}</span>
-        <span class="muted small">${done}/${steps.length} bước đã thực hiện</span>
-        <span class="section-progress"><span style="width:${steps.length ? done / steps.length * 100 : 0}%"></span></span>
-      </button>`;
-    }).join("")}`;
 }
 
 function tocStrip(steps) {
@@ -153,17 +143,11 @@ function startHtml() {
   if (!state.experimentsLoaded) return `<div class="empty">⏳ Đang tải danh sách bài thí nghiệm…</div>`;
   if (!state.experiments.length) return `<div class="page-head"><h2>Quy trình</h2></div>
     <div class="empty">Chưa có bài thí nghiệm đã lên kế hoạch.</div>`;
-  return `<div class="page-head"><h2>Quy trình</h2><p class="muted small">Chọn bài đã lên kế hoạch để mở thí nghiệm.</p></div>
-    <div class="planned-experiments">${state.experiments.map((raw, index) => {
+  return `<div class="page-head"><h2>Quy trình</h2></div>
+    <div class="planned-experiments">${state.experiments.map(raw => {
       const exp = normalizeExperiment(raw);
-      const stepCount = exp.sections.reduce((total, section) => total + section.steps.length, 0);
       return `<button type="button" class="card plan-card planned-experiment" data-act="open-experiment" data-exp="${esc(raw.id)}">
-        <span class="planned-experiment-number">${index + 1}</span>
-        <span class="planned-experiment-content">
-          <strong class="item-title">${esc(exp.title || "(không tên)")}</strong>
-          <span class="muted small">${exp.sections.length} thí nghiệm · ${stepCount} bước</span>
-        </span>
-        <span class="planned-experiment-chevron" aria-hidden="true">›</span>
+        ${esc(exp.title || "(không tên)")}
       </button>`;
     }).join("")}</div>`;
 }
@@ -192,7 +176,7 @@ function stepAccordion(f, st) {
     return `<article class="sopstep ${st}" data-step="${id}">
       <div class="acc-head" data-act="toggle-acc">
         <span class="status-dot ${st}">${dotContent}</span>
-        <span class="acc-title">${f.label} · ${richHtml(snippet(s.title || s.text, 64))}</span>
+        <span class="acc-title">${f.label} · ${richHtml(s.title || s.text)}</span>
         ${role ? `<span class="acc-role">${role}</span>` : ""}
         <span class="acc-chev">▾</span>
       </div></article>`;
@@ -255,7 +239,7 @@ function stepAccordion(f, st) {
   return `<article class="sopstep ${st} expanded" data-step="${id}">
     <div class="acc-head" data-act="toggle-acc">
       <span class="status-dot ${st}">${dotContent}</span>
-      <span class="acc-title">${f.label} · ${richHtml(snippet(s.title || s.text, 50))}</span>
+      <span class="acc-title">${f.label} · ${richHtml(s.title || s.text)}</span>
       ${role ? `<span class="acc-role">${role}</span>` : ""}
       <span class="acc-chev">▾</span>
     </div>
@@ -325,6 +309,7 @@ async function onChange(e) {
 async function onClick(e) {
   const btn = e.target.closest("[data-act]");
   if (!btn || !root.contains(btn)) return;
+  if (btn.dataset.act === "toggle-acc" && e.target.closest("input, textarea, select")) return;
   const id = btn.closest("[data-step]")?.dataset.step || btn.dataset.step;
   switch (btn.dataset.act) {
     case "save": return save(id);
@@ -366,6 +351,12 @@ async function onClick(e) {
       render();
       break;
     }
+    case "sop-home":
+      selectedByUser = false;
+      selectedSectionId = null;
+      expanded.clear();
+      render();
+      break;
     case "csv": return exportCsv();
   }
 }
@@ -480,7 +471,7 @@ async function openExperiment(expId) {
       });
     }
     selectedByUser = true;
-    selectedSectionId = null;
+    selectedSectionId = normalizeExperiment(exp).sections[0]?.id || null;
     expanded.clear();
     setActiveRun(run.id);
     render();

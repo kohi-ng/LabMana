@@ -32,7 +32,7 @@ function updateConn() {
   const b = $("#banner");
   b.classList.add("hidden");
   if (state.error === "NOT_CONFIGURED") {
-    b.innerHTML = "⚙️ Chưa có <b>firebaseConfig</b>. Mở <code>js/firebase.js</code> và dán cấu hình dự án Firebase (xem README.md). Trạm pha chế vẫn dùng được.";
+    b.innerHTML = "⚙️ Chưa có <b>firebaseConfig</b>. Mở <code>js/firebase.js</code> và dán cấu hình dự án Firebase (xem README.md). Bartender vẫn dùng được.";
     b.classList.remove("hidden");
   } else if (state.error) {
     b.textContent = "Không kết nối được dữ liệu. Kiểm tra mạng rồi tải lại trang.";
@@ -156,7 +156,7 @@ progressMenu.addEventListener("click", async event => {
   await sop.openProgressTarget(expId, button.dataset.progressSection || null, button.dataset.progressStep || null);
 });
 
-/* ---------------- FAB Trạm pha chế — nổi mọi tab, mở sheet tra cứu nhanh ---------------- */
+/* ---------------- FAB Bartender — nổi mọi tab, mở sheet tra cứu nhanh ---------------- */
 const fab = $("#calc-fab"), backdrop = $("#calc-sheet-backdrop"), sheet = $("#calc-sheet"), body = $("#calc-sheet-body");
 let calcInited = false, calcOpen = false;
 

@@ -48,8 +48,7 @@ function render() {
 function renderList() {
   const items = state.experiments;
   root.innerHTML = `
-    <div class="page-head"><h2>Kế hoạch thí nghiệm</h2>
-      <p class="muted small">Soạn bài theo cấu trúc Thí nghiệm → Thao tác, giống mẫu báo cáo thực hành. Dùng một khung cho mọi bài.</p></div>
+    <div class="page-head"><h2>Kế hoạch thí nghiệm</h2></div>
     <div class="btn-row">
       <button class="btn primary" data-act="new">＋ Bài mới</button>
       <button class="btn" data-act="import">⬆ Nhập JSON</button>
@@ -119,7 +118,8 @@ function stepHtml(s, label, flat) {
   ].join("");
   return `<article class="step ${open ? "open" : ""} ${errSteps.has(s.id) ? "err" : ""}" data-step="${s.id}">
     <div class="step-head" data-act="toggle-step">
-      <span class="step-no">${label}</span><span class="step-sum">${richHtml(snippet(s.title || s.text))}</span>
+      <span class="step-no">${label}</span>
+      <input class="step-title-field" data-f="step_title" value="${esc(s.title)}" placeholder="Tiêu đề riêng (tùy chọn)" aria-label="Tiêu đề riêng cho thao tác ${label}">
       <span class="badges">${badges}</span><span class="chev">${open ? "▾" : "▸"}</span></div>
     ${open ? stepBody(s, flat) : ""}</article>`;
 }
@@ -131,9 +131,6 @@ function stepBody(s, flat) {
   if (s.assigned_role && !state.team.includes(s.assigned_role))
     roleOpts.push(`<option value="${esc(s.assigned_role)}" selected>⚠ ${esc(s.assigned_role)} (không còn trong cài đặt)</option>`);
   return `<div class="step-body">
-    <label class="lbl">Tiêu đề riêng (không bắt buộc)
-      <input class="inp" data-f="step_title" value="${esc(s.title)}" placeholder="Để trống để dùng nội dung hướng dẫn bên dưới">
-    </label>
     <label class="lbl">Các bước tiến hành
       <div class="toolbar">
         ${SPECIALS.map(c => `<button type="button" data-act="ins" data-ins="${esc(c)}" data-back="0">${esc(c)}</button>`).join("")}
@@ -305,16 +302,10 @@ function applyField(t) {
     case "step_title":
       if (!step) return;
       step.title = t.value;
-      stepEl.querySelector(".step-sum").innerHTML = richHtml(snippet(step.title || step.text));
-      renderMath(stepEl.querySelector(".step-sum"));
       break;
     case "text":
       if (!step) return;
       step.text = t.value;
-      if (!step.title) {
-        stepEl.querySelector(".step-sum").innerHTML = richHtml(snippet(step.text));
-        renderMath(stepEl.querySelector(".step-sum"));
-      }
       if (previewSteps.has(step.id)) {
         const p = stepEl.querySelector("[data-preview]");
         if (p) { p.innerHTML = richHtml(step.text) || '<span class="muted">(trống)</span>'; renderMath(p); }
@@ -379,6 +370,7 @@ async function addImage(stepId, file) {
 async function onClick(e) {
   const btn = e.target.closest("[data-act]");
   if (!btn || !root.contains(btn)) return;
+  if (btn.dataset.act === "toggle-step" && e.target.closest("input, textarea, select")) return;
   const act = btn.dataset.act;
   const stepEl = btn.closest("[data-step]"), secEl = btn.closest("[data-sec]");
   const sid = stepEl?.dataset.step, secId = secEl?.dataset.sec;

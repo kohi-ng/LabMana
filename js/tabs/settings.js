@@ -24,7 +24,6 @@ function render() {
   root.innerHTML = `
     <div class="page-head"><h2>Cài đặt</h2></div>
     <div class="card"><h3>👥 Thành viên nhóm</h3>
-      <p class="muted small">Danh sách dùng chung cho mọi thiết bị. Dùng tên thành viên này để ủy quyền từng bước trong Kế hoạch; bước đã được giao sẽ ghi nhận đúng người phụ trách.</p>
       <div class="inline">
         <input class="inp" id="st-names" placeholder="Nhập tên (nhiều tên: cách nhau bằng dấu phẩy)" autocomplete="off">
         <button class="btn primary" data-act="add">Thêm</button>
@@ -32,7 +31,7 @@ function render() {
       <ul class="members">${team.length ? team.map(n => `<li><span class="nm">${esc(n)}</span>
         <button class="icon-btn" data-act="rename" data-name="${esc(n)}" title="Sửa">✎</button>
         <button class="icon-btn danger" data-act="del" data-name="${esc(n)}" title="Xóa">🗑</button></li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
-      <p class="muted small">Đổi tên không làm thay đổi tên đã ghi trong lịch sử các bước đã lưu.</p></div>
+    </div>
 
     <div class="card"><h3>☁️ Lưu trữ</h3>
       <div class="kv"><span>Dữ liệu chữ/số/trạng thái</span><b>Firestore</b></div>

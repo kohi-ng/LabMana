@@ -23,14 +23,14 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi chuyển giữa các thí nghiệm bằng
   thanh tab ngang hoặc mở thao tác trong menu **Tiến trình**. Mọi bước đều mở độc lập, không bị khóa.
-- **Trạm pha chế dạng nút nổi có thể kéo thả** ở góc màn hình, bấm vào mở cửa sổ tra cứu/tính toán
+- **Bartender dạng nút nổi có thể kéo thả** ở góc màn hình, bấm vào mở cửa sổ tra cứu/tính toán
   nhanh mà không rời khỏi tab đang làm — mở rộng danh mục hóa chất theo đúng các chất dùng
   xuyên suốt giáo trình (KMnO₄, K₂Cr₂O₇, Na₂S₂O₃·5H₂O, phèn nhôm-kali, muối Mohr…).
 
 ## Cấu trúc
 
 ```
-index.html            khung + Bottom Nav 3 tab + FAB Trạm pha chế
+index.html            khung + Bottom Nav 3 tab + FAB Bartender
 css/style.css         giao diện Apple-style sáng, mobile-first
 js/app.js             điều hướng tab, trạng thái kết nối, FAB sheet
 js/firebase.js        ⚙️ DÁN firebaseConfig Ở ĐÂY; đăng nhập ẩn danh; cache ngoại tuyến
@@ -40,7 +40,7 @@ js/utils.js           modal, toast, nén ảnh, chọn tên, KaTeX…
 js/plan-logic.js       logic thuần: validate, flatten, rẽ nhánh, computeFlow
 js/tabs/planner.js    Tab 1 — Kế hoạch (Thí nghiệm → Thao tác, ảnh qua Drive)
 js/tabs/sop.js        Tab 2 — Quy trình (accordion + data logger)
-js/tabs/calc.js       Trạm pha chế (chạy trong FAB sheet)
+js/tabs/calc.js       Bartender (chạy trong FAB sheet)
 js/tabs/settings.js   Tab 3 — Cài đặt (thành viên)
 code.gs               Backend Google Apps Script — nhận/xóa ảnh trên Drive
 firestore.rules       quy tắc bảo mật Firestore
@@ -87,8 +87,9 @@ rồi vào http://localhost:8080 .
 1. Tab **Cài đặt**: nhập tên các thành viên (một lần, dùng chung mọi thiết bị).
 2. Tab **Kế hoạch**: soạn bài theo cấu trúc Thí nghiệm → Thao tác (hoặc *Nhập JSON* bài mẫu
    trong `examples/`) → **Lưu**.
-3. Tab **Quy trình** → **Tiến trình**: mở bài → mở thí nghiệm con → chọn thao tác cần thực hiện.
-   Các thiết bị cùng mở kế hoạch sẽ thấy và cập nhật chung nhật ký.
+3. Tab **Quy trình**: chọn bài, rồi dùng thanh tên thí nghiệm để chuyển giữa các phần; nút
+   **Trang chính** quay lại danh sách bài. Có thể mở thao tác cần thực hiện từ danh sách hoặc menu
+   **Tiến trình**. Các thiết bị cùng mở kế hoạch sẽ thấy và cập nhật chung nhật ký.
 4. Các thao tác chưa hoàn thành không bị khóa; có thể mở bất kỳ bước nào. Nhập dữ liệu hoặc tải
    ảnh sẽ đánh dấu bước màu xanh trong menu Tiến trình; bấm **Lưu** để đồng bộ lên Firestore.
    Người được ủy quyền sẽ được ghi nhận khi lưu; bước chưa được giao sẽ cho chọn tên thành viên.
@@ -103,6 +104,8 @@ rồi vào http://localhost:8080 .
 - Thanh công cụ trong từng thao tác có sẵn ký tự đặc biệt (°C, ±, →, ⇌, Δ, µ, ², ₂…) và mẫu `\ce{}`.
 - **▦ Tạo bảng** chèn bảng có số dòng/cột tùy chọn ngay trong nội dung thao tác; sửa ô trực tiếp
   trong khung nhập, bảng hiển thị ở phần xem trước và Quy trình.
+- Tiêu đề riêng của thao tác được nhập ngay cạnh số thứ tự (ví dụ 1.1); để trống thì Quy trình
+  hiển thị nội dung hướng dẫn làm tiêu đề.
 
 ## Điều kiện rẽ nhánh
 
