@@ -114,6 +114,15 @@ export function blobToBase64(blob) {
   });
 }
 
+export function blobToDataUrl(blob) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result));
+    reader.onerror = () => reject(new Error("Đọc ảnh dự phòng thất bại"));
+    reader.readAsDataURL(blob);
+  });
+}
+
 /**
  * Modal chung. buttons: [{label, kind, value | (body)=>value, validate?(body)=>bool}]
  * Trả về Promise<value>; bấm nền / nút có value=null → null.

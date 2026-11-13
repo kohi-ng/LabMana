@@ -25,6 +25,23 @@ export function init(el) {
 export function onShow() { schedule(); }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 
+export async function openProgressTarget(expId, sectionId = null, stepId = null) {
+  await openExperiment(expId);
+  if (!selectedByUser) return;
+  selectedSectionId = sectionId;
+  expanded.clear();
+  if (stepId) expanded.add(stepId);
+  else if (sectionId) {
+    const raw = state.experiments.find(item => item.id === expId);
+    const section = raw && normalizeExperiment(raw).sections.find(item => item.id === sectionId);
+    const firstPending = section?.steps.find(step => !state.logs[step.id]);
+    if (firstPending) expanded.add(firstPending.id);
+  }
+  export function isStepProgressDone(stepId) { return isProgressDone(stepId); }
+  render();
+  if (stepId) requestAnimationFrame(() => root.querySelector(`[data-step="${stepId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+}
+
 /* ---------- vẽ ---------- */
 function render() {
   if (!state.ready) { root.innerHTML = statusCard(state); return; }
@@ -131,6 +148,7 @@ function updateStepProgress(id) {
   if (progressText) {
     progressText.textContent = `${doneCount}/${totalCount} bước · ${totalCount ? Math.round(doneCount / totalCount * 100) : 0}%`;
   }
+  window.dispatchEvent(new CustomEvent("labmana:progress-change"));
 }
 
 function startHtml() {
@@ -211,16 +229,17 @@ function stepAccordion(f, st) {
       ${s.explanation?.enabled ? `<label class="lbl">${esc(s.explanation.label || "Giải thích và PTPƯ minh họa")}
         <textarea class="inp" rows="2" data-draft="${id}" data-field="explanation" placeholder="Giải thích hiện tượng, viết PTPƯ: $\\ce{...}$">${esc(d.explanation ?? (isEdit ? log?.explanation_text ?? "" : ""))}</textarea></label>` : ""}
 
-      <div class="photo-box">
+      <div class="photo-preview">
         ${d.preview ? `<img class="thumb" src="${d.preview}" alt="ảnh mới">` : (isEdit && log?.photo_url ? `<img class="thumb" src="${esc(log.photo_url)}" alt="ảnh cũ">` : "")}
-        <label class="btn">${isUploading ? '<span class="spin-ring dark"></span> Đang tải…' : `📷 ${hasPhoto ? "Chụp lại" : "Thêm ảnh"}${s.require_photo ? " (bắt buộc)" : " (tùy chọn)"}`}
-          <input type="file" accept="image/*" capture="environment" hidden data-photo="${id}" ${isUploading ? "disabled" : ""}></label>
-        ${d.imgMeta ? `<span class="muted small"> Đã tải lên Drive ✓</span>` : ""}
+        ${d.imgMeta ? `<span class="muted small">${d.imgMeta.storage_fallback ? "Ảnh đã được nhận ✓" : "Ảnh đã tải lên Drive ✓"}</span>` : ""}
       </div>
-      <div class="btn-row">
-        <button class="btn primary big" data-act="save" ${isSaving || isUploading ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "💾 Lưu"}</button>
-        ${isEdit ? `<button class="btn" data-act="cancel-edit">Hủy</button>` : ""}
-      </div></div>`;
+      <div class="step-submit-row">
+        <label class="btn photo-action">${isUploading ? '<span class="spin-ring dark"></span> Đang tải…' : `📷 ${hasPhoto ? "Chụp lại" : "Chụp ảnh"}${s.require_photo ? " · Bắt buộc" : ""}`}
+          <input type="file" accept="image/*" capture="environment" hidden data-photo="${id}" ${isUploading ? "disabled" : ""}></label>
+        <button class="btn primary" data-act="save" ${isSaving || isUploading ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "Lưu"}</button>
+      </div>
+      ${isEdit ? `<button class="btn cancel-edit" data-act="cancel-edit">Hủy sửa</button>` : ""}
+      </div>`;
   }
 
   return `<article class="sopstep ${st} expanded" data-step="${id}">
@@ -276,7 +295,9 @@ async function onChange(e) {
     const img = await driveUpload(blob, "log", meta);
     d.imgMeta = img;
     updateStepProgress(id);
-    toast("Đã tải ảnh lên Drive ✔", "success");
+    toast(img.storage_fallback
+      ? "Đã nhận ảnh. Drive không xác nhận nên ảnh được lưu kèm trong dữ liệu để không bị mất."
+      : "Đã tải ảnh lên Drive ✔", img.storage_fallback ? "warn" : "success", 5000);
   } catch (err) { console.error(err); toast("Tải ảnh lỗi: " + err.message, "error", 4500); }
   finally { uploadingPhoto.delete(id); render(); }
 }
