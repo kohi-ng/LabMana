@@ -110,10 +110,14 @@ function renderProgressMenu() {
           const sectionExpanded = expandedSections.has(sectionKey);
           const sectionDone = activeExperimentId === raw.id ? section.steps.filter(step => sop.isStepProgressDone(step.id)).length : 0;
           return `<div class="progress-section">
-            <button type="button" class="progress-section-toggle" data-progress-section="${esc(section.id)}" data-progress-exp-id="${esc(raw.id)}" data-progress-key="${esc(sectionKey)}">
-              <span>${si + 1}. ${esc(section.section_name || "Thí nghiệm chưa đặt tên")}</span>
-              <span class="muted small">${sectionDone}/${section.steps.length} ${sectionExpanded ? "▾" : "›"}</span>
-            </button>
+            <div class="progress-section-row">
+              <button type="button" class="progress-section-open" data-progress-section-open="${esc(section.id)}" data-progress-exp-id="${esc(raw.id)}">
+                <span>${si + 1}. ${esc(section.section_name || "Thí nghiệm chưa đặt tên")}</span>
+                <span class="muted small">${sectionDone}/${section.steps.length}</span>
+              </button>
+              <button type="button" class="progress-section-toggle" data-progress-section-toggle="${esc(section.id)}" data-progress-exp-id="${esc(raw.id)}" data-progress-key="${esc(sectionKey)}"
+                aria-label="${sectionExpanded ? "Thu gọn" : "Mở"} ${esc(section.section_name || `Thí nghiệm ${si + 1}`)}">${sectionExpanded ? "▾" : "›"}</button>
+            </div>
             ${sectionExpanded ? `<div class="progress-steps">${section.steps.map((step, ti) => {
               const complete = activeExperimentId === raw.id && sop.isStepProgressDone(step.id);
               return `<button type="button" class="progress-step ${complete ? "done" : ""}" data-progress-step="${esc(step.id)}" data-progress-section="${esc(section.id)}" data-progress-exp-id="${esc(raw.id)}">
@@ -135,7 +139,7 @@ progressToggle.addEventListener("click", () => {
 progressBackdrop.addEventListener("click", closeProgressMenu);
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeProgressMenu(); });
 progressMenu.addEventListener("click", async event => {
-  const button = event.target.closest("[data-progress-close],[data-progress-csv],[data-progress-expand],[data-progress-section],[data-progress-step]");
+  const button = event.target.closest("[data-progress-close],[data-progress-csv],[data-progress-expand],[data-progress-section-open],[data-progress-section-toggle],[data-progress-step]");
   if (!button) return;
   if (button.hasAttribute("data-progress-close")) return closeProgressMenu();
   if (button.hasAttribute("data-progress-csv")) return sop.exportCurrentCsv();
@@ -145,7 +149,7 @@ progressMenu.addEventListener("click", async event => {
       : expandedExperiments.add(button.dataset.progressExpand);
     return renderProgressMenu();
   }
-  if (button.dataset.progressSection && !button.dataset.progressStep) {
+  if (button.dataset.progressSectionToggle) {
     const key = button.dataset.progressKey;
     expandedSections.has(key) ? expandedSections.delete(key) : expandedSections.add(key);
     return renderProgressMenu();
@@ -153,7 +157,11 @@ progressMenu.addEventListener("click", async event => {
   const expId = button.dataset.progressExpId;
   if (!expId) return;
   closeProgressMenu();
-  await sop.openProgressTarget(expId, button.dataset.progressSection || null, button.dataset.progressStep || null);
+  await sop.openProgressTarget(
+    expId,
+    button.dataset.progressSectionOpen || button.dataset.progressSection || null,
+    button.dataset.progressStep || null
+  );
 });
 
 /* ---------------- FAB Bartender — nổi mọi tab, mở sheet tra cứu nhanh ---------------- */

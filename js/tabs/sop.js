@@ -35,17 +35,16 @@ export async function openProgressTarget(expId, sectionId = null, stepId = null)
   if (!opened) return;
   const raw = state.experiments.find(item => item.id === expId);
   const sections = raw ? normalizeExperiment(raw).sections : [];
-  selectedSectionId = sectionId || sections[0]?.id || null;
+  const targetSection = sections.find(section => section.id === sectionId || section.steps.some(step => step.id === stepId)) || sections[0];
+  selectedSectionId = targetSection?.id || null;
   expanded.clear();
-  if (stepId) expanded.add(stepId);
-  else if (sectionId) {
-    const raw = state.experiments.find(item => item.id === expId);
-    const section = raw && normalizeExperiment(raw).sections.find(item => item.id === sectionId);
-    const firstPending = section?.steps.find(step => !state.logs[step.id]);
-    if (firstPending) expanded.add(firstPending.id);
-  }
+  const targetStep = stepId
+    ? targetSection?.steps.find(step => step.id === stepId)
+    : targetSection?.steps.find(step => !state.logs[step.id] && !hasDraftProgress(step.id)) || targetSection?.steps[0];
+  if (targetStep) expanded.add(targetStep.id);
   render();
-  if (stepId) requestAnimationFrame(() => root.querySelector(`[data-step="${stepId}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+  window.dispatchEvent(new CustomEvent("labmana:progress-change"));
+  if (targetStep) requestAnimationFrame(() => scrollToStep(targetStep.id));
 }
 
 export function isStepProgressDone(stepId) { return isProgressDone(stepId); }
@@ -106,8 +105,13 @@ function sectionPickerHtml() {
 function tocStrip(steps) {
   return `<div class="toc-strip">${steps.map(f => {
     const st = flowStatus(f.step.id);
-    return `<button type="button" class="toc-pip ${st}" data-act="jump" data-step="${f.step.id}" title="Bước ${f.label}">${st === "done" ? "✓" : f.label.split(".").pop()}</button>`;
+    return `<button type="button" class="toc-pip ${st} ${expanded.has(f.step.id) ? "active" : ""}" data-act="jump" data-step="${f.step.id}" aria-label="Đi tới bước ${f.label}" title="Bước ${f.label}">${st === "done" ? "✓" : f.label}</button>`;
   }).join("")}</div>`;
+}
+
+function scrollToStep(stepId) {
+  const target = [...root.querySelectorAll("[data-step]")].find(element => element.dataset.step === stepId);
+  target?.scrollIntoView({ block: "start", behavior: "smooth" });
 }
 
 function hasDraftProgress(id) {
@@ -119,7 +123,7 @@ function hasDraftProgress(id) {
 
 function isProgressDone(id) { return !!state.logs[id] || hasDraftProgress(id); }
 function savedPhotos(log) {
-  if (Array.isArray(log?.photos)) return log.photos.filter(photo => photo?.file_id || photo?.url);
+  if (Array.isArray(log?.photos) && log.photos.length) return log.photos.filter(photo => photo?.file_id || photo?.url);
   return log?.photo_file_id || log?.photo_url
     ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }]
     : [];
@@ -138,6 +142,7 @@ function updateStepProgress(id) {
   root.querySelectorAll(".toc-pip").forEach(pip => {
     if (pip.dataset.step !== id) return;
     pip.classList.toggle("done", done);
+    pip.classList.toggle("active", expanded.has(id));
     if (done) pip.classList.remove("current");
   });
   root.querySelectorAll(".sopstep").forEach(step => {
@@ -383,9 +388,11 @@ async function onClick(e) {
       render(); break;
     }
     case "jump": {
+      expanded.clear();
       expanded.add(id);
       render();
-      requestAnimationFrame(() => root.querySelector(`[data-step="${id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+      root.querySelectorAll(".toc-pip").forEach(pip => pip.classList.toggle("active", pip.dataset.step === id));
+      requestAnimationFrame(() => scrollToStep(id));
       break;
     }
     case "edit": {
@@ -403,22 +410,28 @@ async function onClick(e) {
       selectedSectionId = btn.dataset.section;
       expanded.clear();
       const sectionSteps = curFlat.filter(f => f.sec.id === selectedSectionId);
-      const firstPending = sectionSteps.find(f => !state.logs[f.step.id] && !hasDraftProgress(f.step.id));
-      if (firstPending) expanded.add(firstPending.step.id);
+      const target = sectionSteps.find(f => !isProgressDone(f.step.id)) || sectionSteps[0];
+      if (target) expanded.add(target.step.id);
       render();
+      window.dispatchEvent(new CustomEvent("labmana:progress-change"));
+      if (target) requestAnimationFrame(() => scrollToStep(target.step.id));
       break;
     }
     case "remove-saved-photo": {
+      if (!(await confirmBox("Ảnh sẽ bị gỡ khỏi bản ghi và xóa khỏi Google Drive khi bạn lưu. Tiếp tục?", "Xóa ảnh"))) return;
       const draft = (drafts[id] ||= {});
       draft.removedPhotos ||= new Set();
       draft.removedPhotos.add(btn.dataset.photoKey);
       render();
+      window.dispatchEvent(new CustomEvent("labmana:progress-change"));
       break;
     }
     case "remove-new-photo": {
+      if (!(await confirmBox("Bạn có chắc muốn bỏ ảnh này khỏi bước?", "Bỏ ảnh"))) return;
       const photo = drafts[id]?.photoItems?.[Number(btn.dataset.photoIndex)];
       if (photo) photo.removed = true;
       render();
+      updateStepProgress(id);
       break;
     }
     case "zoom": openModal({ title: "", html: `<img class="zoom" src="${esc(btn.dataset.src)}" alt="">` }); break;
