@@ -7,7 +7,8 @@
  * CÀI ĐẶT (làm 1 lần):
  * 1. Tạo 1 thư mục trên Google Drive, ví dụ "LabMana - Ảnh thí nghiệm".
  *    Mở thư mục đó, copy ID trong URL: drive.google.com/drive/folders/<ID NÀY>
- * 2. Vào https://script.google.com → New project → xóa code mẫu, dán toàn bộ file này vào.
+ * 2. Vào https://script.google.com → New project → dán code.gs và thêm file report.gs
+ *    (file helper xuất báo cáo) vào cùng dự án.
  * 3. Dán ID thư mục vào ROOT_FOLDER_ID bên dưới.
  * 4. Chạy hàm authorizeDrive() một lần trong editor và chấp thuận quyền Google Drive.
  * 5. Deploy → New deployment → chọn loại "Web app".
@@ -16,7 +17,7 @@
  *    Bấm Deploy, copy "Web app URL".
  * 6. Dán URL đó vào js/drive.js (biến GAS_URL).
  *
- * Mỗi lần SỬA code.gs: phải Deploy → Manage deployments → ✎ → New version → Deploy lại,
+ * Mỗi lần sửa code.gs hoặc report.gs: phải Deploy → Manage deployments → ✎ → New version → Deploy lại,
  * nếu không URL cũ vẫn chạy code cũ.
  */
 
@@ -33,6 +34,7 @@ function doPost(e) {
     let result;
     if (req.action === "upload") result = handleUpload_(req);
     else if (req.action === "delete") result = handleDelete_(req);
+    else if (req.action === "create_report") result = handleCreateReport_(req.report);
     else result = { ok: false, error: "Hành động không hợp lệ" };
     return response_(result, req.request_id);
   } catch (err) {

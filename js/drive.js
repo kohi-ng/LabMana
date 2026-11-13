@@ -1,7 +1,7 @@
 // ============ Drive: tải / xóa ảnh qua Google Apps Script Web App ============
 import { blobToBase64, blobToDataUrl } from "./utils.js";
 
-export const GAS_URL = "https://script.google.com/macros/s/AKfycbwzMsHgnhZRY4dW8w8H41RmuVN3Bnv4dU6csKGYeHcCYZUFhnaWpjCUybXqmi4HW3R-rA/exec";
+export const GAS_URL = "https://script.google.com/macros/s/AKfycbzKbC7Ga1obA87IsM-Kzk0FbW-L284qfvdpxJcSA_gAoG1DB7zwey6AJBlcDRY5RfnXbw/exec";
 const GOOGLE_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*(googleusercontent|google)\.com$/;
 export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
 
@@ -91,6 +91,10 @@ export async function driveUpload(blob, kind, meta = {}) {
       storage_fallback: true
     };
   }
+}
+
+export async function driveCreateReport(report) {
+  return driveRequest({ action: "create_report", report });
 }
 
 export async function driveDelete(fileId) {
