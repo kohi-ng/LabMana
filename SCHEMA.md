@@ -13,7 +13,10 @@
   trên Google Drive. `normalizeExperiment()` vẫn đọc được URL string cũ (bài soạn từ v1) và tự
   bọc thành object tương đương, nên **không cần migrate dữ liệu cũ**.
 - `execution_logs` có thêm `observation_text`, `explanation_text`, `photo_file_id` (bên cạnh
-  `photo_url` như cũ) để khớp với 2 cột mới và cho phép xóa ảnh trên Drive khi cần.
+  `photo_url` như cũ) và mảng `photos[]` để gắn nhiều ảnh cho một thao tác. Hai trường ảnh cũ
+  vẫn giữ ảnh đầu tiên để tương thích dữ liệu và chức năng cũ.
+- Mỗi ảnh trong `photos[]` có dạng `{file_id, url, name}`; dữ liệu cũ chỉ có `photo_url` /
+  `photo_file_id` vẫn được đọc như một ảnh.
 - `assigned_role` là tên thành viên được ủy quyền từ `config/lab.team_members`; không còn danh
   sách vai trò riêng trong từng bài.
 - Ảnh không còn đi qua Cloud Storage — xem mục 7.
@@ -108,6 +111,7 @@ Giao diện không yêu cầu chọn lượt; các thiết bị mở cùng thí 
   "explanation_text": "$\\ce{BaCl2 + Na2SO4 -> BaSO4v + 2NaCl}$ ...",        // "" nếu cột bị tắt
   "photo_url": "https://drive.google.com/thumbnail?id=...&sz=w1600", // hoặc null; legacy URL/data URL vẫn đọc được
   "photo_file_id": "1XyZ...",                                               // hoặc null — để xóa trên Drive
+  "photos": [{"file_id":"1XyZ...","url":"https://drive.google.com/thumbnail?id=...","name":"mau-sac.jpg"}],
   "timestamp": "<serverTimestamp>", "timestamp_ms": 1731485000000
 }
 ```

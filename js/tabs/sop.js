@@ -4,7 +4,7 @@ import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
-import { esc, richHtml, renderMath, toast, openModal, confirmBox, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
+import { esc, richHtml, renderMath, toast, openModal, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null;
@@ -73,8 +73,11 @@ function render() {
   const sectionFlat = curFlat.filter(f => f.sec.id === selectedSection.id);
   const sectionDone = sectionFlat.filter(f => isProgressDone(f.step.id)).length;
   let html = `<div class="sop-active-head">
-      <button class="btn sm" data-act="sop-home">← Trang chính</button>
-      <h2>${esc(curExp.title || "Bài thí nghiệm")}</h2>
+      <button class="btn sm sop-back" data-act="sop-home" aria-label="Quay lại danh sách bài" title="Quay lại danh sách bài">←</button>
+      <div class="sop-active-title">
+        <h2>${esc(curExp.title || "Bài thí nghiệm")}</h2>
+        ${sectionPickerHtml()}
+      </div>
     </div>
     <div class="section-run-head">
       <h2>TN ${sectionIndex + 1} · ${richHtml(selectedSection.section_name)}</h2>
@@ -88,6 +91,18 @@ function render() {
   restoreFocus(focus);
 }
 
+function sectionPickerHtml() {
+  return `<nav class="sop-section-picker" aria-label="Chọn thí nghiệm">
+    ${curExp.sections.map((section, index) => {
+      const steps = curFlat.filter(item => item.sec.id === section.id);
+      const done = steps.length > 0 && steps.every(item => isProgressDone(item.step.id));
+      return `<button type="button" class="sop-section-dot ${section.id === selectedSectionId ? "active" : ""} ${done ? "done" : ""}"
+        data-act="select-section" data-section="${esc(section.id)}" aria-label="Thí nghiệm ${index + 1}: ${esc(section.section_name || "Chưa đặt tên")}"
+        aria-pressed="${section.id === selectedSectionId}" title="${esc(section.section_name || `Thí nghiệm ${index + 1}`)}">${index + 1}</button>`;
+    }).join("")}
+  </nav>`;
+}
+
 function tocStrip(steps) {
   return `<div class="toc-strip">${steps.map(f => {
     const st = flowStatus(f.step.id);
@@ -98,11 +113,24 @@ function tocStrip(steps) {
 function hasDraftProgress(id) {
   const draft = drafts[id];
   if (!draft) return false;
-  return (!draft.removePhoto && !!draft.imgMeta) || ["value", "observation", "explanation"].some(key => String(draft[key] ?? "").trim() !== "");
+  return (draft.photoItems || []).some(item => item.imgMeta && !item.removed) ||
+    ["value", "observation", "explanation"].some(key => String(draft[key] ?? "").trim() !== "");
 }
 
 function isProgressDone(id) { return !!state.logs[id] || hasDraftProgress(id); }
-function hasSavedPhoto(log) { return !!(log?.photo_file_id || log?.photo_url); }
+function savedPhotos(log) {
+  if (Array.isArray(log?.photos)) return log.photos.filter(photo => photo?.file_id || photo?.url);
+  return log?.photo_file_id || log?.photo_url
+    ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }]
+    : [];
+}
+function photoKey(photo) {
+  if (photo.file_id) return photo.file_id;
+  const url = photo.url || "";
+  let hash = 2166136261;
+  for (let i = 0; i < url.length; i++) hash = Math.imul(hash ^ url.charCodeAt(i), 16777619);
+  return `url-${url.length}-${hash >>> 0}`;
+}
 function flowStatus(id) { return isProgressDone(id) ? "done" : curFlow.status[id]; }
 
 function updateStepProgress(id) {
@@ -127,6 +155,10 @@ function updateStepProgress(id) {
   const sectionDoneCount = sectionSteps.filter(f => isProgressDone(f.step.id)).length;
   const summary = root.querySelector(".section-run-head .muted");
   if (summary) summary.textContent = `${sectionDoneCount}/${sectionSteps.length} bước đã thực hiện`;
+  root.querySelectorAll(".sop-section-dot").forEach(dot => {
+    const steps = curFlat.filter(f => f.sec.id === dot.dataset.section);
+    dot.classList.toggle("done", steps.length > 0 && steps.every(f => isProgressDone(f.step.id)));
+  });
   window.dispatchEvent(new CustomEvent("labmana:progress-change"));
 }
 
@@ -182,12 +214,17 @@ function stepAccordion(f, st) {
   if (st === "done" && !isEdit && log) {
     const target = resolveBranch(s, log);
     const tf = target && target !== END ? curFlat.find(x => x.step.id === target) : null;
-    const photoUrl = log.photo_file_id ? driveImageUrl(log.photo_file_id) : log.photo_url;
     body += `<div class="result-box">
       ${s.require_input ? `<div class="kv"><span>${esc(s.require_input.label || "Giá trị")}</span><b>${esc(log.input_data ?? "")} ${esc(log.input_unit || "")}</b></div>` : ""}
       ${log.observation_text ? `<div class="obs-label">${esc(s.observation?.label || "Hiện tượng quan sát thực tế")}</div><div>${richHtml(log.observation_text)}</div>` : ""}
       ${log.explanation_text ? `<div class="exp-label">${esc(s.explanation?.label || "Giải thích và PTPƯ minh họa")}</div><div>${richHtml(log.explanation_text)}</div>` : ""}
-      ${photoUrl ? `<img class="thumb" src="${esc(photoUrl)}" data-act="zoom" data-src="${esc(photoUrl)}" alt="ảnh">` : ""}
+      ${savedPhotos(log).map(photo => {
+        const url = photo.file_id ? driveImageUrl(photo.file_id) : photo.url;
+        return `<div class="saved-photo">
+          <img class="thumb" src="${esc(url)}" data-act="zoom" data-src="${esc(url)}" alt="ảnh">
+          ${photo.file_id ? `<a class="img-link" href="${esc(driveFileUrl(photo.file_id))}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a>` : ""}
+        </div>`;
+      }).join("")}
       ${target ? `<div class="muted small">↪ Điều kiện rẽ nhánh: ${target === END ? "kết thúc bài" : tf ? "bước " + tf.label : ""}</div>` : ""}
       <div class="by">✔ ${esc(log.executed_by_name)} · ${fmtTime(log.timestamp_ms)}</div>
       <div class="btn-row"><button class="btn sm" data-act="edit">✎ Sửa</button><button class="btn sm" data-act="toggle-acc">Gập lại</button></div></div>`;
@@ -197,8 +234,10 @@ function stepAccordion(f, st) {
     const d = drafts[id] || {};
     const ri = s.require_input;
     const num = ri && ri.type === "number";
-    const oldPhotoUrl = log?.photo_file_id ? driveImageUrl(log.photo_file_id) : log?.photo_url;
-    const hasPhoto = !d.removePhoto && (d.pendingPreview || d.preview || (isEdit && oldPhotoUrl));
+    const oldPhotos = isEdit ? savedPhotos(log) : [];
+    const removedPhotos = d.removedPhotos || new Set();
+    const retainedPhotos = oldPhotos.filter(photo => !removedPhotos.has(photoKey(photo)));
+    const newPhotos = d.photoItems || [];
     const isSaving = saving.has(id);
     const isUploading = uploadingPhoto.has(id);
     body += `<div class="form">
@@ -212,25 +251,36 @@ function stepAccordion(f, st) {
       ${s.explanation?.enabled ? `<label class="lbl">${esc(s.explanation.label || "Giải thích và PTPƯ minh họa")}
         <textarea class="inp" rows="2" data-draft="${id}" data-field="explanation" placeholder="Giải thích hiện tượng, viết PTPƯ: $\\ce{...}$">${esc(d.explanation ?? (isEdit ? log?.explanation_text ?? "" : ""))}</textarea></label>` : ""}
 
-      <div class="photo-preview">
-        ${!d.removePhoto && (d.pendingPreview || d.preview) ? `<img class="thumb" src="${d.pendingPreview || d.preview}" alt="ảnh mới">` : (!d.removePhoto && isEdit && oldPhotoUrl ? `<img class="thumb" src="${esc(oldPhotoUrl)}" alt="ảnh cũ">` : "")}
-        ${d.imgMeta && !d.pendingFile ? `${d.imgMeta.storage_fallback
-          ? '<span class="muted small">Ảnh đã lưu kèm nhật ký ✓</span>'
-          : `<a class="img-link" href="${esc(driveFileUrl(d.imgMeta.file_id))}" target="_blank" rel="noopener noreferrer">Ảnh đã tải lên Drive: ${esc(d.imgMeta.name || "Mở ảnh")} ↗</a>`}` : ""}
-        ${d.removePhoto ? '<span class="muted small">Ảnh sẽ bị gỡ khi lưu.</span>' : ""}
+      <div class="photo-list">
+        ${retainedPhotos.map(photo => {
+          const url = photo.file_id ? driveImageUrl(photo.file_id) : photo.url;
+          return `<div class="photo-item saved-photo">
+            <img class="thumb" src="${esc(url)}" data-act="zoom" data-src="${esc(url)}" alt="ảnh đã lưu">
+            ${photo.file_id ? `<a class="img-link" href="${esc(driveFileUrl(photo.file_id))}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a>` : '<span class="muted small">Ảnh đã lưu</span>'}
+            <button type="button" class="btn sm danger" data-act="remove-saved-photo" data-photo-key="${esc(photoKey(photo))}" ${isSaving || isUploading ? "disabled" : ""}>Xóa ảnh</button>
+          </div>`;
+        }).join("")}
+        ${newPhotos.map((photo, index) => photo.removed ? "" : `<div class="photo-item">
+          <img class="thumb" src="${esc(photo.preview)}" alt="ảnh ${index + 1}">
+          ${photo.imgMeta ? (photo.imgMeta.storage_fallback
+            ? '<span class="muted small">Ảnh đã lưu kèm nhật ký ✓</span>'
+            : `<a class="img-link" href="${esc(driveFileUrl(photo.imgMeta.file_id))}" target="_blank" rel="noopener noreferrer">${esc(photo.imgMeta.name || "Ảnh đã tải lên Drive")} ↗</a>`)
+            : `<label class="lbl">Tên file trên Drive (không bắt buộc)
+                <input class="inp" data-photo-name="${index}" value="${esc(photo.name || "")}" placeholder="Để trống để dùng tên mặc định">
+              </label>
+              <button type="button" class="btn sm primary" data-act="upload-photo" data-photo-index="${index}" ${isSaving || isUploading ? "disabled" : ""}>
+                ${isUploading ? '<span class="spin-ring dark"></span> Đang tải…' : "Tải ảnh lên Drive"}
+              </button>`}
+          <button type="button" class="btn sm danger" data-act="remove-new-photo" data-photo-index="${index}" ${isSaving || isUploading ? "disabled" : ""}>Bỏ ảnh</button>
+        </div>`).join("")}
       </div>
-      ${d.pendingFile ? `<label class="lbl">Tên file trên Drive (không bắt buộc)
-        <input class="inp" data-draft="${id}" data-field="photoName" value="${esc(d.photoName || "")}" placeholder="Để trống để dùng tên mặc định"></label>
-        <button class="btn sm primary upload-photo" data-act="upload-photo" data-step="${id}" ${isSaving || isUploading ? "disabled" : ""}>
-          ${isUploading ? '<span class="spin-ring dark"></span> Đang tải…' : "Tải ảnh lên Drive"}
-        </button>` : ""}
-      ${hasPhoto ? `<button class="btn sm danger photo-remove" data-act="${d.pendingFile ? "discard-pending-photo" : "remove-photo"}" ${isSaving || isUploading ? "disabled" : ""}>${d.pendingFile ? "Bỏ ảnh mới" : "Xóa ảnh"}</button>` : ""}
+      ${retainedPhotos.some(photo => photo.file_id) ? '<span class="muted small">Ảnh đã lưu trên Drive.</span>' : ""}
       <div class="step-submit-row">
-        <label class="btn photo-action">${`📷 ${hasPhoto ? "Chụp lại" : "Chụp ảnh"}${s.require_photo ? " · Bắt buộc" : ""}`}
-          <input type="file" accept="image/*" capture="environment" hidden data-photo="${id}" ${isSaving || isUploading ? "disabled" : ""}></label>
-        <button class="btn primary" data-act="save" ${isSaving || isUploading || d.pendingFile ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "Lưu"}</button>
+        <label class="btn photo-action">📷 Chụp / thêm ảnh${s.require_photo ? " · Bắt buộc" : ""}
+          <input type="file" accept="image/*" capture="environment" multiple hidden data-photo="${id}" ${isSaving || isUploading ? "disabled" : ""}></label>
+        <button class="btn primary" data-act="save" ${isSaving || isUploading || newPhotos.some(photo => !photo.imgMeta && !photo.removed) ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "Lưu"}</button>
       </div>
-      ${d.pendingFile ? '<span class="muted small">Tải ảnh lên Drive trước khi lưu bước.</span>' : ""}
+      ${newPhotos.some(photo => !photo.imgMeta && !photo.removed) ? '<span class="muted small">Tải ảnh mới lên Drive trước khi lưu bước.</span>' : ""}
       ${isEdit ? `<button class="btn cancel-edit" data-act="cancel-edit" ${isSaving || isUploading ? "disabled" : ""}>Hủy sửa</button>` : ""}
       </div>`;
   }
@@ -259,6 +309,13 @@ function restoreFocus(f) {
 
 /* ---------- sự kiện ---------- */
 function onInput(e) {
+  const photoIndex = e.target.dataset?.photoName;
+  const stepId = e.target.closest("[data-step]")?.dataset.step;
+  if (photoIndex !== undefined && stepId) {
+    const item = drafts[stepId]?.photoItems?.[Number(photoIndex)];
+    if (item) item.name = e.target.value;
+    return;
+  }
   const id = e.target.dataset?.draft, field = e.target.dataset?.field;
   if (!id || !field) return;
   (drafts[id] ||= {})[field] = e.target.value;
@@ -273,47 +330,38 @@ function onInput(e) {
 async function onChange(e) {
   const id = e.target.dataset?.photo;
   if (!id) return;
-  const file = e.target.files?.[0]; e.target.value = "";
-  if (!file) return;
+  const files = Array.from(e.target.files || []); e.target.value = "";
+  if (!files.length) return;
   if (!isDriveConfigured) return toast("Chưa cấu hình Google Drive — xem hướng dẫn triển khai trong code.gs", "error", 4000);
   const d = (drafts[id] ||= {});
-  if (d.pendingPreview) URL.revokeObjectURL(d.pendingPreview);
-  d.pendingFile = file;
-  d.pendingPreview = URL.createObjectURL(file);
-  d.photoName = "";
-  d.removePhoto = false;
+  d.photoItems ||= [];
+  files.forEach(file => d.photoItems.push({
+    file,
+    preview: URL.createObjectURL(file),
+    name: "",
+    imgMeta: null,
+    removed: false
+  }));
   render();
 }
 
-async function uploadPhoto(id) {
+async function uploadPhoto(id, index) {
   const d = drafts[id];
-  if (!d?.pendingFile || uploadingPhoto.has(id)) return;
+  const photo = d?.photoItems?.[index];
+  if (!photo?.file || photo.removed || uploadingPhoto.has(id)) return;
   uploadingPhoto.add(id); render();
   try {
     toast("Đang tải ảnh lên Drive…");
-    const previousUpload = d.imgMeta;
     const f = curFlat.find(x => x.step.id === id);
-    const file = d.pendingFile;
+    const file = photo.file;
     const meta = {
       expTitle: curExp.title, sectionName: f?.sec.section_name || "",
       stepLabel: f?.label || "", runName: state.activeRun?.name || "",
-      fileName: d.photoName, originalName: file.name
+      fileName: photo.name, originalName: file.name
     };
     const img = await driveUpload(file, "log", meta);
-    d.imgMeta = img;
-    d.pendingFile = null;
-    if (d.preview) URL.revokeObjectURL(d.preview);
-    d.preview = d.pendingPreview;
-    d.pendingPreview = null;
-    d.removePhoto = false;
-    if (previousUpload?.file_id && previousUpload.file_id !== img.file_id &&
-        previousUpload.file_id !== state.logs[id]?.photo_file_id) {
-      try { await driveDelete(previousUpload.file_id); }
-      catch (err) {
-        console.error(err);
-        toast("Đã nhận ảnh mới, nhưng ảnh chụp trước chưa xóa được khỏi Drive.", "warn", 5000);
-      }
-    }
+    photo.imgMeta = img;
+    photo.file = null;
     updateStepProgress(id);
     toast(img.storage_fallback
       ? "Drive chưa xác nhận; ảnh đã được giữ trong nhật ký để có thể lưu bước."
@@ -329,7 +377,7 @@ async function onClick(e) {
   const id = btn.closest("[data-step]")?.dataset.step || btn.dataset.step;
   switch (btn.dataset.act) {
     case "save": return save(id);
-    case "upload-photo": return uploadPhoto(id);
+    case "upload-photo": return uploadPhoto(id, Number(btn.dataset.photoIndex));
     case "toggle-acc": {
       expanded.has(id) ? expanded.delete(id) : expanded.add(id);
       render(); break;
@@ -340,27 +388,36 @@ async function onClick(e) {
       requestAnimationFrame(() => root.querySelector(`[data-step="${id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
       break;
     }
-    case "discard-pending-photo": {
-      const draft = drafts[id];
-      if (draft?.pendingPreview) URL.revokeObjectURL(draft.pendingPreview);
-      if (draft) { draft.pendingFile = null; draft.pendingPreview = null; draft.photoName = ""; }
-      render();
-      break;
-    }
     case "edit": {
       const log = state.logs[id];
       editing.add(id); expanded.add(id);
       drafts[id] = {
         value: log?.input_data != null ? String(log.input_data) : "",
-        observation: log?.observation_text || "", explanation: log?.explanation_text || ""
+        observation: log?.observation_text || "", explanation: log?.explanation_text || "",
+        removedPhotos: new Set(), photoItems: []
       };
       render(); break;
     }
     case "cancel-edit": return cancelEdit(id);
-    case "remove-photo": {
-      if (!(await confirmBox("Ảnh sẽ bị gỡ khỏi bản ghi và xóa khỏi Google Drive khi bạn lưu. Tiếp tục?", "Xóa ảnh"))) return;
-      (drafts[id] ||= {}).removePhoto = true;
-      updateStepProgress(id);
+    case "select-section": {
+      selectedSectionId = btn.dataset.section;
+      expanded.clear();
+      const sectionSteps = curFlat.filter(f => f.sec.id === selectedSectionId);
+      const firstPending = sectionSteps.find(f => !state.logs[f.step.id] && !hasDraftProgress(f.step.id));
+      if (firstPending) expanded.add(firstPending.step.id);
+      render();
+      break;
+    }
+    case "remove-saved-photo": {
+      const draft = (drafts[id] ||= {});
+      draft.removedPhotos ||= new Set();
+      draft.removedPhotos.add(btn.dataset.photoKey);
+      render();
+      break;
+    }
+    case "remove-new-photo": {
+      const photo = drafts[id]?.photoItems?.[Number(btn.dataset.photoIndex)];
+      if (photo) photo.removed = true;
       render();
       break;
     }
@@ -379,22 +436,29 @@ async function onClick(e) {
 function clearDraft(id) {
   if (drafts[id]?.preview) URL.revokeObjectURL(drafts[id].preview);
   if (drafts[id]?.pendingPreview) URL.revokeObjectURL(drafts[id].pendingPreview);
+  for (const photo of drafts[id]?.photoItems || []) {
+    if (photo.preview) URL.revokeObjectURL(photo.preview);
+  }
   delete drafts[id];
 }
 
 async function cancelEdit(id) {
   const draft = drafts[id];
-  const oldFileId = state.logs[id]?.photo_file_id;
+  const oldFileIds = new Set(savedPhotos(state.logs[id]).map(photo => photo.file_id).filter(Boolean));
   editing.delete(id);
   clearDraft(id);
   render();
-  if (draft?.imgMeta?.file_id && draft.imgMeta.file_id !== oldFileId) {
-    try { await driveDelete(draft.imgMeta.file_id); }
+  let deleteWarning = false;
+  for (const photo of draft?.photoItems || []) {
+    const fileId = photo.imgMeta?.file_id;
+    if (!fileId || oldFileIds.has(fileId)) continue;
+    try { await driveDelete(fileId); }
     catch (err) {
       console.error(err);
-      toast("Sửa đã hủy, nhưng ảnh mới chưa xóa được khỏi Drive: " + err.message, "warn", 5000);
+      deleteWarning = true;
     }
   }
+  if (deleteWarning) toast("Sửa đã hủy, nhưng có ảnh mới chưa xóa được khỏi Drive.", "warn", 5000);
 }
 
 async function save(id) {
@@ -415,9 +479,13 @@ async function save(id) {
     }
   }
   if (uploadingPhoto.has(id)) return toast("Ảnh đang tải lên, vui lòng đợi", "warn");
-  if (d.pendingFile) return toast("Hãy tải ảnh lên Drive trước khi lưu bước", "warn");
-  const uploadedPhoto = !!(d.imgMeta?.file_id || d.imgMeta?.url);
-  if (s.require_photo && (d.removePhoto || (!uploadedPhoto && !(isEdit && hasSavedPhoto(old))))) {
+  if ((d.photoItems || []).some(photo => !photo.removed && !photo.imgMeta)) return toast("Hãy tải ảnh mới lên Drive trước khi lưu bước", "warn");
+  const photosToSave = [
+    ...(isEdit ? savedPhotos(old).filter(photo => !d.removedPhotos?.has(photoKey(photo))) : []),
+    ...(d.photoItems || []).filter(photo => !photo.removed && photo.imgMeta)
+      .map(photo => ({ file_id: photo.imgMeta.file_id || "", url: photo.imgMeta.url || "", name: photo.imgMeta.name || "" }))
+  ];
+  if (s.require_photo && !photosToSave.length) {
     return toast("Bước này bắt buộc chụp ảnh", "error");
   }
 
@@ -426,20 +494,25 @@ async function save(id) {
 
   saving.add(id); render();
   try {
-    const photo_url = d.removePhoto ? null : (d.imgMeta ? d.imgMeta.url :
-      (isEdit ? (old?.photo_url || (old?.photo_file_id ? driveImageUrl(old.photo_file_id) : null)) : null));
-    const photo_file_id = d.removePhoto ? null : (d.imgMeta ? d.imgMeta.file_id : (isEdit ? (old?.photo_file_id || null) : null));
+    const primaryPhoto = photosToSave[0] || null;
     await setDoc(doc(db, "execution_logs", `${state.activeRunId}__${id}`), {
       exp_id: run.exp_id, run_id: state.activeRunId, step_id: id, step_label: f.label,
       executed_by_name: name, input_data: input, input_unit: s.require_input?.unit || "",
       observation_text: s.observation?.enabled ? String(d.observation ?? "").trim() : "",
       explanation_text: s.explanation?.enabled ? String(d.explanation ?? "").trim() : "",
-      photo_url, photo_file_id,
+      photos: photosToSave,
+      photo_url: primaryPhoto?.url || (primaryPhoto?.file_id ? driveImageUrl(primaryPhoto.file_id) : null),
+      photo_file_id: primaryPhoto?.file_id || null,
       timestamp: serverTimestamp(), timestamp_ms: Date.now()
     });
     const filesToDelete = new Set();
-    if (old?.photo_file_id && old.photo_file_id !== photo_file_id) filesToDelete.add(old.photo_file_id);
-    if (d.removePhoto && d.imgMeta?.file_id) filesToDelete.add(d.imgMeta.file_id);
+    const retainedPhotoIds = new Set(photosToSave.map(photo => photo.file_id).filter(Boolean));
+    for (const photo of savedPhotos(old)) {
+      if (photo.file_id && !retainedPhotoIds.has(photo.file_id)) filesToDelete.add(photo.file_id);
+    }
+    for (const photo of d.photoItems || []) {
+      if (photo.removed && photo.imgMeta?.file_id) filesToDelete.add(photo.imgMeta.file_id);
+    }
     clearDraft(id); editing.delete(id); expanded.delete(id);
     const next = curFlat.find(item => item.sec.id === f.sec.id && item.ti > f.ti && !state.logs[item.step.id] && !hasDraftProgress(item.step.id));
     if (next) expanded.add(next.step.id);
@@ -512,7 +585,7 @@ function exportCsv() {
     const l = state.logs[f.step.id];
     if (curFlow.status[f.step.id] === "done" && l)
       rows.push([f.label, f.step.title || "", f.step.text.replace(/\s+/g, " "), l.executed_by_name, l.input_data ?? "", l.input_unit || "",
-        l.observation_text || "", l.explanation_text || "", l.photo_url || "", new Date(l.timestamp_ms).toLocaleString("vi-VN")]);
+        l.observation_text || "", l.explanation_text || "", savedPhotos(l).map(photo => photo.url || photo.file_id).join(" | "), new Date(l.timestamp_ms).toLocaleString("vi-VN")]);
   });
   const csv = "\ufeff" + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
   downloadFile(`${(state.activeRun?.name || "luot").replace(/[^\w\-]+/g, "_")}.csv`, csv, "text/csv;charset=utf-8");
