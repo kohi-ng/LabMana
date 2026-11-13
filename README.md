@@ -22,7 +22,8 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   cần triển khai phiên bản mới của Apps Script Web App.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi dùng các nút tròn dưới tên bài để
-  chuyển thí nghiệm, hoặc menu **Tiến trình** để mở thí nghiệm và thao tác. Mọi bước đều mở độc lập.
+  chuyển thí nghiệm và các nút bước để chuyển thao tác. Màn hình chỉ hiện thao tác đang chọn, không
+  phải cuộn qua danh sách nhiều bước. Menu **Tiến trình** cũng mở thẳng tới thí nghiệm/thao tác.
 - **Bartender dạng nút nổi có thể kéo thả** ở góc màn hình, bấm vào mở cửa sổ tra cứu/tính toán
   nhanh mà không rời khỏi tab đang làm — mở rộng danh mục hóa chất theo đúng các chất dùng
   xuyên suốt giáo trình (KMnO₄, K₂Cr₂O₇, Na₂S₂O₃·5H₂O, phèn nhôm-kali, muối Mohr…).
@@ -39,7 +40,7 @@ js/store.js           dữ liệu real-time (onSnapshot) dùng chung các tab
 js/utils.js           modal, toast, chuyển ảnh sang base64, chọn tên, KaTeX…
 js/plan-logic.js       logic thuần: validate, flatten, rẽ nhánh, computeFlow
 js/tabs/planner.js    Tab 1 — Kế hoạch (Thí nghiệm → Thao tác, ảnh qua Drive)
-js/tabs/sop.js        Tab 2 — Quy trình (accordion + data logger)
+js/tabs/sop.js        Tab 2 — Quy trình (một thao tác mỗi màn hình + data logger)
 js/tabs/calc.js       Bartender (chạy trong FAB sheet)
 js/tabs/settings.js   Tab 3 — Cài đặt (thành viên)
 code.gs               Backend Google Apps Script — nhận/xóa ảnh trên Drive

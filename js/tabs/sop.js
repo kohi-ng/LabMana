@@ -1,5 +1,5 @@
 // ============ Tab Quy trình (SOP & Data Logger) ============
-// Các bước chưa làm đều có thể mở và thực hiện độc lập; menu Tiến trình hỗ trợ điều hướng.
+// Chỉ hiển thị thao tác đang chọn; menu Tiến trình hỗ trợ điều hướng trực tiếp.
 import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
@@ -7,7 +7,7 @@ import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigure
 import { esc, richHtml, renderMath, toast, openModal, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
-let root, raf = 0, selectedByUser = false, selectedSectionId = null;
+let root, raf = 0, selectedByUser = false, selectedSectionId = null, selectedStepId = null;
 let curExp = null, curFlow = null, curFlat = [];
 const drafts = {};              // stepId → {value, blob, preview}
 const editing = new Set(), saving = new Set(), uploadingPhoto = new Set();
@@ -25,6 +25,7 @@ export function init(el) {
 export function onShow() {
   selectedByUser = false;
   selectedSectionId = null;
+  selectedStepId = null;
   expanded.clear();
   schedule();
 }
@@ -41,10 +42,11 @@ export async function openProgressTarget(expId, sectionId = null, stepId = null)
   const targetStep = stepId
     ? targetSection?.steps.find(step => step.id === stepId)
     : targetSection?.steps.find(step => !state.logs[step.id] && !hasDraftProgress(step.id)) || targetSection?.steps[0];
+  selectedStepId = targetStep?.id || null;
   if (targetStep) expanded.add(targetStep.id);
   render();
   window.dispatchEvent(new CustomEvent("labmana:progress-change"));
-  if (targetStep) requestAnimationFrame(() => scrollToStep(targetStep.id));
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 export function isStepProgressDone(stepId) { return isProgressDone(stepId); }
@@ -70,6 +72,13 @@ function render() {
   if (selectedSection.id !== selectedSectionId) selectedSectionId = selectedSection.id;
   const sectionIndex = curExp.sections.indexOf(selectedSection);
   const sectionFlat = curFlat.filter(f => f.sec.id === selectedSection.id);
+  let selectedStep = sectionFlat.find(f => f.step.id === selectedStepId);
+  if (!selectedStep) {
+    selectedStep = sectionFlat.find(f => !isProgressDone(f.step.id)) || sectionFlat[0];
+    selectedStepId = selectedStep?.step.id || null;
+    expanded.clear();
+    if (selectedStep) expanded.add(selectedStep.step.id);
+  }
   const sectionDone = sectionFlat.filter(f => isProgressDone(f.step.id)).length;
   let html = `<div class="sop-active-head">
       <button class="btn sm sop-back" data-act="sop-home" aria-label="Quay lại danh sách bài" title="Quay lại danh sách bài">←</button>
@@ -84,7 +93,8 @@ function render() {
       ${tocStrip(sectionFlat)}
     </div>`;
   if (sectionFlat.length && sectionFlat.every(f => state.logs[f.step.id])) html += `<div class="done-banner">🎉 Đã hoàn thành thí nghiệm này!</div>`;
-  html += sectionFlat.map(f => stepAccordion(f, flowStatus(f.step.id))).join("");
+  if (selectedStep) html += stepAccordion(selectedStep, flowStatus(selectedStep.step.id));
+  else html += `<div class="empty">Thí nghiệm này chưa có thao tác.</div>`;
   root.innerHTML = html;
   renderMath(root);
   restoreFocus(focus);
@@ -103,15 +113,11 @@ function sectionPickerHtml() {
 }
 
 function tocStrip(steps) {
-  return `<div class="toc-strip">${steps.map(f => {
+  return `<nav class="toc-strip" aria-label="Chọn thao tác">${steps.map(f => {
     const st = flowStatus(f.step.id);
-    return `<button type="button" class="toc-pip ${st} ${expanded.has(f.step.id) ? "active" : ""}" data-act="jump" data-step="${f.step.id}" aria-label="Đi tới bước ${f.label}" title="Bước ${f.label}">${st === "done" ? "✓" : f.label}</button>`;
-  }).join("")}</div>`;
-}
-
-function scrollToStep(stepId) {
-  const target = [...root.querySelectorAll("[data-step]")].find(element => element.dataset.step === stepId);
-  target?.scrollIntoView({ block: "start", behavior: "smooth" });
+    const active = f.step.id === selectedStepId;
+    return `<button type="button" class="toc-pip ${st} ${active ? "active" : ""}" data-act="jump" data-step="${f.step.id}" aria-label="Hiện bước ${f.label}" aria-pressed="${active}" title="Bước ${f.label}">${f.label}</button>`;
+  }).join("")}</nav>`;
 }
 
 function hasDraftProgress(id) {
@@ -142,7 +148,7 @@ function updateStepProgress(id) {
   root.querySelectorAll(".toc-pip").forEach(pip => {
     if (pip.dataset.step !== id) return;
     pip.classList.toggle("done", done);
-    pip.classList.toggle("active", expanded.has(id));
+    pip.classList.toggle("active", selectedStepId === id);
     if (done) pip.classList.remove("current");
   });
   root.querySelectorAll(".sopstep").forEach(step => {
@@ -388,11 +394,11 @@ async function onClick(e) {
       render(); break;
     }
     case "jump": {
+      selectedStepId = id;
       expanded.clear();
       expanded.add(id);
       render();
-      root.querySelectorAll(".toc-pip").forEach(pip => pip.classList.toggle("active", pip.dataset.step === id));
-      requestAnimationFrame(() => scrollToStep(id));
+      window.scrollTo({ top: 0, behavior: "smooth" });
       break;
     }
     case "edit": {
@@ -411,10 +417,11 @@ async function onClick(e) {
       expanded.clear();
       const sectionSteps = curFlat.filter(f => f.sec.id === selectedSectionId);
       const target = sectionSteps.find(f => !isProgressDone(f.step.id)) || sectionSteps[0];
+      selectedStepId = target?.step.id || null;
       if (target) expanded.add(target.step.id);
       render();
       window.dispatchEvent(new CustomEvent("labmana:progress-change"));
-      if (target) requestAnimationFrame(() => scrollToStep(target.step.id));
+      window.scrollTo({ top: 0, behavior: "smooth" });
       break;
     }
     case "remove-saved-photo": {
@@ -439,6 +446,7 @@ async function onClick(e) {
     case "sop-home":
       selectedByUser = false;
       selectedSectionId = null;
+      selectedStepId = null;
       expanded.clear();
       render();
       break;
@@ -528,6 +536,7 @@ async function save(id) {
     }
     clearDraft(id); editing.delete(id); expanded.delete(id);
     const next = curFlat.find(item => item.sec.id === f.sec.id && item.ti > f.ti && !state.logs[item.step.id] && !hasDraftProgress(item.step.id));
+    selectedStepId = next?.step.id || id;
     if (next) expanded.add(next.step.id);
     let deleteWarning = "";
     for (const fileId of filesToDelete) {
@@ -574,8 +583,12 @@ async function openExperiment(expId) {
       });
     }
     selectedByUser = true;
-    selectedSectionId = normalizeExperiment(exp).sections[0]?.id || null;
+    const firstSection = normalizeExperiment(exp).sections[0];
+    selectedSectionId = firstSection?.id || null;
+    const firstStep = firstSection?.steps.find(step => !state.logs[step.id] && !hasDraftProgress(step.id)) || firstSection?.steps[0];
+    selectedStepId = firstStep?.id || null;
     expanded.clear();
+    if (firstStep) expanded.add(firstStep.id);
     setActiveRun(run.id);
     render();
     return true;
