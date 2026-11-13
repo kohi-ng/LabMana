@@ -4,7 +4,7 @@ import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, isDriveConfigured } from "../drive.js";
-import { esc, snippet, richHtml, renderMath, toast, openModal, compressImage, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
+import { esc, snippet, richHtml, renderMath, toast, openModal, confirmBox, compressImage, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null;
@@ -22,7 +22,12 @@ export function init(el) {
   root.addEventListener("change", onChange);
   render();
 }
-export function onShow() { schedule(); }
+export function onShow() {
+  selectedByUser = false;
+  selectedSectionId = null;
+  expanded.clear();
+  schedule();
+}
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 
 export async function openProgressTarget(expId, sectionId = null, stepId = null) {
@@ -43,20 +48,6 @@ export async function openProgressTarget(expId, sectionId = null, stepId = null)
 
 export function isStepProgressDone(stepId) { return isProgressDone(stepId); }
 
-function experimentStripHtml(activeId = "") {
-  if (!state.experimentsLoaded) return "";
-  if (!state.experiments.length) return '<div class="experiment-strip-empty muted small">Chưa có bài thí nghiệm. Tạo bài trong tab Kế hoạch.</div>';
-  return `<nav class="experiment-strip" aria-label="Chọn bài thí nghiệm">
-    ${state.experiments.map((raw, index) => {
-      const exp = normalizeExperiment(raw);
-      const active = raw.id === activeId;
-      return `<button type="button" class="experiment-chip ${active ? "active" : ""}" data-act="select-experiment" data-exp="${esc(raw.id)}" ${active ? 'aria-current="page"' : ""}>
-        <span class="experiment-chip-no">${index + 1}</span><span>${esc(exp.title || "(không tên)")}</span>
-      </button>`;
-    }).join("")}
-  </nav>`;
-}
-
 /* ---------- vẽ ---------- */
 function render() {
   if (!state.ready) { root.innerHTML = statusCard(state); return; }
@@ -74,17 +65,14 @@ function render() {
   curFlat = curFlow.flat;
 
   const selectedSection = curExp.sections.find(sec => sec.id === selectedSectionId);
-  let html = `${experimentStripHtml(raw.id)}<div class="sop-back-row">
-      <button class="btn sm" data-act="experiment-list">← Danh sách thí nghiệm</button>
-    </div>`;
+  let html = `<div class="page-head sop-active-title"><h2>${esc(curExp.title || "Bài thí nghiệm")}</h2></div>`;
   if (!selectedSection) {
     html += sectionListHtml();
   } else {
     const sectionIndex = curExp.sections.indexOf(selectedSection);
     const sectionFlat = curFlat.filter(f => f.sec.id === selectedSection.id);
     const sectionDone = sectionFlat.filter(f => isProgressDone(f.step.id)).length;
-    html += `<div class="section-run-head">
-      <button class="btn sm" data-act="section-list">← Các thí nghiệm</button>
+    html += `${sectionTabsHtml()}<div class="section-run-head">
       <h2>TN ${sectionIndex + 1} · ${richHtml(selectedSection.section_name)}</h2>
       <p class="muted small">${sectionDone}/${sectionFlat.length} bước đã thực hiện</p>
       ${tocStrip(sectionFlat)}
@@ -95,6 +83,15 @@ function render() {
   root.innerHTML = html;
   renderMath(root);
   restoreFocus(focus);
+}
+
+function sectionTabsHtml() {
+  return `<nav class="section-tabs" aria-label="Thí nghiệm trong bài">
+    ${curExp.sections.map((section, index) => `<button type="button" class="section-tab ${section.id === selectedSectionId ? "active" : ""}"
+      data-act="open-section" data-section="${esc(section.id)}" aria-selected="${section.id === selectedSectionId}">
+      <span>TN ${index + 1}</span><span>${esc(section.section_name || "Chưa đặt tên")}</span>
+    </button>`).join("")}
+  </nav>`;
 }
 
 function sectionListHtml() {
@@ -124,6 +121,7 @@ function hasDraftProgress(id) {
 }
 
 function isProgressDone(id) { return !!state.logs[id] || hasDraftProgress(id); }
+function hasSavedPhoto(log) { return !!(log?.photo_file_id || log?.photo_url); }
 function flowStatus(id) { return isProgressDone(id) ? "done" : curFlow.status[id]; }
 
 function updateStepProgress(id) {
@@ -152,9 +150,22 @@ function updateStepProgress(id) {
 }
 
 function startHtml() {
-  const activeId = state.activeRun?.exp_id || "";
-  return `<div class="page-head"><h2>Quy trình</h2><p class="muted small">Chọn bài từ dải bên dưới hoặc mở cây tiến trình ở góc trên.</p></div>
-    ${experimentStripHtml(activeId)}`;
+  if (!state.experimentsLoaded) return `<div class="empty">⏳ Đang tải danh sách bài thí nghiệm…</div>`;
+  if (!state.experiments.length) return `<div class="page-head"><h2>Quy trình</h2></div>
+    <div class="empty">Chưa có bài thí nghiệm đã lên kế hoạch.</div>`;
+  return `<div class="page-head"><h2>Quy trình</h2><p class="muted small">Chọn bài đã lên kế hoạch để mở thí nghiệm.</p></div>
+    <div class="planned-experiments">${state.experiments.map((raw, index) => {
+      const exp = normalizeExperiment(raw);
+      const stepCount = exp.sections.reduce((total, section) => total + section.steps.length, 0);
+      return `<button type="button" class="card plan-card planned-experiment" data-act="open-experiment" data-exp="${esc(raw.id)}">
+        <span class="planned-experiment-number">${index + 1}</span>
+        <span class="planned-experiment-content">
+          <strong class="item-title">${esc(exp.title || "(không tên)")}</strong>
+          <span class="muted small">${exp.sections.length} thí nghiệm · ${stepCount} bước</span>
+        </span>
+        <span class="planned-experiment-chevron" aria-hidden="true">›</span>
+      </button>`;
+    }).join("")}</div>`;
 }
 
 function hintFor(step, raw) {
@@ -228,7 +239,7 @@ function stepAccordion(f, st) {
 
       <div class="photo-preview">
         ${!d.removePhoto && d.preview ? `<img class="thumb" src="${d.preview}" alt="ảnh mới">` : (!d.removePhoto && isEdit && oldPhotoUrl ? `<img class="thumb" src="${esc(oldPhotoUrl)}" alt="ảnh cũ">` : "")}
-        ${d.imgMeta ? '<span class="muted small">Ảnh đã tải lên Google Drive ✓</span>' : ""}
+        ${d.imgMeta ? `<span class="muted small">${d.imgMeta.storage_fallback ? "Ảnh đã lưu kèm nhật ký ✓" : "Ảnh đã tải lên Google Drive ✓"}</span>` : ""}
         ${d.removePhoto ? '<span class="muted small">Ảnh sẽ bị gỡ khi lưu.</span>' : ""}
       </div>
       ${hasPhoto ? `<button class="btn sm danger photo-remove" data-act="remove-photo" ${isSaving || isUploading ? "disabled" : ""}>Xóa ảnh</button>` : ""}
@@ -304,7 +315,9 @@ async function onChange(e) {
       }
     }
     updateStepProgress(id);
-    toast("Đã tải ảnh lên Drive ✔", "success", 5000);
+    toast(img.storage_fallback
+      ? "Drive chưa xác nhận; ảnh đã được giữ trong nhật ký để có thể lưu bước."
+      : "Đã tải ảnh lên Drive ✔", img.storage_fallback ? "warn" : "success", 5000);
   } catch (err) { console.error(err); toast("Tải ảnh lỗi: " + err.message, "error", 4500); }
   finally { uploadingPhoto.delete(id); render(); }
 }
@@ -344,11 +357,6 @@ async function onClick(e) {
     }
     case "zoom": openModal({ title: "", html: `<img class="zoom" src="${esc(btn.dataset.src)}" alt="">` }); break;
     case "open-experiment": return openExperiment(btn.dataset.exp);
-    case "select-experiment": {
-      selectedSectionId = null;
-      expanded.clear();
-      return openExperiment(btn.dataset.exp);
-    }
     case "open-section": {
       selectedSectionId = btn.dataset.section;
       expanded.clear();
@@ -358,17 +366,6 @@ async function onClick(e) {
       render();
       break;
     }
-    case "section-list":
-      selectedSectionId = null;
-      expanded.clear();
-      render();
-      break;
-    case "experiment-list":
-      selectedByUser = false;
-      selectedSectionId = null;
-      expanded.clear();
-      location.hash = "#planner";
-      break;
     case "csv": return exportCsv();
   }
 }
@@ -410,15 +407,19 @@ async function save(id) {
       input = raw;
     }
   }
-  if (s.require_photo && (d.removePhoto || (!d.imgMeta && !(isEdit && old?.photo_url)))) return toast("Bước này bắt buộc chụp ảnh", "error");
   if (uploadingPhoto.has(id)) return toast("Ảnh đang tải lên, vui lòng đợi", "warn");
+  const uploadedPhoto = !!(d.imgMeta?.file_id || d.imgMeta?.url);
+  if (s.require_photo && (d.removePhoto || (!uploadedPhoto && !(isEdit && hasSavedPhoto(old))))) {
+    return toast("Bước này bắt buộc chụp ảnh", "error");
+  }
 
   const name = state.team.includes(s.assigned_role) ? s.assigned_role : await pickName(state.team);
   if (!name) return;
 
   saving.add(id); render();
   try {
-    const photo_url = d.removePhoto ? null : (d.imgMeta ? d.imgMeta.url : (isEdit ? (old?.photo_url || null) : null));
+    const photo_url = d.removePhoto ? null : (d.imgMeta ? d.imgMeta.url :
+      (isEdit ? (old?.photo_url || (old?.photo_file_id ? driveImageUrl(old.photo_file_id) : null)) : null));
     const photo_file_id = d.removePhoto ? null : (d.imgMeta ? d.imgMeta.file_id : (isEdit ? (old?.photo_file_id || null) : null));
     await setDoc(doc(db, "execution_logs", `${state.activeRunId}__${id}`), {
       exp_id: run.exp_id, run_id: state.activeRunId, step_id: id, step_label: f.label,
@@ -482,6 +483,7 @@ async function openExperiment(expId) {
     selectedSectionId = null;
     expanded.clear();
     setActiveRun(run.id);
+    render();
     return true;
   } catch (err) {
     console.error(err);

@@ -1,5 +1,5 @@
 // ============ Drive: tải / xóa ảnh qua Google Apps Script Web App ============
-import { blobToBase64 } from "./utils.js";
+import { blobToBase64, blobToDataUrl } from "./utils.js";
 
 export const GAS_URL = "https://script.google.com/macros/s/AKfycbwzMsHgnhZRY4dW8w8H41RmuVN3Bnv4dU6csKGYeHcCYZUFhnaWpjCUybXqmi4HW3R-rA/exec";
 export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
@@ -61,19 +61,30 @@ function driveRequest(payload) {
 }
 
 export async function driveUpload(blob, kind, meta = {}) {
-  const result = await driveRequest({
-    action: "upload",
-    kind,
-    base64: await blobToBase64(blob),
-    mime: blob.type || "image/jpeg",
-    meta
-  });
-  if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
-  return {
-    file_id: result.file_id,
-    url: result.url || driveImageUrl(result.file_id),
-    name: result.name || ""
-  };
+  try {
+    const result = await driveRequest({
+      action: "upload",
+      kind,
+      base64: await blobToBase64(blob),
+      mime: blob.type || "image/jpeg",
+      meta
+    });
+    if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
+    return {
+      file_id: result.file_id,
+      url: result.url || driveImageUrl(result.file_id),
+      name: result.name || ""
+    };
+  } catch (err) {
+    if (kind !== "log") throw err;
+    console.warn("Drive chưa xác nhận upload ảnh; giữ ảnh trong nhật ký để không chặn bước:", err);
+    return {
+      file_id: "",
+      url: await blobToDataUrl(blob),
+      name: "Ảnh lưu kèm nhật ký",
+      storage_fallback: true
+    };
+  }
 }
 
 export async function driveDelete(fileId) {

@@ -143,7 +143,9 @@ transaction.
   "Anyone with the link — Viewer", và trả về
   `{file_id, url, name}`. Ảnh dùng đường dẫn thumbnail Drive; `code.gs` chỉ xử lý upload/xóa và
   tương thích đường dẫn ảnh cũ.
-- Firestore chỉ lưu `{file_id, url, name}` — không lưu byte ảnh.
+- Bình thường Firestore lưu `photo_file_id` và URL. Nếu upload ảnh thực hiện bước nhưng trình
+  duyệt không nhận được xác nhận từ Apps Script, client giữ ảnh đã nén dưới dạng data URL trong
+  `photo_url` để không mất kết quả; ảnh này không được xác nhận đã lưu trên Drive.
 - Xóa ảnh trong app gọi `action: "delete"` → Apps Script chuyển file vào Thùng rác Drive của
   người deploy.
 

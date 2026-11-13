@@ -16,11 +16,13 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   được cho mọi bài trong giáo trình (Bài 1 → Bài 9), không cần sửa code.
 - **Ủy quyền theo từng thao tác**: người soạn chọn thành viên trong Cài đặt ở ngay bước cần giao;
   phần phân vai chung ở đầu bài không còn cần thiết.
-- **Ảnh đi qua Google Drive**, không qua Firebase Storage. `code.gs` nhận ảnh/xóa ảnh; sau khi
-  thay đổi mã cần triển khai phiên bản mới của Apps Script Web App.
+- **Ảnh ưu tiên Google Drive**, không qua Firebase Storage. Nếu Apps Script lưu ảnh nhưng không
+  gửi được xác nhận về trình duyệt, ảnh chụp vẫn được giữ kèm nhật ký để không chặn bước (trường
+  hợp dự phòng có thể làm ảnh lưu trong Firestore lớn hơn). `code.gs` nhận/xóa ảnh; sau khi đổi mã
+  cần triển khai phiên bản mới của Apps Script Web App.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
-- **Tab Quy trình**: chọn bài nhanh trên dải bài ngang hoặc mở cây thí nghiệm/thao tác trong menu
-  **Tiến trình** ở góc trên bên phải. Mọi bước đều mở và thực hiện được độc lập, không bị khóa.
+- **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi chuyển giữa các thí nghiệm bằng
+  thanh tab ngang hoặc mở thao tác trong menu **Tiến trình**. Mọi bước đều mở độc lập, không bị khóa.
 - **Trạm pha chế dạng nút nổi có thể kéo thả** ở góc màn hình, bấm vào mở cửa sổ tra cứu/tính toán
   nhanh mà không rời khỏi tab đang làm — mở rộng danh mục hóa chất theo đúng các chất dùng
   xuyên suốt giáo trình (KMnO₄, K₂Cr₂O₇, Na₂S₂O₃·5H₂O, phèn nhôm-kali, muối Mohr…).
