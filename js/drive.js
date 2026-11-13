@@ -2,6 +2,7 @@
 import { blobToBase64, blobToDataUrl } from "./utils.js";
 
 export const GAS_URL = "https://script.google.com/macros/s/AKfycbwzMsHgnhZRY4dW8w8H41RmuVN3Bnv4dU6csKGYeHcCYZUFhnaWpjCUybXqmi4HW3R-rA/exec";
+const GOOGLE_ORIGIN = /^https:\/\/([a-z0-9-]+\.)*(googleusercontent|google)\.com$/;
 export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
 
 /**
@@ -38,7 +39,9 @@ function driveRequest(payload) {
       frame.remove();
     };
     const onMessage = event => {
-      if (event.source !== frame.contentWindow || event.data?.source !== "labmana-drive" ||
+      // Apps Script trả kết quả từ iframe lồng nhau (*.googleusercontent.com) nên không so sánh được
+      // với frame.contentWindow; thay vào đó kiểm tra origin của Google + mã yêu cầu ngẫu nhiên.
+      if (!GOOGLE_ORIGIN.test(event.origin) || event.data?.source !== "labmana-drive" ||
           event.data?.requestId !== requestId) return;
       cleanup();
       const result = event.data.result;

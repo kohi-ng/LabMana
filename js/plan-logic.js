@@ -28,14 +28,22 @@ export const newStep = () => ({
 });
 export const newSection = (name = "Phần mới") => ({ id: uid("p"), section_name: name, steps: [newStep()] });
 export const newExperiment = () => ({
-  schema_version: 1, title: "Bài thí nghiệm mới", description: "",
+  schema_version: 2, title: "Bài thí nghiệm mới", description: "",
   created_at_ms: null, sections: [newSection("Chuẩn bị")]
 });
+
+/** Ảnh v1 là chuỗi URL, v2 là {file_id, url, name}: luôn trả về dạng object (hoặc null nếu rỗng). */
+function normImage(im) {
+  if (typeof im === "string") return im ? { file_id: "", url: im, name: "" } : null;
+  if (im && typeof im === "object" && (im.url || im.file_id))
+    return { file_id: im.file_id || "", url: im.url || "", name: im.name || "" };
+  return null;
+}
 
 /** Dữ liệu thô (Firestore / file JSON nhập vào) → cấu trúc chuẩn, đảm bảo id duy nhất. */
 export function normalizeExperiment(raw = {}) {
   const e = {
-    schema_version: 1,
+    schema_version: 2,
     title: raw.title ?? "", description: raw.description ?? "",
     created_at_ms: raw.created_at_ms || null, sections: []
   };
@@ -49,7 +57,7 @@ export function normalizeExperiment(raw = {}) {
         id: ensure(st.id, "s"),
         title: st.title ?? "",
         text: st.text ?? "",
-        images: Array.isArray(st.images) ? st.images.filter(Boolean) : [],
+        images: (Array.isArray(st.images) ? st.images : []).map(normImage).filter(Boolean),
         assigned_role: st.assigned_role ?? "",
         observation: {
           enabled: st.observation?.enabled ?? true,
@@ -76,7 +84,7 @@ export function normalizeExperiment(raw = {}) {
 /** Cấu trúc đang soạn → dữ liệu sạch để ghi Firestore / xuất JSON. */
 export function serializeExperiment(exp) {
   return {
-    schema_version: 1,
+    schema_version: 2,
     title: exp.title.trim(),
     description: exp.description.trim(),
     sections: exp.sections.map(sec => ({
