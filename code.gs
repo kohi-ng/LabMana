@@ -104,15 +104,15 @@ function buildFolderPath_(kind, meta) {
 function buildFileName_(kind, meta, requestedName, originalName, mime) {
   const ts = Utilities.formatDate(new Date(), "GMT+7", "yyyyMMdd_HHmmss");
   const originalExtension = fileExtension_(originalName, mime);
-  if (String(requestedName || "").trim()) {
-    const requested = String(requestedName).trim();
-    const extensionMatch = requested.match(/\.([a-z0-9]{1,8})$/i);
-    const extension = extensionMatch ? extensionMatch[1].toLowerCase() : originalExtension;
-    const baseName = extensionMatch ? requested.slice(0, -extensionMatch[0].length) : requested;
-    return `${sanitize_(baseName)}.${extension}`;
-  }
-  if (kind === "plan") return `${sanitize_(meta.sectionName)}_${ts}.${originalExtension}`;
-  return `${sanitize_(meta.stepLabel)}_${sanitize_(meta.sectionName)}_${ts}.${originalExtension}`;
+  const requested = String(requestedName || "").trim();
+  const extensionMatch = requested.match(/\.([a-z0-9]{1,8})$/i);
+  const extension = extensionMatch ? extensionMatch[1].toLowerCase() : originalExtension;
+  const customName = extensionMatch ? requested.slice(0, -extensionMatch[0].length) : requested;
+  const nameParts = kind === "plan"
+    ? [meta.expTitle, meta.sectionName, customName]
+    : [meta.expTitle, meta.sectionName, meta.stepLabel, customName];
+  const prefix = nameParts.filter(part => String(part || "").trim()).map(sanitize_).join("_");
+  return `${prefix || "anh-thi-nghiem"}_${ts}.${extension}`;
 }
 
 function fileExtension_(fileName, mime) {

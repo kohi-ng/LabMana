@@ -134,6 +134,18 @@ function savedPhotos(log) {
     ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }]
     : [];
 }
+function driveLinkHtml(fileId) {
+  if (!fileId) return "";
+  const url = driveFileUrl(fileId);
+  return `<div class="drive-link-panel">
+    <span class="muted small">Link Google Drive</span>
+    <div class="drive-link-row">
+      <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Mở ảnh ↗</a>
+      <input class="inp drive-link-input" type="text" readonly value="${esc(url)}" aria-label="Link Google Drive của ảnh">
+      <button type="button" class="btn sm" data-act="copy-drive-link" data-link="${esc(url)}">Sao chép</button>
+    </div>
+  </div>`;
+}
 function photoKey(photo) {
   if (photo.file_id) return photo.file_id;
   const url = photo.url || "";
@@ -233,7 +245,7 @@ function stepAccordion(f, st) {
         const url = photo.file_id ? driveImageUrl(photo.file_id) : photo.url;
         return `<div class="saved-photo">
           <img class="thumb" src="${esc(url)}" data-act="zoom" data-src="${esc(url)}" alt="ảnh">
-          ${photo.file_id ? `<a class="img-link" href="${esc(driveFileUrl(photo.file_id))}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a>` : ""}
+          ${photo.file_id ? driveLinkHtml(photo.file_id) : ""}
         </div>`;
       }).join("")}
       ${target ? `<div class="muted small">↪ Điều kiện rẽ nhánh: ${target === END ? "kết thúc bài" : tf ? "bước " + tf.label : ""}</div>` : ""}
@@ -267,7 +279,7 @@ function stepAccordion(f, st) {
           const url = photo.file_id ? driveImageUrl(photo.file_id) : photo.url;
           return `<div class="photo-item saved-photo">
             <img class="thumb" src="${esc(url)}" data-act="zoom" data-src="${esc(url)}" alt="ảnh đã lưu">
-            ${photo.file_id ? `<a class="img-link" href="${esc(driveFileUrl(photo.file_id))}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a>` : '<span class="muted small">Ảnh đã lưu</span>'}
+            ${photo.file_id ? driveLinkHtml(photo.file_id) : '<span class="muted small">Ảnh đã lưu</span>'}
             <button type="button" class="btn sm danger" data-act="remove-saved-photo" data-photo-key="${esc(photoKey(photo))}" ${isSaving || isUploading ? "disabled" : ""}>Xóa ảnh</button>
           </div>`;
         }).join("")}
@@ -275,7 +287,7 @@ function stepAccordion(f, st) {
           <img class="thumb" src="${esc(photo.preview)}" alt="ảnh ${index + 1}">
           ${photo.imgMeta ? (photo.imgMeta.storage_fallback
             ? '<span class="muted small">Ảnh đã lưu kèm nhật ký ✓</span>'
-            : `<a class="img-link" href="${esc(driveFileUrl(photo.imgMeta.file_id))}" target="_blank" rel="noopener noreferrer">${esc(photo.imgMeta.name || "Ảnh đã tải lên Drive")} ↗</a>`)
+            : driveLinkHtml(photo.imgMeta.file_id))
             : `<label class="lbl">Tên file trên Drive (không bắt buộc)
                 <input class="inp" data-photo-name="${index}" value="${esc(photo.name || "")}" placeholder="Để trống để dùng tên mặc định">
               </label>
@@ -389,6 +401,7 @@ async function onClick(e) {
   switch (btn.dataset.act) {
     case "save": return save(id);
     case "upload-photo": return uploadPhoto(id, Number(btn.dataset.photoIndex));
+    case "copy-drive-link": return copyDriveLink(btn.dataset.link);
     case "toggle-acc": {
       expanded.has(id) ? expanded.delete(id) : expanded.add(id);
       render(); break;
@@ -451,6 +464,29 @@ async function onClick(e) {
       render();
       break;
     case "csv": return exportCsv();
+  }
+}
+
+async function copyDriveLink(url) {
+  if (!url) return;
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(url);
+    } else {
+      const input = document.createElement("textarea");
+      input.value = url;
+      input.style.position = "fixed";
+      input.style.opacity = "0";
+      document.body.append(input);
+      input.select();
+      const copied = document.execCommand("copy");
+      input.remove();
+      if (!copied) throw new Error("Trình duyệt không cho phép sao chép liên kết.");
+    }
+    toast("Đã sao chép link Google Drive ✔", "success");
+  } catch (err) {
+    console.error(err);
+    toast("Không sao chép được link: " + err.message, "error");
   }
 }
 

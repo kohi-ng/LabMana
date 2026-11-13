@@ -18,8 +18,9 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   phần phân vai chung ở đầu bài không còn cần thiết.
 - **Ảnh ưu tiên Google Drive**, không qua Firebase Storage. Nếu Apps Script lưu ảnh nhưng không
   gửi được xác nhận về trình duyệt, ảnh chụp vẫn được giữ kèm nhật ký để không chặn bước (trường
-  hợp dự phòng có thể làm ảnh lưu trong Firestore lớn hơn). `code.gs` nhận/xóa ảnh; sau khi đổi mã
-  cần triển khai phiên bản mới của Apps Script Web App.
+  hợp dự phòng có thể làm ảnh lưu trong Firestore lớn hơn). Tên ảnh gồm tên bài, thí nghiệm/bước,
+  tên tùy chọn (nếu nhập) và thời gian; link Drive hiển thị dưới ảnh kèm nút sao chép.
+  `code.gs` nhận/xóa ảnh; sau khi đổi mã cần triển khai phiên bản mới của Apps Script Web App.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi dùng các nút tròn dưới tên bài để
   chuyển thí nghiệm và các nút bước để chuyển thao tác. Màn hình chỉ hiện thao tác đang chọn, không
