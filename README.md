@@ -16,11 +16,11 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   được cho mọi bài trong giáo trình (Bài 1 → Bài 9), không cần sửa code.
 - **Ủy quyền theo từng thao tác**: người soạn chọn thành viên trong Cài đặt ở ngay bước cần giao;
   phần phân vai chung ở đầu bài không còn cần thiết.
-- **Ảnh đi qua Google Drive**, không qua Firebase Storage — xem [`gas/README.md`](./gas/README.md).
-  Ảnh được đặt tên rõ ràng theo Bài / Thí nghiệm / Lượt thực hành.
+- **Ảnh đi qua Google Drive**, không qua Firebase Storage. `code.gs` nhận ảnh/xóa ảnh; sau khi
+  thay đổi mã cần triển khai phiên bản mới của Apps Script Web App.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
-- **Tab Quy trình**: danh sách các thí nghiệm đã lên kế hoạch; chọn thí nghiệm để xem và ghi nhận.
-  Mọi bước đều mở và thực hiện được độc lập, không bị khóa theo thứ tự.
+- **Tab Quy trình**: chọn bài nhanh trên dải bài ngang hoặc mở cây thí nghiệm/thao tác trong menu
+  **Tiến trình** ở góc trên bên phải. Mọi bước đều mở và thực hiện được độc lập, không bị khóa.
 - **Trạm pha chế dạng nút nổi có thể kéo thả** ở góc màn hình, bấm vào mở cửa sổ tra cứu/tính toán
   nhanh mà không rời khỏi tab đang làm — mở rộng danh mục hóa chất theo đúng các chất dùng
   xuyên suốt giáo trình (KMnO₄, K₂Cr₂O₇, Na₂S₂O₃·5H₂O, phèn nhôm-kali, muối Mohr…).
@@ -40,8 +40,7 @@ js/tabs/planner.js    Tab 1 — Kế hoạch (Thí nghiệm → Thao tác, ảnh
 js/tabs/sop.js        Tab 2 — Quy trình (accordion + data logger)
 js/tabs/calc.js       Trạm pha chế (chạy trong FAB sheet)
 js/tabs/settings.js   Tab 3 — Cài đặt (thành viên)
-gas/code.gs           Backend Google Apps Script — nhận/phục vụ/xóa ảnh trên Drive
-gas/README.md         Hướng dẫn deploy Apps Script (làm 1 lần)
+code.gs               Backend Google Apps Script — nhận/xóa ảnh trên Drive
 firestore.rules       quy tắc bảo mật Firestore
 examples/*.json        bài mẫu trích từ giáo trình (dùng nút "Nhập JSON")
 SCHEMA.md             thiết kế dữ liệu
@@ -55,10 +54,10 @@ SCHEMA.md             thiết kế dữ liệu
 3. **Authentication** → Sign-in method → bật **Anonymous**.
 4. **Firestore Database** → Create database (chế độ production) → tab **Rules** → dán nội dung `firestore.rules` → Publish.
 
-### B. Google Drive (ảnh) — xem chi tiết tại [`gas/README.md`](./gas/README.md)
+### B. Google Drive (ảnh)
 1. Tạo 1 thư mục Drive, copy ID thư mục.
-2. Deploy Apps Script từ `gas/code.gs` thành Web App, copy URL.
-3. Dán ID thư mục vào `code.gs`, dán URL Web App vào `js/drive.js`.
+2. Tạo Apps Script Web App từ `code.gs`, chọn chạy với quyền của bạn và cho phép người dùng truy cập.
+3. Dán ID thư mục vào `code.gs`, URL Web App vào `js/drive.js`; sau mỗi lần sửa `code.gs`, triển khai phiên bản mới.
 
 Không làm bước B thì app vẫn chạy bình thường — chỉ phần ảnh minh họa/ảnh chụp sẽ báo
 "Chưa cấu hình Google Drive" và tạm không dùng được, mọi thứ khác (soạn bài, thực hiện quy
@@ -86,11 +85,12 @@ rồi vào http://localhost:8080 .
 1. Tab **Cài đặt**: nhập tên các thành viên (một lần, dùng chung mọi thiết bị).
 2. Tab **Kế hoạch**: soạn bài theo cấu trúc Thí nghiệm → Thao tác (hoặc *Nhập JSON* bài mẫu
    trong `examples/`) → **Lưu**.
-3. Tab **Quy trình**: chọn kế hoạch → chọn thí nghiệm con/nhánh → mở các thao tác theo danh sách.
+3. Tab **Quy trình** → **Tiến trình**: mở bài → mở thí nghiệm con → chọn thao tác cần thực hiện.
    Các thiết bị cùng mở kế hoạch sẽ thấy và cập nhật chung nhật ký.
 4. Các thao tác chưa hoàn thành không bị khóa; có thể mở bất kỳ bước nào. Nhập dữ liệu hoặc tải
-   ảnh sẽ đánh dấu bước màu xanh trên thanh tiến trình; bấm **Lưu** để đồng bộ lên Firestore.
+   ảnh sẽ đánh dấu bước màu xanh trong menu Tiến trình; bấm **Lưu** để đồng bộ lên Firestore.
    Người được ủy quyền sẽ được ghi nhận khi lưu; bước chưa được giao sẽ cho chọn tên thành viên.
+   Để xóa ảnh đã lưu: mở bước → **Sửa** → **Xóa ảnh** → **Lưu**.
 5. Cần tra cứu công thức pha chế: kéo nút nổi đến vị trí thuận tiện rồi bấm để mở.
 6. Xong: **⬇ CSV** để xuất kết quả, bao gồm tiêu đề và nội dung từng bước.
 

@@ -1,6 +1,6 @@
 // ============ App shell: điều hướng tab + trạng thái kết nối + FAB Pha chế ============
 import { startStore, on, state } from "./store.js";
-import { $, $$ } from "./utils.js";
+import { $, $$, esc, renderMath } from "./utils.js";
 import * as planner from "./tabs/planner.js";
 import * as sop from "./tabs/sop.js";
 import * as settings from "./tabs/settings.js";
@@ -29,18 +29,15 @@ function show(name) {
 }
 
 function updateConn() {
-  const el = $("#conn"), b = $("#banner");
-  let txt = "Đang kết nối", cls = "";
+  const b = $("#banner");
   b.classList.add("hidden");
   if (state.error === "NOT_CONFIGURED") {
-    txt = "Chưa cấu hình"; cls = "off";
     b.innerHTML = "⚙️ Chưa có <b>firebaseConfig</b>. Mở <code>js/firebase.js</code> và dán cấu hình dự án Firebase (xem README.md). Trạm pha chế vẫn dùng được.";
     b.classList.remove("hidden");
-  } else if (state.error) { txt = "Lỗi kết nối"; cls = "err"; }
-  else if (!navigator.onLine) { txt = "Ngoại tuyến"; cls = "off"; }
-  else if (state.ready) { txt = "Trực tuyến"; cls = "on"; }
-  el.innerHTML = `<span class="pip"></span>${txt}`;
-  el.className = "conn " + cls;
+  } else if (state.error) {
+    b.textContent = "Không kết nối được dữ liệu. Kiểm tra mạng rồi tải lại trang.";
+    b.classList.remove("hidden");
+  }
 }
 
 $$(".bottom-nav button").forEach(b => b.addEventListener("click", () => show(b.dataset.tab)));
@@ -48,8 +45,17 @@ window.addEventListener("hashchange", () => show(location.hash.slice(1)));
 window.addEventListener("online", updateConn);
 window.addEventListener("offline", updateConn);
 on("status", updateConn);
-["status", "experiments", "runs", "run", "logs"].forEach(event => on(event, renderProgressMenu));
-window.addEventListener("labmana:progress-change", renderProgressMenu);
+let progressRenderQueued = false;
+function scheduleProgressMenuRender() {
+  if (!progressMenu || progressMenu.hidden || progressRenderQueued) return;
+  progressRenderQueued = true;
+  requestAnimationFrame(() => {
+    progressRenderQueued = false;
+    renderProgressMenu();
+  });
+}
+["status", "experiments", "runs", "run", "logs"].forEach(event => on(event, scheduleProgressMenuRender));
+window.addEventListener("labmana:progress-change", scheduleProgressMenuRender);
 
 let first = location.hash.slice(1);
 if (!TABS[first]) { try { first = localStorage.getItem("labmana.tab"); } catch { first = null; } }
@@ -59,10 +65,10 @@ startStore();
 
 /* ---------------- Tiến trình — menu nhanh cho bài / thí nghiệm / bước ---------------- */
 function openProgressMenu() {
-  renderProgressMenu();
   progressMenu.hidden = false;
   progressBackdrop.classList.add("open");
   progressToggle.setAttribute("aria-expanded", "true");
+  renderProgressMenu();
 }
 function closeProgressMenu() {
   if (!progressToggle || !progressMenu || !progressBackdrop) return;
@@ -71,12 +77,16 @@ function closeProgressMenu() {
   progressToggle.setAttribute("aria-expanded", "false");
 }
 function renderProgressMenu() {
-  if (!progressMenu) return;
+  if (!progressMenu || progressMenu.hidden) return;
+  const scrollTop = progressMenu.scrollTop;
   const activeExperimentId = state.activeRun?.exp_id || null;
   const experiments = state.experiments || [];
   progressMenu.innerHTML = `<div class="progress-menu-head">
-      <div><strong>Tiến trình</strong><span class="muted small">${experiments.length} bài thí nghiệm</span></div>
-      <button type="button" class="icon-btn" data-progress-close aria-label="Đóng">✕</button>
+      <div><strong>Tiến trình</strong><span class="muted small">${experiments.length} kế hoạch</span></div>
+      <div class="progress-menu-actions">
+        ${sop.canExportCurrentCsv() ? '<button type="button" class="btn sm" data-progress-csv>CSV</button>' : ""}
+        <button type="button" class="icon-btn" data-progress-close aria-label="Đóng">✕</button>
+      </div>
     </div>
     <div class="progress-menu-list">${experiments.length ? experiments.map(raw => {
       const exp = normalizeExperiment(raw);
@@ -88,12 +98,13 @@ function renderProgressMenu() {
       const pct = steps.length ? Math.round(done / steps.length * 100) : 0;
       return `<section class="progress-experiment">
         <div class="progress-experiment-row">
-          <button type="button" class="progress-exp-open" data-progress-open="${esc(raw.id)}">
+          <button type="button" class="progress-exp-open" data-progress-expand="${esc(raw.id)}">
             <strong>${esc(exp.title || "(không tên)")}</strong>
             <span class="muted small">${done}/${steps.length} bước${activeExperimentId === raw.id ? ` · ${pct}%` : ""}</span>
           </button>
           <button type="button" class="progress-expand" data-progress-expand="${esc(raw.id)}" aria-label="${isExpanded ? "Thu gọn" : "Mở"} ${esc(exp.title)}">${isExpanded ? "▾" : "›"}</button>
         </div>
+        <div class="section-progress"><span style="width:${activeExperimentId === raw.id ? pct : 0}%"></span></div>
         ${isExpanded ? exp.sections.map((section, si) => {
           const sectionKey = `${raw.id}:${section.id}`;
           const sectionExpanded = expandedSections.has(sectionKey);
@@ -114,6 +125,8 @@ function renderProgressMenu() {
         }).join("") : ""}
       </section>`;
     }).join("") : '<div class="empty">Chưa có kế hoạch thí nghiệm.</div>'}</div>`;
+  renderMath(progressMenu);
+  progressMenu.scrollTop = scrollTop;
 }
 
 progressToggle.addEventListener("click", () => {
@@ -122,9 +135,10 @@ progressToggle.addEventListener("click", () => {
 progressBackdrop.addEventListener("click", closeProgressMenu);
 document.addEventListener("keydown", event => { if (event.key === "Escape") closeProgressMenu(); });
 progressMenu.addEventListener("click", async event => {
-  const button = event.target.closest("[data-progress-close],[data-progress-open],[data-progress-expand],[data-progress-section],[data-progress-step]");
+  const button = event.target.closest("[data-progress-close],[data-progress-csv],[data-progress-expand],[data-progress-section],[data-progress-step]");
   if (!button) return;
   if (button.hasAttribute("data-progress-close")) return closeProgressMenu();
+  if (button.hasAttribute("data-progress-csv")) return sop.exportCurrentCsv();
   if (button.dataset.progressExpand) {
     expandedExperiments.has(button.dataset.progressExpand)
       ? expandedExperiments.delete(button.dataset.progressExpand)
@@ -134,12 +148,10 @@ progressMenu.addEventListener("click", async event => {
   if (button.dataset.progressSection && !button.dataset.progressStep) {
     const key = button.dataset.progressKey;
     expandedSections.has(key) ? expandedSections.delete(key) : expandedSections.add(key);
-    await sop.openProgressTarget(button.dataset.progressExpId, button.dataset.progressSection);
     return renderProgressMenu();
   }
-  const expId = button.dataset.progressExpId || button.dataset.progressOpen;
+  const expId = button.dataset.progressExpId;
   if (!expId) return;
-  if (button.dataset.progressOpen) expandedExperiments.add(expId);
   closeProgressMenu();
   await sop.openProgressTarget(expId, button.dataset.progressSection || null, button.dataset.progressStep || null);
 });

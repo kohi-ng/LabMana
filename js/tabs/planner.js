@@ -6,13 +6,14 @@
 import { state, on } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { driveUpload, driveDelete, isDriveConfigured } from "../drive.js";
+import { driveUpload, driveDelete, driveImageUrl, isDriveConfigured } from "../drive.js";
 import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, compressImage, statusCard, downloadFile, $$ } from "../utils.js";
 import { OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
 
 let root, view = "list", exp = null, expId = null, dirty = false;
 const openSteps = new Set(), previewSteps = new Set(), errSteps = new Set();
 const uploadingImgs = new Set(); // step ids đang upload ảnh (khóa UI của ảnh đó)
+const pendingDriveDeletes = new Set(), newlyUploadedDriveFiles = new Set(), failedDriveDeletes = new Set();
 
 const SPECIALS = ["°C", "±", "×", "→", "⇌", "Δ", "µ", "²", "³", "⁻", "₂", "₃"];
 const SNIPPETS = [
@@ -54,7 +55,7 @@ function renderList() {
       <button class="btn" data-act="import">⬆ Nhập JSON</button>
       <input type="file" id="pl-import" accept="application/json,.json" hidden>
     </div>
-    ${!isDriveConfigured ? `<div class="banner" style="margin:0 0 12px">⚠️ Chưa cấu hình Google Drive cho ảnh — xem <code>gas/README.md</code>. Soạn bài vẫn dùng được, chỉ ảnh minh họa chưa tải lên được.</div>` : ""}
+    ${!isDriveConfigured ? `<div class="banner" style="margin:0 0 12px">⚠️ Chưa cấu hình Google Drive cho ảnh — xem hướng dẫn triển khai trong <code>code.gs</code>. Soạn bài vẫn dùng được, chỉ ảnh minh họa chưa tải lên được.</div>` : ""}
     ${items.length ? items.map(card).join("") : `<div class="empty">Chưa có bài thí nghiệm nào.<br>Bấm "＋ Bài mới" để bắt đầu.</div>`}`;
 }
 function card(e) {
@@ -188,7 +189,7 @@ function fieldToggleRow(prefix, field, dflt) {
 function imagesHtml(s) {
   const uploading = uploadingImgs.has(s.id);
   return `<div class="imgs">
-    ${s.images.map((im, i) => `<div class="img"><img src="${esc(im.url)}" alt="" loading="lazy"><button class="x" data-act="del-img" data-i="${i}">✕</button></div>`).join("")}
+    ${s.images.map((im, i) => `<div class="img"><img src="${esc(im.file_id ? driveImageUrl(im.file_id) : im.url)}" alt="" loading="lazy"><button class="x" data-act="del-img" data-i="${i}">✕</button></div>`).join("")}
     ${uploading ? `<div class="img uploading"><img src="" alt=""><div class="spin"><div class="spin-ring dark"></div></div></div>` : ""}
   </div>`;
 }
@@ -359,7 +360,7 @@ async function onChange(e) {
 }
 
 async function addImage(stepId, file) {
-  if (!isDriveConfigured) return toast("Chưa cấu hình Google Drive — xem gas/README.md", "error", 4000);
+  if (!isDriveConfigured) return toast("Chưa cấu hình Google Drive — xem hướng dẫn triển khai trong code.gs", "error", 4000);
   const found = findStep(stepId);
   if (!found) return;
   uploadingImgs.add(stepId); render();
@@ -369,6 +370,7 @@ async function addImage(stepId, file) {
     const meta = { expTitle: exp.title || "Bai-chua-ten", sectionName: found.sec.section_name || "Phan" };
     const img = await driveUpload(blob, "plan", meta);
     found.step.images.push(img);
+    if (img.file_id) newlyUploadedDriveFiles.add(img.file_id);
     markDirty(); toast("Đã thêm ảnh", "success");
   } catch (err) { console.error(err); toast("Tải ảnh lỗi: " + err.message, "error", 4500); }
   finally { uploadingImgs.delete(stepId); render(); }
@@ -408,7 +410,8 @@ async function onClick(e) {
     /* thanh công cụ */
     case "back":
       if (dirty && !(await confirmBox("Có thay đổi chưa lưu. Thoát và bỏ thay đổi?", "Bỏ thay đổi"))) return;
-      dirty = false; view = "list"; render(); break;
+      await discardPendingPlanImages();
+      dirty = false; pendingDriveDeletes.clear(); view = "list"; render(); break;
     case "save": await save(); break;
     case "export": downloadFile((exp.title || "bai-thi-nghiem").replace(/[^\w\-]+/g, "_") + ".json", JSON.stringify(serializeExperiment(exp), null, 2), "application/json"); break;
 
@@ -443,7 +446,9 @@ async function onClick(e) {
       const f = findStep(sid);
       const img = f.step.images[+btn.dataset.i];
       f.step.images.splice(+btn.dataset.i, 1); markDirty(); render();
-      if (img?.file_id) driveDelete(img.file_id);
+      if (img?.file_id) {
+        if (!newlyUploadedDriveFiles.has(img.file_id)) pendingDriveDeletes.add(img.file_id);
+      }
       break;
     }
     case "add-rule": findStep(sid).step.branch_logic.push({ op: "<", value: "", goto_step_id: "" }); markDirty(); render(); break;
@@ -466,11 +471,60 @@ async function save() {
   data.created_at_ms = exp.created_at_ms || Date.now();
   const ref = expId ? doc(db, "experiments", expId) : doc(collection(db, "experiments"));
   try {
-    // Không chờ ack của server khi mất mạng (đã ghi vào cache, sẽ tự đồng bộ).
-    await Promise.race([setDoc(ref, data), new Promise(r => setTimeout(r, 6000))]);
+    await setDoc(ref, data);
     expId = ref.id; exp.created_at_ms = data.created_at_ms; dirty = false;
-    render(); toast("Đã lưu kế hoạch ✔", "success");
+    let deleteWarning = false;
+    const filesToDelete = new Set([...pendingDriveDeletes, ...failedDriveDeletes]);
+    pendingDriveDeletes.clear();
+    for (const fileId of newlyUploadedDriveFiles) {
+      if (isImageReferenced(fileId)) {
+        newlyUploadedDriveFiles.delete(fileId);
+        continue;
+      }
+      filesToDelete.add(fileId);
+    }
+    for (const fileId of filesToDelete) {
+      if (isImageReferenced(fileId)) {
+        failedDriveDeletes.delete(fileId);
+        newlyUploadedDriveFiles.delete(fileId);
+        continue;
+      }
+      try {
+        await driveDelete(fileId);
+        failedDriveDeletes.delete(fileId);
+        newlyUploadedDriveFiles.delete(fileId);
+      } catch (err) {
+        console.error(err);
+        failedDriveDeletes.add(fileId);
+        newlyUploadedDriveFiles.delete(fileId);
+        deleteWarning = true;
+      }
+    }
+    render();
+    toast(deleteWarning ? "Đã lưu kế hoạch, nhưng có ảnh chưa xóa được khỏi Drive." : "Đã lưu kế hoạch ✔",
+      deleteWarning ? "warn" : "success", 5000);
   } catch (err) { console.error(err); toast("Lưu thất bại: " + (err.code || err.message), "error", 4500); }
+}
+
+function isImageReferenced(fileId) {
+  const inCurrent = exp.sections.some(section => section.steps.some(step => step.images.some(image => image.file_id === fileId)));
+  if (inCurrent) return true;
+  return state.experiments.some(raw => raw.id !== expId &&
+    normalizeExperiment(raw).sections.some(section => section.steps.some(step => step.images.some(image => image.file_id === fileId))));
+}
+
+async function discardPendingPlanImages() {
+  let deleteWarning = false;
+  for (const fileId of newlyUploadedDriveFiles) {
+    try { await driveDelete(fileId); }
+    catch (err) {
+      console.error(err);
+      failedDriveDeletes.add(fileId);
+      deleteWarning = true;
+    }
+  }
+  newlyUploadedDriveFiles.clear();
+  if (deleteWarning) toast("Đã bỏ thay đổi, nhưng có ảnh mới chưa xóa được khỏi Drive.", "warn", 5000);
 }
 
 function importJson(input) {

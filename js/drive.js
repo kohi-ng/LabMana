@@ -1,91 +1,86 @@
 // ============ Drive: tải / xóa ảnh qua Google Apps Script Web App ============
-// 👉 DÁN URL Web App (deploy từ gas/code.gs) vào GAS_URL bên dưới. Xem gas/README.md.
-import { blobToBase64, blobToDataUrl } from "./utils.js";
+import { blobToBase64 } from "./utils.js";
 
 export const GAS_URL = "https://script.google.com/macros/s/AKfycbwzMsHgnhZRY4dW8w8H41RmuVN3Bnv4dU6csKGYeHcCYZUFhnaWpjCUybXqmi4HW3R-rA/exec";
 export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
 
 /**
- * Tải 1 ảnh (blob đã nén) lên Drive qua GAS.
- * `kind`: "plan" (ảnh minh họa kế hoạch) | "log" (ảnh chụp khi thực hiện) — quyết định cách đặt tên trên Drive.
- * `meta`: { expTitle, sectionName, stepLabel, runName } dùng để đặt tên file rõ ràng theo bài/phần.
- * Trả về { file_id, url, name }.
+ * Gửi form trong iframe để tránh lỗi CORS/redirect của Apps Script.
+ * code.gs trả kết quả bằng postMessage; kiểm tra source iframe và request ID.
  */
+function driveRequest(payload) {
+  if (!isDriveConfigured) return Promise.reject(new Error("NOT_CONFIGURED_DRIVE"));
+
+  const requestId = globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const frame = document.createElement("iframe");
+  frame.name = `labmana-drive-${requestId}`;
+  frame.title = "Kết nối Google Drive";
+  frame.hidden = true;
+  frame.setAttribute("aria-hidden", "true");
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = GAS_URL;
+  form.target = frame.name;
+  form.hidden = true;
+  const input = document.createElement("input");
+  input.type = "hidden";
+  input.name = "payload";
+  input.value = JSON.stringify({ ...payload, request_id: requestId });
+  form.append(input);
+
+  return new Promise((resolve, reject) => {
+    let timer;
+    const cleanup = () => {
+      clearTimeout(timer);
+      window.removeEventListener("message", onMessage);
+      form.remove();
+      frame.remove();
+    };
+    const onMessage = event => {
+      if (event.source !== frame.contentWindow || event.data?.source !== "labmana-drive" ||
+          event.data?.requestId !== requestId) return;
+      cleanup();
+      const result = event.data.result;
+      if (!result?.ok) return reject(new Error(result?.error || "Google Drive từ chối yêu cầu."));
+      resolve(result);
+    };
+
+    window.addEventListener("message", onMessage);
+    timer = setTimeout(() => {
+      cleanup();
+      reject(new Error("Hết thời gian chờ Google Drive. Hãy triển khai phiên bản code.gs mới rồi thử lại."));
+    }, 60000);
+    document.body.append(frame, form);
+    try { form.submit(); }
+    catch (err) {
+      cleanup();
+      reject(new Error(`Không gửi được yêu cầu tới Google Drive: ${err.message}`));
+    }
+  });
+}
+
 export async function driveUpload(blob, kind, meta = {}) {
-  if (!isDriveConfigured) throw new Error("NOT_CONFIGURED_DRIVE");
-  const base64 = await blobToBase64(blob);
-  const body = {
+  const result = await driveRequest({
     action: "upload",
     kind,
-    base64,
+    base64: await blobToBase64(blob),
     mime: blob.type || "image/jpeg",
     meta
-  };
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 45000);
-  let res, text;
-  try {
-    res = await fetch(GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(body),
-      signal: controller.signal
-    });
-    text = await res.text();
-  } catch (err) {
-    if (kind === "log") {
-      console.warn("Không đọc được xác nhận Drive; giữ ảnh đính kèm dự phòng:", err);
-      return imageFallback(blob);
-    }
-    if (err.name === "AbortError") throw new Error("Hết thời gian chờ Google Drive phản hồi.");
-    throw new Error(`Không nhận được xác nhận từ Google Drive (${err.message}). Ảnh có thể đã tải lên; hãy kiểm tra Drive trước khi thử lại.`);
-  } finally {
-    clearTimeout(timeout);
-  }
-  let data;
-  try { data = JSON.parse(text); }
-  catch {
-    if (kind === "log") {
-      console.warn("Drive trả phản hồi không đọc được; giữ ảnh đính kèm dự phòng.");
-      return imageFallback(blob);
-    }
-    const detail = text.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim().slice(0, 180);
-    throw new Error(`Google Drive trả về phản hồi không hợp lệ (HTTP ${res.status})${detail ? `: ${detail}` : ""}`);
-  }
-  if (data?.file_id && data?.url) {
-    return { file_id: data.file_id, url: data.url, name: data.name || "" };
-  }
-  if (!res.ok || !data?.ok) {
-    if (kind === "log") {
-      console.warn("Drive không xác nhận tải ảnh; giữ ảnh đính kèm dự phòng:", data?.error || res.status);
-      return imageFallback(blob);
-    }
-    throw new Error(data?.error || `Tải ảnh lên Drive thất bại (HTTP ${res.status})`);
-  }
-  if (!data.file_id || !data.url) {
-    if (kind === "log") return imageFallback(blob);
-    throw new Error("Drive đã phản hồi nhưng thiếu mã hoặc đường dẫn ảnh.");
-  }
-  return { file_id: data.file_id, url: data.url, name: data.name };
-}
-
-async function imageFallback(blob) {
+  });
+  if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
   return {
-    file_id: "",
-    url: await blobToDataUrl(blob),
-    name: "Ảnh đính kèm dự phòng",
-    storage_fallback: true
+    file_id: result.file_id,
+    url: result.url || driveImageUrl(result.file_id),
+    name: result.name || ""
   };
 }
 
-/** Xóa 1 ảnh khỏi Drive theo file_id (không chặn UI nếu lỗi — ảnh mồ côi dọn tay sau). */
 export async function driveDelete(fileId) {
-  if (!isDriveConfigured || !fileId) return;
-  try {
-    await fetch(GAS_URL, {
-      method: "POST",
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify({ action: "delete", file_id: fileId })
-    });
-  } catch (e) { console.warn("Xóa ảnh Drive lỗi (bỏ qua):", e); }
+  if (!fileId) return;
+  return driveRequest({ action: "delete", file_id: fileId });
+}
+
+export function driveImageUrl(fileId) {
+  return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600`;
 }

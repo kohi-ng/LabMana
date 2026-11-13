@@ -73,7 +73,8 @@ soạn bật/tắt và đổi nhãn tùy thao tác — vd một thao tác chuẩ
 thao tác quan trọng giữ nguyên nhãn mặc định đúng mẫu báo cáo.
 
 **`images[]`**: mỗi phần tử `{file_id, url, name}`. `file_id` dùng để gọi `action: "delete"` khi
-xóa ảnh trên Drive; `url` là link proxy ổn định qua Apps Script, dùng trực tiếp trong `<img src>`.
+xóa ảnh trên Drive; ảnh hiển thị bằng link thumbnail Drive từ `file_id` (các URL cũ vẫn được dùng
+nếu bản ghi không có `file_id`).
 
 **Toán tử (`op`)**: `<`, `<=`, `>`, `>=`, `==`, `!=`.
 **`goto_step_id`**: `id` của bước phía sau, hoặc `"__END__"` (kết thúc bài).
@@ -105,7 +106,7 @@ Giao diện không yêu cầu chọn lượt; các thiết bị mở cùng thí 
   "input_unit": "mL",
   "observation_text": "Xuất hiện kết tủa trắng, tan dần khi thêm HCl...",   // "" nếu cột bị tắt
   "explanation_text": "$\\ce{BaCl2 + Na2SO4 -> BaSO4v + 2NaCl}$ ...",        // "" nếu cột bị tắt
-  "photo_url": "https://script.google.com/macros/s/AKfycb.../exec?id=...", // hoặc null
+  "photo_url": "https://drive.google.com/thumbnail?id=...&sz=w1600", // hoặc null; legacy URL/data URL vẫn đọc được
   "photo_file_id": "1XyZ...",                                               // hoặc null — để xóa trên Drive
   "timestamp": "<serverTimestamp>", "timestamp_ms": 1731485000000
 }
@@ -135,13 +136,13 @@ transaction.
 
 Ảnh **không** còn lưu trên Firebase Cloud Storage (tránh yêu cầu nâng gói Blaze). Thay vào đó:
 
-- Client (`js/drive.js`) nén ảnh ở trình duyệt rồi gửi base64 tới một **Google Apps Script Web
-  App** (`gas/code.gs`) do người deploy tự host trên tài khoản Google Drive của họ.
-- Script lưu file vào thư mục con đặt tên theo Bài / Thí nghiệm / Lượt (xem `gas/README.md`
-  mục "Cấu trúc thư mục"), set quyền "Anyone with the link — Viewer", và trả về
-  `{file_id, url, name}` — trong đó `url` là **link proxy ổn định qua chính Apps Script**
-  (`?id=<fileId>`), không phải link chia sẻ trực tiếp của Drive, để tránh bị chặn hotlink khi
-  app được mở từ domain GitHub Pages khác với Drive.
+- Client (`js/drive.js`) nén ảnh ở trình duyệt rồi gửi base64 trong form ẩn tới một **Google Apps
+  Script Web App** (`code.gs`) do người deploy tự host trên tài khoản Google Drive của họ. Iframe
+  trả xác nhận qua `postMessage` để tránh lỗi CORS khi Apps Script chuyển hướng.
+- Script lưu file vào thư mục con đặt tên theo Bài / Thí nghiệm / Lượt, set quyền
+  "Anyone with the link — Viewer", và trả về
+  `{file_id, url, name}`. Ảnh dùng đường dẫn thumbnail Drive; `code.gs` chỉ xử lý upload/xóa và
+  tương thích đường dẫn ảnh cũ.
 - Firestore chỉ lưu `{file_id, url, name}` — không lưu byte ảnh.
 - Xóa ảnh trong app gọi `action: "delete"` → Apps Script chuyển file vào Thùng rác Drive của
   người deploy.

@@ -37,7 +37,7 @@ function render() {
     <div class="card"><h3>☁️ Lưu trữ</h3>
       <div class="kv"><span>Dữ liệu chữ/số/trạng thái</span><b>Firestore</b></div>
       <div class="kv"><span>Ảnh minh họa & ảnh chụp</span><b>${isDriveConfigured ? "Google Drive ✔" : "⚠️ Chưa cấu hình"}</b></div>
-      ${!isDriveConfigured ? `<p class="muted small" style="margin-top:8px">Mở <code>js/drive.js</code> và dán URL Web App (xem <code>gas/README.md</code>) để bật tải ảnh lên Google Drive.</p>` : ""}
+      ${!isDriveConfigured ? `<p class="muted small" style="margin-top:8px">Mở <code>js/drive.js</code> và dán URL Web App; xem hướng dẫn triển khai ở đầu file <code>code.gs</code>.</p>` : ""}
     </div>
 
     <div class="card"><h3>ℹ️ Về ứng dụng</h3>
