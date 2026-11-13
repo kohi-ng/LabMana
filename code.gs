@@ -64,7 +64,8 @@ function handleUpload_(req) {
   const meta = req.meta || {};
   const folder = getOrCreateSubFolder_(buildFolderPath_(req.kind, meta));
   const bytes = Utilities.base64Decode(req.base64);
-  const blob = Utilities.newBlob(bytes, req.mime || "image/jpeg", buildFileName_(req.kind, meta));
+  const mime = req.mime || "image/jpeg";
+  const blob = Utilities.newBlob(bytes, mime, buildFileName_(req.kind, meta, req.file_name, req.original_name, mime));
   const file = folder.createFile(blob);
   file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
   const id = file.getId();
@@ -100,10 +101,29 @@ function buildFolderPath_(kind, meta) {
   return ["ThucHien", sanitize_(meta.expTitle), sanitize_(meta.runName)];
 }
 
-function buildFileName_(kind, meta) {
+function buildFileName_(kind, meta, requestedName, originalName, mime) {
   const ts = Utilities.formatDate(new Date(), "GMT+7", "yyyyMMdd_HHmmss");
-  if (kind === "plan") return `${sanitize_(meta.sectionName)}_${ts}.jpg`;
-  return `${sanitize_(meta.stepLabel)}_${sanitize_(meta.sectionName)}_${ts}.jpg`;
+  const originalExtension = fileExtension_(originalName, mime);
+  if (String(requestedName || "").trim()) {
+    const requested = String(requestedName).trim();
+    const extensionMatch = requested.match(/\.([a-z0-9]{1,8})$/i);
+    const extension = extensionMatch ? extensionMatch[1].toLowerCase() : originalExtension;
+    const baseName = extensionMatch ? requested.slice(0, -extensionMatch[0].length) : requested;
+    return `${sanitize_(baseName)}.${extension}`;
+  }
+  if (kind === "plan") return `${sanitize_(meta.sectionName)}_${ts}.${originalExtension}`;
+  return `${sanitize_(meta.stepLabel)}_${sanitize_(meta.sectionName)}_${ts}.${originalExtension}`;
+}
+
+function fileExtension_(fileName, mime) {
+  const match = String(fileName || "").match(/\.([a-z0-9]{1,8})$/i);
+  if (match) return match[1].toLowerCase();
+  const extensions = {
+    "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp",
+    "image/gif": "gif", "image/heic": "heic", "image/heif": "heif",
+    "image/bmp": "bmp", "image/tiff": "tif"
+  };
+  return extensions[mime] || "img";
 }
 
 function getOrCreateSubFolder_(pathParts) {

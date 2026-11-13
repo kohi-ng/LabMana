@@ -21,8 +21,8 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   hợp dự phòng có thể làm ảnh lưu trong Firestore lớn hơn). `code.gs` nhận/xóa ảnh; sau khi đổi mã
   cần triển khai phiên bản mới của Apps Script Web App.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
-- **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi chuyển giữa các thí nghiệm bằng
-  thanh tab ngang hoặc mở thao tác trong menu **Tiến trình**. Mọi bước đều mở độc lập, không bị khóa.
+- **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi mở thí nghiệm và thao tác trong
+  menu **Tiến trình**. Mọi bước đều mở độc lập, không bị khóa.
 - **Bartender dạng nút nổi có thể kéo thả** ở góc màn hình, bấm vào mở cửa sổ tra cứu/tính toán
   nhanh mà không rời khỏi tab đang làm — mở rộng danh mục hóa chất theo đúng các chất dùng
   xuyên suốt giáo trình (KMnO₄, K₂Cr₂O₇, Na₂S₂O₃·5H₂O, phèn nhôm-kali, muối Mohr…).
@@ -36,7 +36,7 @@ js/app.js             điều hướng tab, trạng thái kết nối, FAB sheet
 js/firebase.js        ⚙️ DÁN firebaseConfig Ở ĐÂY; đăng nhập ẩn danh; cache ngoại tuyến
 js/drive.js           ⚙️ DÁN URL Web App (Apps Script) Ở ĐÂY; tải/xóa ảnh Drive
 js/store.js           dữ liệu real-time (onSnapshot) dùng chung các tab
-js/utils.js           modal, toast, nén ảnh, chọn tên, KaTeX…
+js/utils.js           modal, toast, chuyển ảnh sang base64, chọn tên, KaTeX…
 js/plan-logic.js       logic thuần: validate, flatten, rẽ nhánh, computeFlow
 js/tabs/planner.js    Tab 1 — Kế hoạch (Thí nghiệm → Thao tác, ảnh qua Drive)
 js/tabs/sop.js        Tab 2 — Quy trình (accordion + data logger)
@@ -87,9 +87,9 @@ rồi vào http://localhost:8080 .
 1. Tab **Cài đặt**: nhập tên các thành viên (một lần, dùng chung mọi thiết bị).
 2. Tab **Kế hoạch**: soạn bài theo cấu trúc Thí nghiệm → Thao tác (hoặc *Nhập JSON* bài mẫu
    trong `examples/`) → **Lưu**.
-3. Tab **Quy trình**: chọn bài, rồi dùng thanh tên thí nghiệm để chuyển giữa các phần; nút
-   **Trang chính** quay lại danh sách bài. Có thể mở thao tác cần thực hiện từ danh sách hoặc menu
-   **Tiến trình**. Các thiết bị cùng mở kế hoạch sẽ thấy và cập nhật chung nhật ký.
+3. Tab **Quy trình**: chọn bài; dùng menu **Tiến trình** ở góc trên để mở thí nghiệm và thao tác.
+   Nút **Trang chính** quay lại danh sách bài. Các thiết bị cùng mở kế hoạch sẽ thấy và cập nhật
+   chung nhật ký.
 4. Các thao tác chưa hoàn thành không bị khóa; có thể mở bất kỳ bước nào. Nhập dữ liệu hoặc tải
    ảnh sẽ đánh dấu bước màu xanh trong menu Tiến trình; bấm **Lưu** để đồng bộ lên Firestore.
    Người được ủy quyền sẽ được ghi nhận khi lưu; bước chưa được giao sẽ cho chọn tên thành viên.
@@ -106,6 +106,10 @@ rồi vào http://localhost:8080 .
   trong khung nhập, bảng hiển thị ở phần xem trước và Quy trình.
 - Tiêu đề riêng của thao tác được nhập ngay cạnh số thứ tự (ví dụ 1.1); để trống thì Quy trình
   hiển thị nội dung hướng dẫn làm tiêu đề.
+- Mục **Ảnh minh họa** cho phép chọn nhiều ảnh cùng lúc; ảnh được tải nguyên bản lên Drive và có
+  liên kết mở từng ảnh ngay bên dưới hình thu nhỏ.
+- Ở Quy trình, sau khi chụp/chọn ảnh, có thể nhập tên file tùy chọn rồi bấm **Tải ảnh lên Drive**;
+  để trống thì hệ thống tự tạo tên. Apps Script cần được triển khai phiên bản mới để nhận tên này.
 
 ## Điều kiện rẽ nhánh
 

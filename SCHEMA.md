@@ -136,15 +136,17 @@ transaction.
 
 Ảnh **không** còn lưu trên Firebase Cloud Storage (tránh yêu cầu nâng gói Blaze). Thay vào đó:
 
-- Client (`js/drive.js`) nén ảnh ở trình duyệt rồi gửi base64 trong form ẩn tới một **Google Apps
-  Script Web App** (`code.gs`) do người deploy tự host trên tài khoản Google Drive của họ. Iframe
+- Client (`js/drive.js`) gửi ảnh nguyên bản dạng base64 trong form ẩn tới một **Google Apps
+  Script Web App** (`code.gs`) do người deploy tự host trên tài khoản Google Drive của họ. Tên file
+  tùy chọn được gửi cùng ảnh; để trống thì máy chủ tự tạo tên theo bước và thời gian. Iframe
   trả xác nhận qua `postMessage` để tránh lỗi CORS khi Apps Script chuyển hướng.
+- Khi cập nhật `code.gs`, triển khai một phiên bản Web App mới để tên file tùy chỉnh được áp dụng.
 - Script lưu file vào thư mục con đặt tên theo Bài / Thí nghiệm / Lượt, set quyền
   "Anyone with the link — Viewer", và trả về
   `{file_id, url, name}`. Ảnh dùng đường dẫn thumbnail Drive; `code.gs` chỉ xử lý upload/xóa và
   tương thích đường dẫn ảnh cũ.
 - Bình thường Firestore lưu `photo_file_id` và URL. Nếu upload ảnh thực hiện bước nhưng trình
-  duyệt không nhận được xác nhận từ Apps Script, client giữ ảnh đã nén dưới dạng data URL trong
+  duyệt không nhận được xác nhận từ Apps Script, client giữ ảnh gốc dưới dạng data URL trong
   `photo_url` để không mất kết quả; ảnh này không được xác nhận đã lưu trên Drive.
 - Xóa ảnh trong app gọi `action: "delete"` → Apps Script chuyển file vào Thùng rác Drive của
   người deploy.

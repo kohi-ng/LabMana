@@ -6,8 +6,8 @@
 import { state, on } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { driveUpload, driveDelete, driveImageUrl, isDriveConfigured } from "../drive.js";
-import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, compressImage, statusCard, downloadFile, $$ } from "../utils.js";
+import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
+import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, statusCard, downloadFile, $$ } from "../utils.js";
 import { OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
 
 let root, view = "list", exp = null, expId = null, dirty = false;
@@ -144,7 +144,7 @@ function stepBody(s, flat) {
 
     <div class="lbl-t" style="margin-top:12px">Ảnh minh họa</div>
     ${imagesHtml(s)}
-    <label class="btn sm">🖼 Thêm ảnh<input type="file" accept="image/*" hidden data-f="add_img"></label>
+    <label class="btn sm">🖼 Thêm ảnh<input type="file" accept="image/*" multiple hidden data-f="add_img" ${uploadingImgs.has(s.id) ? "disabled" : ""}></label>
 
     <div class="lbl-t" style="margin-top:14px">Ghi nhận khi thực hiện <span class="muted small" style="font-weight:400">(theo mẫu báo cáo)</span></div>
     ${fieldToggleRow("obs", s.observation, "Hiện tượng quan sát thực tế")}
@@ -186,7 +186,10 @@ function fieldToggleRow(prefix, field, dflt) {
 function imagesHtml(s) {
   const uploading = uploadingImgs.has(s.id);
   return `<div class="imgs">
-    ${s.images.map((im, i) => `<div class="img"><img src="${esc(im.file_id ? driveImageUrl(im.file_id) : im.url)}" alt="" loading="lazy"><button class="x" data-act="del-img" data-i="${i}">✕</button></div>`).join("")}
+    ${s.images.map((im, i) => `<div class="img-item">
+      <div class="img"><img src="${esc(im.file_id ? driveImageUrl(im.file_id) : im.url)}" alt="" loading="lazy"><button class="x" data-act="del-img" data-i="${i}" aria-label="Xóa ảnh">✕</button></div>
+      ${im.file_id ? `<a class="img-link" href="${esc(driveFileUrl(im.file_id))}" target="_blank" rel="noopener noreferrer">Mở ảnh trên Drive ↗</a>` : ""}
+    </div>`).join("")}
     ${uploading ? `<div class="img uploading"><img src="" alt=""><div class="spin"><div class="spin-ring dark"></div></div></div>` : ""}
   </div>`;
 }
@@ -342,29 +345,41 @@ async function onChange(e) {
   const t = e.target, f = t.dataset?.f;
   if (t.id === "pl-import") return importJson(t);
   if (f === "add_img") {
-    const file = t.files?.[0]; t.value = "";
+    const files = Array.from(t.files || []); t.value = "";
     const sid = t.closest("[data-step]")?.dataset.step;
-    if (file && sid) await addImage(sid, file);
+    if (files.length && sid) await addImages(sid, files);
     return;
   }
   if (f && CHANGE_FIELDS.has(f)) applyField(t);
 }
 
-async function addImage(stepId, file) {
+async function addImages(stepId, files) {
   if (!isDriveConfigured) return toast("Chưa cấu hình Google Drive — xem hướng dẫn triển khai trong code.gs", "error", 4000);
   const found = findStep(stepId);
   if (!found) return;
   uploadingImgs.add(stepId); render();
+  const failures = [];
   try {
-    toast("Đang nén & tải ảnh lên Drive…");
-    const blob = await compressImage(file);
     const meta = { expTitle: exp.title || "Bai-chua-ten", sectionName: found.sec.section_name || "Phan" };
-    const img = await driveUpload(blob, "plan", meta);
-    found.step.images.push(img);
-    if (img.file_id) newlyUploadedDriveFiles.add(img.file_id);
-    markDirty(); toast("Đã thêm ảnh", "success");
-  } catch (err) { console.error(err); toast("Tải ảnh lỗi: " + err.message, "error", 4500); }
-  finally { uploadingImgs.delete(stepId); render(); }
+    for (const [index, file] of files.entries()) {
+      try {
+        toast(`Đang tải ảnh lên Drive… (${index + 1}/${files.length})`);
+        const img = await driveUpload(file, "plan", meta);
+        found.step.images.push(img);
+        if (img.file_id) newlyUploadedDriveFiles.add(img.file_id);
+        markDirty();
+        render();
+      } catch (err) {
+        console.error(err);
+        failures.push(`${file.name}: ${err.message}`);
+      }
+    }
+    if (failures.length) {
+      toast(`Đã tải ${files.length - failures.length}/${files.length} ảnh. Lỗi: ${failures.join("; ")}`, "error", 7000);
+    } else {
+      toast(`Đã tải ${files.length} ảnh lên Drive ✔`, "success");
+    }
+  } finally { uploadingImgs.delete(stepId); render(); }
 }
 
 async function onClick(e) {

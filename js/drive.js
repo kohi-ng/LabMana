@@ -64,13 +64,16 @@ function driveRequest(payload) {
 }
 
 export async function driveUpload(blob, kind, meta = {}) {
+  const { fileName, originalName, ...driveMeta } = meta;
   try {
     const result = await driveRequest({
       action: "upload",
       kind,
       base64: await blobToBase64(blob),
       mime: blob.type || "image/jpeg",
-      meta
+      meta: driveMeta,
+      file_name: fileName || "",
+      original_name: originalName || ""
     });
     if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
     return {
@@ -97,4 +100,8 @@ export async function driveDelete(fileId) {
 
 export function driveImageUrl(fileId) {
   return `https://drive.google.com/thumbnail?id=${encodeURIComponent(fileId)}&sz=w1600`;
+}
+
+export function driveFileUrl(fileId) {
+  return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
 }

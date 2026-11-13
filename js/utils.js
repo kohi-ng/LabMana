@@ -87,23 +87,6 @@ export function downloadFile(name, text, mime = "text/plain") {
   setTimeout(() => URL.revokeObjectURL(url), 1500);
 }
 
-/** Nén ảnh xuống < maxKB tại trình duyệt (browser-image-compression). */
-export async function compressImage(file, maxKB = 300) {
-  const lib = window.imageCompression;
-  if (!lib) { toast("Thư viện nén ảnh chưa tải được — dùng ảnh gốc", "warn"); return file; }
-  let out = await lib(file, {
-    maxSizeMB: maxKB / 1024, maxWidthOrHeight: 1600, useWebWorker: true,
-    fileType: "image/jpeg", initialQuality: 0.8
-  });
-  if (out.size > maxKB * 1024) { // thử lại mạnh tay hơn
-    out = await lib(file, {
-      maxSizeMB: (maxKB / 1024) * 0.8, maxWidthOrHeight: 1100, useWebWorker: true,
-      fileType: "image/jpeg", initialQuality: 0.6
-    });
-  }
-  return out;
-}
-
 /** Blob → base64 (không kèm tiền tố data:...;base64,). */
 export function blobToBase64(blob) {
   return new Promise((resolve, reject) => {

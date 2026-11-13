@@ -1,10 +1,10 @@
 // ============ Tab Quy trình (SOP & Data Logger) ============
-// Các bước chưa làm đều có thể mở và thực hiện độc lập; dải mục lục hỗ trợ nhảy nhanh.
+// Các bước chưa làm đều có thể mở và thực hiện độc lập; menu Tiến trình hỗ trợ điều hướng.
 import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { driveUpload, driveDelete, driveImageUrl, isDriveConfigured } from "../drive.js";
-import { esc, richHtml, renderMath, toast, openModal, confirmBox, compressImage, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
+import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
+import { esc, richHtml, renderMath, toast, openModal, confirmBox, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null;
@@ -76,7 +76,7 @@ function render() {
       <button class="btn sm" data-act="sop-home">← Trang chính</button>
       <h2>${esc(curExp.title || "Bài thí nghiệm")}</h2>
     </div>
-    ${sectionTabsHtml()}<div class="section-run-head">
+    <div class="section-run-head">
       <h2>TN ${sectionIndex + 1} · ${richHtml(selectedSection.section_name)}</h2>
       <p class="muted small">${sectionDone}/${sectionFlat.length} bước đã thực hiện</p>
       ${tocStrip(sectionFlat)}
@@ -86,15 +86,6 @@ function render() {
   root.innerHTML = html;
   renderMath(root);
   restoreFocus(focus);
-}
-
-function sectionTabsHtml() {
-  return `<nav class="section-tabs" aria-label="Thí nghiệm trong bài">
-    ${curExp.sections.map((section, index) => `<button type="button" class="section-tab ${section.id === selectedSectionId ? "active" : ""}"
-      data-act="open-section" data-section="${esc(section.id)}" aria-selected="${section.id === selectedSectionId}">
-      <span>TN ${index + 1} · ${esc(section.section_name || "Chưa đặt tên")}</span>
-    </button>`).join("")}
-  </nav>`;
 }
 
 function tocStrip(steps) {
@@ -207,7 +198,7 @@ function stepAccordion(f, st) {
     const ri = s.require_input;
     const num = ri && ri.type === "number";
     const oldPhotoUrl = log?.photo_file_id ? driveImageUrl(log.photo_file_id) : log?.photo_url;
-    const hasPhoto = !d.removePhoto && (d.preview || (isEdit && oldPhotoUrl));
+    const hasPhoto = !d.removePhoto && (d.pendingPreview || d.preview || (isEdit && oldPhotoUrl));
     const isSaving = saving.has(id);
     const isUploading = uploadingPhoto.has(id);
     body += `<div class="form">
@@ -222,16 +213,24 @@ function stepAccordion(f, st) {
         <textarea class="inp" rows="2" data-draft="${id}" data-field="explanation" placeholder="Giải thích hiện tượng, viết PTPƯ: $\\ce{...}$">${esc(d.explanation ?? (isEdit ? log?.explanation_text ?? "" : ""))}</textarea></label>` : ""}
 
       <div class="photo-preview">
-        ${!d.removePhoto && d.preview ? `<img class="thumb" src="${d.preview}" alt="ảnh mới">` : (!d.removePhoto && isEdit && oldPhotoUrl ? `<img class="thumb" src="${esc(oldPhotoUrl)}" alt="ảnh cũ">` : "")}
-        ${d.imgMeta ? `<span class="muted small">${d.imgMeta.storage_fallback ? "Ảnh đã lưu kèm nhật ký ✓" : "Ảnh đã tải lên Google Drive ✓"}</span>` : ""}
+        ${!d.removePhoto && (d.pendingPreview || d.preview) ? `<img class="thumb" src="${d.pendingPreview || d.preview}" alt="ảnh mới">` : (!d.removePhoto && isEdit && oldPhotoUrl ? `<img class="thumb" src="${esc(oldPhotoUrl)}" alt="ảnh cũ">` : "")}
+        ${d.imgMeta && !d.pendingFile ? `${d.imgMeta.storage_fallback
+          ? '<span class="muted small">Ảnh đã lưu kèm nhật ký ✓</span>'
+          : `<a class="img-link" href="${esc(driveFileUrl(d.imgMeta.file_id))}" target="_blank" rel="noopener noreferrer">Ảnh đã tải lên Drive: ${esc(d.imgMeta.name || "Mở ảnh")} ↗</a>`}` : ""}
         ${d.removePhoto ? '<span class="muted small">Ảnh sẽ bị gỡ khi lưu.</span>' : ""}
       </div>
-      ${hasPhoto ? `<button class="btn sm danger photo-remove" data-act="remove-photo" ${isSaving || isUploading ? "disabled" : ""}>Xóa ảnh</button>` : ""}
+      ${d.pendingFile ? `<label class="lbl">Tên file trên Drive (không bắt buộc)
+        <input class="inp" data-draft="${id}" data-field="photoName" value="${esc(d.photoName || "")}" placeholder="Để trống để dùng tên mặc định"></label>
+        <button class="btn sm primary upload-photo" data-act="upload-photo" data-step="${id}" ${isSaving || isUploading ? "disabled" : ""}>
+          ${isUploading ? '<span class="spin-ring dark"></span> Đang tải…' : "Tải ảnh lên Drive"}
+        </button>` : ""}
+      ${hasPhoto ? `<button class="btn sm danger photo-remove" data-act="${d.pendingFile ? "discard-pending-photo" : "remove-photo"}" ${isSaving || isUploading ? "disabled" : ""}>${d.pendingFile ? "Bỏ ảnh mới" : "Xóa ảnh"}</button>` : ""}
       <div class="step-submit-row">
-        <label class="btn photo-action">${isUploading ? '<span class="spin-ring dark"></span> Đang tải…' : `📷 ${hasPhoto ? "Chụp lại" : "Chụp ảnh"}${s.require_photo ? " · Bắt buộc" : ""}`}
-          <input type="file" accept="image/*" capture="environment" hidden data-photo="${id}" ${isUploading ? "disabled" : ""}></label>
-        <button class="btn primary" data-act="save" ${isSaving || isUploading ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "Lưu"}</button>
+        <label class="btn photo-action">${`📷 ${hasPhoto ? "Chụp lại" : "Chụp ảnh"}${s.require_photo ? " · Bắt buộc" : ""}`}
+          <input type="file" accept="image/*" capture="environment" hidden data-photo="${id}" ${isSaving || isUploading ? "disabled" : ""}></label>
+        <button class="btn primary" data-act="save" ${isSaving || isUploading || d.pendingFile ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "Lưu"}</button>
       </div>
+      ${d.pendingFile ? '<span class="muted small">Tải ảnh lên Drive trước khi lưu bước.</span>' : ""}
       ${isEdit ? `<button class="btn cancel-edit" data-act="cancel-edit" ${isSaving || isUploading ? "disabled" : ""}>Hủy sửa</button>` : ""}
       </div>`;
   }
@@ -277,18 +276,35 @@ async function onChange(e) {
   const file = e.target.files?.[0]; e.target.value = "";
   if (!file) return;
   if (!isDriveConfigured) return toast("Chưa cấu hình Google Drive — xem hướng dẫn triển khai trong code.gs", "error", 4000);
+  const d = (drafts[id] ||= {});
+  if (d.pendingPreview) URL.revokeObjectURL(d.pendingPreview);
+  d.pendingFile = file;
+  d.pendingPreview = URL.createObjectURL(file);
+  d.photoName = "";
+  d.removePhoto = false;
+  render();
+}
+
+async function uploadPhoto(id) {
+  const d = drafts[id];
+  if (!d?.pendingFile || uploadingPhoto.has(id)) return;
   uploadingPhoto.add(id); render();
   try {
-    toast("Đang nén & tải ảnh lên Drive…");
-    const blob = await compressImage(file);
-    const d = (drafts[id] ||= {});
+    toast("Đang tải ảnh lên Drive…");
     const previousUpload = d.imgMeta;
-    if (d.preview) URL.revokeObjectURL(d.preview);
-    d.preview = URL.createObjectURL(blob);
     const f = curFlat.find(x => x.step.id === id);
-    const meta = { expTitle: curExp.title, sectionName: f?.sec.section_name || "", stepLabel: f?.label || "", runName: state.activeRun?.name || "" };
-    const img = await driveUpload(blob, "log", meta);
+    const file = d.pendingFile;
+    const meta = {
+      expTitle: curExp.title, sectionName: f?.sec.section_name || "",
+      stepLabel: f?.label || "", runName: state.activeRun?.name || "",
+      fileName: d.photoName, originalName: file.name
+    };
+    const img = await driveUpload(file, "log", meta);
     d.imgMeta = img;
+    d.pendingFile = null;
+    if (d.preview) URL.revokeObjectURL(d.preview);
+    d.preview = d.pendingPreview;
+    d.pendingPreview = null;
     d.removePhoto = false;
     if (previousUpload?.file_id && previousUpload.file_id !== img.file_id &&
         previousUpload.file_id !== state.logs[id]?.photo_file_id) {
@@ -301,7 +317,7 @@ async function onChange(e) {
     updateStepProgress(id);
     toast(img.storage_fallback
       ? "Drive chưa xác nhận; ảnh đã được giữ trong nhật ký để có thể lưu bước."
-      : "Đã tải ảnh lên Drive ✔", img.storage_fallback ? "warn" : "success", 5000);
+      : `Đã tải ảnh ${img.name || "lên Drive"} ✔`, img.storage_fallback ? "warn" : "success", 5000);
   } catch (err) { console.error(err); toast("Tải ảnh lỗi: " + err.message, "error", 4500); }
   finally { uploadingPhoto.delete(id); render(); }
 }
@@ -313,6 +329,7 @@ async function onClick(e) {
   const id = btn.closest("[data-step]")?.dataset.step || btn.dataset.step;
   switch (btn.dataset.act) {
     case "save": return save(id);
+    case "upload-photo": return uploadPhoto(id);
     case "toggle-acc": {
       expanded.has(id) ? expanded.delete(id) : expanded.add(id);
       render(); break;
@@ -321,6 +338,13 @@ async function onClick(e) {
       expanded.add(id);
       render();
       requestAnimationFrame(() => root.querySelector(`[data-step="${id}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" }));
+      break;
+    }
+    case "discard-pending-photo": {
+      const draft = drafts[id];
+      if (draft?.pendingPreview) URL.revokeObjectURL(draft.pendingPreview);
+      if (draft) { draft.pendingFile = null; draft.pendingPreview = null; draft.photoName = ""; }
+      render();
       break;
     }
     case "edit": {
@@ -342,15 +366,6 @@ async function onClick(e) {
     }
     case "zoom": openModal({ title: "", html: `<img class="zoom" src="${esc(btn.dataset.src)}" alt="">` }); break;
     case "open-experiment": return openExperiment(btn.dataset.exp);
-    case "open-section": {
-      selectedSectionId = btn.dataset.section;
-      expanded.clear();
-      const sectionSteps = curFlat.filter(f => f.sec.id === selectedSectionId);
-      const firstPending = sectionSteps.find(f => !state.logs[f.step.id]);
-      if (firstPending) expanded.add(firstPending.step.id);
-      render();
-      break;
-    }
     case "sop-home":
       selectedByUser = false;
       selectedSectionId = null;
@@ -363,6 +378,7 @@ async function onClick(e) {
 
 function clearDraft(id) {
   if (drafts[id]?.preview) URL.revokeObjectURL(drafts[id].preview);
+  if (drafts[id]?.pendingPreview) URL.revokeObjectURL(drafts[id].pendingPreview);
   delete drafts[id];
 }
 
@@ -399,6 +415,7 @@ async function save(id) {
     }
   }
   if (uploadingPhoto.has(id)) return toast("Ảnh đang tải lên, vui lòng đợi", "warn");
+  if (d.pendingFile) return toast("Hãy tải ảnh lên Drive trước khi lưu bước", "warn");
   const uploadedPhoto = !!(d.imgMeta?.file_id || d.imgMeta?.url);
   if (s.require_photo && (d.removePhoto || (!uploadedPhoto && !(isEdit && hasSavedPhoto(old))))) {
     return toast("Bước này bắt buộc chụp ảnh", "error");
