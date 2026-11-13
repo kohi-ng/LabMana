@@ -355,9 +355,9 @@ textarea.inp{ resize:vertical; min-height:88px; font-family:inherit; }
   position:fixed; left:0; right:0; bottom:0; z-index:61; max-width:560px; margin:0 auto;
   max-height:82vh; background: var(--bg-elevated); border-radius: 22px 22px 0 0;
   box-shadow: var(--shadow-3); transform: translateY(100%); transition: transform .26s var(--ease);
-  display:flex; flex-direction:column; padding-bottom: env(safe-area-inset-bottom);
+  display:flex; flex-direction:column; padding-bottom: env(safe-area-inset-bottom); pointer-events:none;
 }
-.calc-sheet.open{ transform: translateY(0); }
+.calc-sheet.open{ transform: translateY(0); pointer-events:auto; }
 @media(min-width:640px){
   .calc-sheet{ left:auto; right:24px; bottom:24px; border-radius:22px; width:420px; max-height:76vh; transform: translateY(16px) scale(.97); opacity:0; }
   .calc-sheet.open{ transform:none; opacity:1; }
