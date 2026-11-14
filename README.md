@@ -21,11 +21,13 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   hợp dự phòng có thể làm ảnh lưu trong Firestore lớn hơn). Tên ảnh gồm tên bài, thí nghiệm/bước,
   tên tùy chọn (nếu nhập) và thời gian; link Drive hiển thị dưới ảnh kèm nút sao chép.
   `GAS/code.gs` nhận/xóa ảnh; sau khi đổi mã cần triển khai phiên bản mới của Apps Script Web App.
-- **Xuất báo cáo** trong Cài đặt: nhập danh sách thành viên (mỗi dòng `Họ tên - MSSV`), nhóm,
-  ngày và học kỳ/năm học; ô **Bài số** in sau “BÀI SỐ:” trong Docs (mặc định là tên bài, bấm vào để sửa). Chọn bài để xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
-  Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích, ảnh và sửa
-  mẫu ghép cột thao tác bằng `{title}`, `{text}`, `{value}`, `{unit}`. Số bước luôn đứng ở đầu ô,
-  nên không đưa `{label}` vào mẫu (sẽ bị bỏ để khỏi in hai lần). Ảnh của mỗi bước
+- **Thành viên nhóm** (Cài đặt): nhập `Họ tên - MSSV` (nhiều người cách nhau bằng dấu phẩy); MSSV lưu ở
+  `config/lab.team_ids` và bổ sung/sửa được bằng nút ✎.
+- **Xuất báo cáo** trong Cài đặt: ô `Họ và tên - MSSV` tự điền từ danh sách thành viên (bấm vào để sửa), ô
+  `Bài số` tự lấy tên bài làm mặc định và được in nguyên văn thay cho dòng “BÀI SỐ: …”; nhập thêm nhóm,
+  ngày và học kỳ/năm học; chọn bài để xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
+  Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích và ảnh. Cột “Các bước
+  tiến hành” gồm số bước (in đậm), tiêu đề và hướng dẫn thao tác. Ảnh của mỗi bước
   được gắn ngay dưới hiện tượng tương ứng khi số ảnh khớp số dòng hoặc số đoạn trong ô đó; sau khi tạo có nút mở Google Docs.
   Apps Script project cần đủ `GAS/code.gs`, `GAS/report.gs` và `GAS/math-render.gs`; triển khai phiên bản mới sau khi sửa.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.

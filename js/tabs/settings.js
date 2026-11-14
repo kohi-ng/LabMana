@@ -1,7 +1,7 @@
 // ============ Tab Cài đặt (thành viên + xuất báo cáo) ============
 import { state, on } from "../store.js";
 import { auth, db } from "../firebase.js";
-import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove, deleteField, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { esc, richHtml, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
 import { driveCreateReport, isDriveConfigured } from "../drive.js";
 import { normalizeExperiment, flatten } from "../plan-logic.js";
@@ -11,8 +11,10 @@ const CFG = () => doc(db, "config", "lab");
 // Ảnh dự phòng gửi kèm báo cáo: giới hạn ký tự của data URL (Firestore vốn giới hạn 1 MiB/tài liệu).
 const INLINE_PHOTO_MAX_CHARS = 4_000_000;
 const reportForm = {
-  peopleText: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
-  actionTemplate: "{title}\n{text}",
+  // peopleText / reportTitle tự lấy mặc định từ danh sách thành viên và tên bài; sau khi người dùng sửa
+  // thì giữ nguyên bản sửa (peopleEdited / titleEdited), nút "Lấy lại từ danh sách" để về mặc định.
+  peopleText: "", peopleEdited: false, reportTitle: "", titleEdited: false,
+  group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
   includeMeasurement: true, includeObservation: true, includeExplanation: true, includePhotos: true
 };
 let reportBusy = false, lastReport = null;
@@ -38,15 +40,20 @@ function render() {
   const keep = root.querySelector("#st-names")?.value || "";
   const team = state.team;
   if (!reportForm.experimentId && state.experiments.length) reportForm.experimentId = state.experiments[0].id;
+  const selectedExperiment = state.experiments.find(exp => exp.id === reportForm.experimentId);
+  if (!reportForm.titleEdited) reportForm.reportTitle = selectedExperiment?.title || "";
+  if (!reportForm.peopleEdited) reportForm.peopleText = defaultPeopleText();
   root.innerHTML = `
     <div class="page-head"><h2>Cài đặt</h2></div>
     <div class="card"><h3>👥 Thành viên nhóm</h3>
       <div class="inline">
-        <input class="inp" id="st-names" placeholder="Nhập tên (nhiều tên: cách nhau bằng dấu phẩy)" autocomplete="off">
+        <input class="inp" id="st-names" placeholder="Họ tên - MSSV (nhiều người: cách nhau bằng dấu phẩy)" autocomplete="off">
         <button class="btn primary" data-act="add">Thêm</button>
       </div>
+      <p class="muted small" style="margin-top:6px">Ví dụ: <code>Phan Văn A - 123456</code>. MSSV có thể bỏ trống rồi bổ sung sau bằng nút ✎. Danh sách này được tự điền vào mục “Họ và tên - MSSV” khi xuất báo cáo.</p>
       <ul class="members">${team.length ? team.map(n => `<li><span class="nm">${esc(n)}</span>
-        <button class="icon-btn" data-act="rename" data-name="${esc(n)}" title="Sửa">✎</button>
+        ${state.teamIds[n] ? `<span class="mssv">${esc(state.teamIds[n])}</span>` : '<span class="mssv none">chưa có MSSV</span>'}
+        <button class="icon-btn" data-act="rename" data-name="${esc(n)}" title="Sửa tên / MSSV">✎</button>
         <button class="icon-btn danger" data-act="del" data-name="${esc(n)}" title="Xóa">🗑</button></li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
     </div>
 
@@ -65,9 +72,16 @@ function render() {
             ${state.experiments.length ? state.experiments.map(exp => `<option value="${esc(exp.id)}" ${reportForm.experimentId === exp.id ? "selected" : ""}>${esc(exp.title || "(không tên)")}</option>`).join("") : '<option value="">Chưa có bài đã lên kế hoạch</option>'}
           </select>
         </label>
-        <label class="lbl report-people-label">Họ và tên - MSSV (mỗi người một dòng)
-          <textarea class="inp" rows="4" data-report-field="peopleText" placeholder="Phan Văn A - 123&#10;Nguyễn Văn B - 456">${esc(reportForm.peopleText)}</textarea>
+        <label class="lbl">Bài số (dòng tên bài trong báo cáo)
+          <input class="inp" data-report-field="reportTitle" value="${esc(reportForm.reportTitle)}" autocomplete="off" placeholder="Mặc định lấy theo tên bài">
         </label>
+        <label class="lbl report-people-label">Họ và tên - MSSV (mỗi người một dòng)
+          <textarea class="inp" rows="4" data-report-field="peopleText" placeholder="Phan Văn A - 123456&#10;Nguyễn Văn B - 234567">${esc(reportForm.peopleText)}</textarea>
+        </label>
+        <div class="report-people-hint muted small">
+          <span>Tự lấy từ mục “Thành viên nhóm”, bấm vào ô để sửa trực tiếp.</span>
+          <button type="button" class="btn ghost sm" data-act="reset-report-defaults">↺ Lấy lại từ danh sách &amp; tên bài</button>
+        </div>
         <label class="lbl">Nhóm
           <input class="inp" data-report-field="group" value="${esc(reportForm.group)}" autocomplete="off" placeholder="Không bắt buộc">
         </label>
@@ -80,17 +94,13 @@ function render() {
       </div>
       <details class="report-content-settings" open>
         <summary>Nội dung ghép vào báo cáo</summary>
-        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Số bước luôn in đậm ở đầu ô, không cần chèn lại trong mẫu. Ảnh nằm trong ô hiện tượng của đúng bước. Khi số ảnh bằng số dòng hiện tượng, hoặc bằng số đoạn cách nhau bởi một dòng trống, mỗi ảnh được gắn ngay dưới hiện tượng tương ứng. Ảnh mới được thu về JPEG/PNG/GIF dưới 2 MB để Docs nhúng được; ảnh cũ không đúng định dạng đó chỉ còn link Drive.</p>
+        <p class="muted small">Chọn dữ liệu cần xuất. Cột “Các bước tiến hành” gồm số bước (in đậm), tiêu đề và hướng dẫn thao tác của bước. Ảnh nằm trong ô hiện tượng của đúng bước. Khi số ảnh bằng số dòng hiện tượng, hoặc bằng số đoạn cách nhau bởi một dòng trống, mỗi ảnh được gắn ngay dưới hiện tượng tương ứng. Ảnh quá nặng hoặc không đúng định dạng JPEG/PNG/GIF được thay bằng bản thu nhỏ khi nhúng vào Docs.</p>
         <div class="report-options">
           <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu đã nhập</label>
           <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng quan sát</label>
           <label><input type="checkbox" data-report-field="includeExplanation" ${reportForm.includeExplanation ? "checked" : ""}> Giải thích / PTPƯ</label>
           <label><input type="checkbox" data-report-field="includePhotos" ${reportForm.includePhotos ? "checked" : ""}> Ảnh Drive trong cột hiện tượng</label>
         </div>
-        <label class="lbl">Mẫu ghép “Các bước tiến hành”
-          <textarea class="inp" rows="3" data-report-field="actionTemplate" placeholder="{title}\\n{text}">${esc(reportForm.actionTemplate)}</textarea>
-        </label>
-        <p class="muted small">Biến dùng được: <code>{title}</code> tiêu đề, <code>{text}</code> hướng dẫn thao tác, <code>{value}</code> số liệu, <code>{unit}</code> đơn vị. Số bước luôn được ghép ở đầu ô.</p>
       </details>
       <button type="button" class="btn primary report-submit" data-act="export-report" ${reportBusy || !isDriveConfigured || !state.experiments.length ? "disabled" : ""}>
         ${reportBusy ? "Đang tạo tài liệu…" : "Tạo Google Docs"}
@@ -109,19 +119,53 @@ function onReportInput(event) {
   const field = event.target.dataset?.reportField;
   if (!field) return;
   reportForm[field] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+  if (field === "peopleText") reportForm.peopleEdited = true;
+  if (field === "reportTitle") reportForm.titleEdited = true;
+  if (field === "experimentId") { reportForm.titleEdited = false; render(); } // đổi bài → tên bài mặc định đổi theo
+}
+
+/** Mặc định ô "Họ và tên - MSSV": mỗi thành viên một dòng; chưa có MSSV thì để sẵn "Tên - " cho người dùng điền tiếp. */
+function defaultPeopleText() {
+  return state.team.map(name => `${name} - ${state.teamIds[name] || ""}`).join("\n");
+}
+
+/** "Họ tên - MSSV" → { name, id }. Chấp nhận " - " có khoảng trắng (tên có dấu gạch như "Minh-Anh" vẫn đúng) hoặc "Tên-123456". */
+function parsePersonLine(value) {
+  const text = String(value || "").trim();
+  const match = text.match(/^(.+?)\s+[-–—]\s+(.+)$/) || text.match(/^(.+?)\s*[-–—]\s*(\d[\w.]*)$/);
+  return match ? { name: match[1].trim(), id: match[2].trim() } : { name: text.replace(/\s*[-–—]\s*$/, "").trim(), id: "" };
 }
 
 async function addNames() {
   const inp = root.querySelector("#st-names");
-  const names = [...new Set(inp.value.split(/[,;\n]/).map(s => s.trim()).filter(Boolean))];
-  if (!names.length) return;
-  const exist = new Set(state.team.map(n => n.toLowerCase()));
-  const fresh = names.filter(n => !exist.has(n.toLowerCase()));
-  if (!fresh.length) return toast("Tên đã có trong danh sách", "warn");
+  // Mỗi mục có dạng "Họ tên" hoặc "Họ tên - MSSV"; gộp trùng theo tên, ưu tiên mục có MSSV.
+  const byName = new Map();
+  inp.value.split(/[,;\n]/).map(parsePersonLine).filter(person => person.name).forEach(person => {
+    const key = person.name.toLowerCase();
+    const current = byName.get(key);
+    if (!current || (!current.id && person.id)) byName.set(key, person);
+  });
+  const people = [...byName.values()];
+  if (!people.length) return;
+  const exist = new Map(state.team.map(n => [n.toLowerCase(), n]));
+  const fresh = people.filter(person => !exist.has(person.name.toLowerCase()));
+  // Thành viên đã có nhưng nhập thêm / đổi MSSV → cập nhật MSSV.
+  const idUpdates = people
+    .filter(person => exist.has(person.name.toLowerCase()) && person.id && state.teamIds[exist.get(person.name.toLowerCase())] !== person.id)
+    .map(person => ({ name: exist.get(person.name.toLowerCase()), id: person.id }));
+  if (!fresh.length && !idUpdates.length) return toast("Tên đã có trong danh sách", "warn");
+  const ids = {};
+  [...fresh.filter(person => person.id), ...idUpdates].forEach(person => { ids[person.name] = person.id; });
+  const update = {};
+  if (fresh.length) update.team_members = arrayUnion(...fresh.map(person => person.name));
+  if (Object.keys(ids).length) update.team_ids = ids;
   try {
-    await Promise.race([setDoc(CFG(), { team_members: arrayUnion(...fresh) }, { merge: true }), new Promise(r => setTimeout(r, 6000))]);
+    await Promise.race([setDoc(CFG(), update, { merge: true }), new Promise(r => setTimeout(r, 6000))]);
     inp.value = "";
-    toast(`Đã thêm ${fresh.length} thành viên`, "success");
+    const parts = [];
+    if (fresh.length) parts.push(`Đã thêm ${fresh.length} thành viên`);
+    if (idUpdates.length) parts.push(`cập nhật MSSV cho ${idUpdates.length} người`);
+    toast(parts.join(", "), "success");
   } catch (err) { toast("Lỗi: " + (err.code || err.message), "error"); }
 }
 
@@ -134,23 +178,42 @@ async function onClick(e) {
   if (btn.dataset.act === "preview-report") return previewReport();
   if (btn.dataset.act === "del") {
     if (!(await confirmBox(`Xóa "${name}" khỏi danh sách?`, "Xóa"))) return;
-    try { await setDoc(CFG(), { team_members: arrayRemove(name) }, { merge: true }); toast("Đã xóa", "success"); }
+    try {
+      await setDoc(CFG(), { team_members: arrayRemove(name), team_ids: { [name]: deleteField() } }, { merge: true });
+      toast("Đã xóa", "success");
+    }
     catch (err) { toast("Lỗi: " + (err.code || err.message), "error"); }
   }
+  if (btn.dataset.act === "reset-report-defaults") {
+    reportForm.peopleEdited = false;
+    reportForm.titleEdited = false;
+    render();
+    return toast("Đã lấy lại Họ tên - MSSV và tên bài từ dữ liệu hiện có", "success");
+  }
   if (btn.dataset.act === "rename") {
-    const nn = await promptBox({ title: "Sửa tên", label: "Tên mới", value: name });
-    if (!nn || nn === name) return;
+    const currentId = state.teamIds[name] || "";
+    const input = await promptBox({
+      title: "Sửa thành viên", label: "Họ tên - MSSV",
+      value: currentId ? `${name} - ${currentId}` : name, placeholder: "Phan Văn A - 123456"
+    });
+    if (!input) return;
+    const next = parsePersonLine(input);
+    if (!next.name || (next.name === name && next.id === currentId)) return;
     try {
       await runTransaction(db, async tx => {
         const s = await tx.get(CFG());
-        const arr = (s.data()?.team_members || []).slice();
+        const data = s.data() || {};
+        const arr = (data.team_members || []).slice();
+        const ids = { ...(data.team_ids || {}) };
         const i = arr.indexOf(name);
         if (i < 0) throw new Error("Tên này không còn trong danh sách");
-        if (arr.some((n, j) => j !== i && n.toLowerCase() === nn.toLowerCase())) throw new Error("Tên bị trùng");
-        arr[i] = nn;
-        tx.set(CFG(), { team_members: arr }, { merge: true });
+        if (arr.some((n, j) => j !== i && n.toLowerCase() === next.name.toLowerCase())) throw new Error("Tên bị trùng");
+        delete ids[name];
+        arr[i] = next.name;
+        if (next.id) ids[next.name] = next.id;
+        tx.update(CFG(), { team_members: arr, team_ids: ids });
       });
-      toast("Đã đổi tên", "success");
+      toast("Đã cập nhật", "success");
     } catch (err) { toast("Lỗi: " + (err.message || err.code), "error"); }
   }
 }
@@ -198,6 +261,8 @@ async function collectReportData() {
   if (!raw) throw new Error("Hãy chọn bài thí nghiệm.");
   const people = parseReportPeople(reportForm.peopleText);
   if (!people.length) throw new Error("Hãy nhập ít nhất một dòng theo dạng Họ tên - MSSV.");
+  const incomplete = String(reportForm.peopleText || "").split(/\r?\n/).map(line => line.trim()).filter(line => line && !parsePersonLine(line).id);
+  if (incomplete.length) throw new Error(`Còn ${incomplete.length} dòng chưa có MSSV (“${incomplete[0]}”). Hãy điền MSSV hoặc xóa dòng đó trong ô Họ và tên - MSSV.`);
 
   const runsSnapshot = await getDocs(query(collection(db, "runs"), where("exp_id", "==", raw.id)));
   const runs = runsSnapshot.docs.map(item => ({ id: item.id, ...item.data() }))
@@ -237,14 +302,8 @@ async function collectReportData() {
     return {
       section: `${item.si + 1}. ${item.sec.section_name || "Thí nghiệm"}`,
       label: item.label,
-      action: reportForm.actionTemplate
-        .replaceAll("{label}", "")
-        .replaceAll("{title}", item.step.title || "")
-        .replaceAll("{text}", item.step.text || "")
-        .replaceAll("{value}", reportForm.includeMeasurement && log.input_data != null ? String(log.input_data) : "")
-        .replaceAll("{unit}", reportForm.includeMeasurement ? log.input_unit || "" : "")
-        .replace(/\n{3,}/g, "\n\n")
-        .trim(),
+      // Cột "Các bước tiến hành": tiêu đề + hướng dẫn thao tác (số bước được in đậm riêng ở đầu ô).
+      action: `${item.step.title || ""}\n${item.step.text || ""}`.replace(/\n{3,}/g, "\n\n").trim(),
       measurement: reportForm.includeMeasurement && log.input_data != null ? `${log.input_data}${log.input_unit ? ` ${log.input_unit}` : ""}` : "",
       observation: placePhotoMarkers(observation, reportPhotos),
       explanation: reportForm.includeExplanation ? log.explanation_text || "" : "",
@@ -255,6 +314,7 @@ async function collectReportData() {
   const inlinePhotos = steps.reduce((total, step) => total + step.photos.filter(photo => photo.data_url).length, 0);
   return {
     experimentTitle: experiment.title || "Bài thí nghiệm",
+    reportTitle: reportForm.reportTitle.trim() || experiment.title || "Bài thí nghiệm",
     runName: run.name || run.id,
     people,
     group: reportForm.group.trim(),
@@ -299,7 +359,7 @@ async function previewReport() {
     const values = {
       "{{PEOPLE}}": peopleHtml,
       "{{GROUP}}": esc(report.group || "________________"),
-      "{{EXPERIMENT}}": esc(report.experimentTitle),
+      "{{EXPERIMENT}}": esc(report.reportTitle),
       "{{REPORT_DATE}}": esc(formatReportDate(report.date)),
       "{{SEMESTER}}": esc(report.semester || "HỌC KỲ / NĂM HỌC"),
       "{{REPORT_ROWS}}": rows
@@ -328,9 +388,9 @@ function driveIdFromUrl(value) {
 
 function parseReportPeople(value) {
   return String(value || "").split(/\r?\n/).map(line => {
-    const match = line.trim().match(/^(.+?)\s*[-–—]\s*(.+)$/);
-    return match ? { name: match[1].trim(), studentId: match[2].trim() } : null;
-  }).filter(person => person?.name && person?.studentId);
+    const person = parsePersonLine(line);
+    return { name: person.name, studentId: person.id };
+  }).filter(person => person.name && person.studentId);
 }
 
 function photoCode(name, stepLabel, index) {

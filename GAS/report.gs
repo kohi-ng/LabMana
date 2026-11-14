@@ -10,7 +10,8 @@ var REPORT_BUILD_ = "2026-11-14-inline-v3";
 
 function handleCreateReport_(report) {
   if (!report || typeof report !== "object") throw new Error("Thiếu dữ liệu báo cáo.");
-  const experimentTitle = reportText_(report.experimentTitle, 240);
+  // reportTitle: dòng tên bài người dùng nhập/chỉnh trong ô "Bài số" (mặc định = tên bài).
+  const experimentTitle = reportText_(report.reportTitle || report.experimentTitle, 240);
   const reportDate = reportText_(report.date, 40);
   const semester = reportText_(report.semester, 100);
   const group = reportText_(report.group, 100);
@@ -91,13 +92,9 @@ function handleCreateReport_(report) {
     "GVGD: TS. NGUYỄN BÌNH NGUYÊN"
   ].forEach(text => setReportTextStyle_(body.appendParagraph(text).editAsText(), false));
   const experimentTitleCompiled = compileFormulas_(experimentTitle);
-  const experimentLine = body.appendParagraph(`BÀI SỐ: ${experimentTitleCompiled}`);
-  const experimentText = experimentLine.editAsText();
-  setReportTextStyle_(experimentText, false);
-  const experimentOffset = experimentText.getText().indexOf(experimentTitleCompiled);
-  if (experimentOffset >= 0 && experimentTitleCompiled.length) {
-    experimentText.setBold(experimentOffset, experimentOffset + experimentTitleCompiled.length - 1, true);
-  }
+  // Dòng tên bài hiển thị đúng nội dung ô "Bài số", thay cho nhãn "BÀI SỐ: ...".
+  const experimentLine = body.appendParagraph(experimentTitleCompiled);
+  setReportTextStyle_(experimentLine.editAsText(), true);
   body.appendParagraph("");
 
   const table = body.appendTable([[
