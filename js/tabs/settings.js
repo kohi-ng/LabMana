@@ -2,7 +2,7 @@
 import { state, on } from "../store.js";
 import { auth, db } from "../firebase.js";
 import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { esc, toast, confirmBox, promptBox, statusCard } from "../utils.js";
+import { esc, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
 import { driveCreateReport, isDriveConfigured } from "../drive.js";
 import { normalizeExperiment, flatten } from "../plan-logic.js";
 
@@ -289,6 +289,8 @@ async function previewReport() {
     previewWindow.document.open();
     previewWindow.document.write(template);
     previewWindow.document.close();
+    // Render công thức hóa học giống tab SOP trong cửa sổ xem trước.
+    renderMath(previewWindow.document.body);
   } catch (err) {
     previewWindow.close();
     toast("Không tạo được bản xem trước: " + err.message, "error", 5000);
