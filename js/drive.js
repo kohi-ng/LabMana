@@ -1,7 +1,7 @@
 // ============ Drive: tải / xóa ảnh qua Google Apps Script Web App ============
 import { blobToBase64 } from "./utils.js";
 
-export const GAS_URL = "https://script.google.com/macros/s/AKfycby232LaXbc2TC-BXLJlZB9XjFGdzsl5LLnPELJ90lDHww2OzWLD8j2ngZWlEt9n1B0gFA/exec";
+export const GAS_URL = "https://script.google.com/macros/s/AKfycbyMxFpoicWLq3dg5YNyfePuaSUKO55xoQNx-8EY5MroyMQir-PHiRYUpl5YOXdb8mjcIw/exec";
 export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
 
 const DOCS_EMBED_MAX_BYTES = 2 * 1024 * 1024;
@@ -62,7 +62,7 @@ function withJpegExtension(name) {
  * the request uses text/plain. Submit a normal HTML form to a hidden iframe instead;
  * the HtmlService response posts the structured result back with postMessage.
  */
-async function driveRequest(payload, { timeoutMs = 90000 } = {}) {
+async function driveRequest(payload, { timeoutMs = 45000 } = {}) {
   if (!isDriveConfigured) throw new Error("NOT_CONFIGURED_DRIVE");
 
   const requestId = `labmana-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -106,14 +106,17 @@ async function driveRequest(payload, { timeoutMs = 90000 } = {}) {
       fn(value);
     };
     const onMessage = event => {
-      if (event.source !== iframe.contentWindow) return;
+      // HtmlService may wrap its response in a Google sandbox iframe. In that case
+      // event.source is a nested frame, not the form-target iframe itself. Match the
+      // unguessable request id and require a Google-served response origin instead.
+      if (!/(^|\\.)googleusercontent\\.com$/.test(new URL(event.origin).hostname)) return;
       const data = event.data;
       if (!data || data.labmana !== "drive-response" || data.request_id !== requestId) return;
       if (data.result?.ok) finish(resolve, data.result);
       else finish(reject, new Error(data.result?.error || "Google Drive từ chối yêu cầu."));
     };
     const timer = setTimeout(() => {
-      finish(reject, new Error("Hết thời gian chờ phản hồi từ Google Drive. Kiểm tra URL Apps Script và triển khai phiên bản GAS mới có hỗ trợ iframe response."));
+      finish(reject, new Error("Apps Script đã nhận yêu cầu nhưng LabMana không nhận được phản hồi sau 45 giây. Kiểm tra deployment GAS có dùng code.gs mới; nếu thư mục đã được tạo mà chưa có file, kiểm tra nhật ký Executions trong Apps Script để xem lỗi tại bước tạo file hoặc cấp quyền chia sẻ."));
     }, timeoutMs);
 
     window.addEventListener("message", onMessage);
