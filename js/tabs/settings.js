@@ -78,7 +78,7 @@ function render() {
       </div>
       <details class="report-content-settings" open>
         <summary>Nội dung ghép vào báo cáo</summary>
-        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Số bước luôn in đậm ở đầu ô, không cần chèn lại trong mẫu. Mỗi ảnh tự sinh mã theo tên file và được gắn vào hiện tượng của đúng bước. Ảnh mới được thu về JPEG/PNG/GIF dưới 2 MB để Docs nhúng được; ảnh cũ không đúng định dạng đó chỉ còn link Drive.</p>
+        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Số bước luôn in đậm ở đầu ô, không cần chèn lại trong mẫu. Ảnh nằm trong ô hiện tượng của đúng bước. Khi số ảnh bằng số dòng hiện tượng, hoặc bằng số đoạn cách nhau bởi một dòng trống, mỗi ảnh được gắn ngay dưới hiện tượng tương ứng. Ảnh mới được thu về JPEG/PNG/GIF dưới 2 MB để Docs nhúng được; ảnh cũ không đúng định dạng đó chỉ còn link Drive.</p>
         <div class="report-options">
           <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu đã nhập</label>
           <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng quan sát</label>
@@ -215,7 +215,6 @@ async function collectReportData() {
       const code = photoCode(name, item.label, index);
       return { file_id: fileId, name, code };
     }).filter(Boolean) : [];
-    const photoMarkers = reportPhotos.map(photo => photo.code);
     const observation = reportForm.includeObservation ? log.observation_text || "" : "";
     return {
       section: `${item.si + 1}. ${item.sec.section_name || "Thí nghiệm"}`,
@@ -229,7 +228,7 @@ async function collectReportData() {
         .replace(/\n{3,}/g, "\n\n")
         .trim(),
       measurement: reportForm.includeMeasurement && log.input_data != null ? `${log.input_data}${log.input_unit ? ` ${log.input_unit}` : ""}` : "",
-      observation: [observation, ...photoMarkers].filter(Boolean).join("\n"),
+      observation: placePhotoMarkers(observation, reportPhotos),
       explanation: reportForm.includeExplanation ? log.explanation_text || "" : "",
       photos: reportPhotos
     };
@@ -275,7 +274,8 @@ async function previewReport() {
       const observed = [step.measurement ? `Số liệu: ${step.measurement}` : "", step.observation].filter(Boolean).join("\n");
       // Dùng chung bộ chuyển Markdown/LaTeX với SOP: hỗ trợ bảng viết bằng |...|.
       let observationHtml = richHtml(observed);
-      for (const [code, html] of photosByCode) observationHtml = observationHtml.split(esc(code)).join(html);
+      const photoEntries = [...photosByCode.entries()].sort((a, b) => b[0].length - a[0].length);
+      for (const [code, html] of photoEntries) observationHtml = observationHtml.split(esc(code)).join(html);
       if (!observed.trim() && !step.photos.length) observationHtml = "Chưa ghi nhận hiện tượng.";
       const actionHtml = richHtml(step.action) || "Chưa có nội dung thao tác.";
       const explanationHtml = String(step.explanation || "").trim() ? richHtml(step.explanation) : "Chưa ghi nhận giải thích.";
@@ -324,4 +324,56 @@ function photoCode(name, stepLabel, index) {
     .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toUpperCase();
   return `[[IMG_${base || `STEP_${stepLabel.replace(".", "_")}`}_${index + 1}]]`;
+}
+
+/** Khi số ảnh khớp số đoạn (hoặc số dòng), gắn ảnh ngay dưới hiện tượng đó. Không khớp thì để cuối ô. */
+function placePhotoMarkers(observation, photos) {
+  const text = String(observation || "").replace(/\s+$/, "");
+  if (!photos.length) return text;
+  if (isMarkdownTable(text)) return joinPhotoMarkers(text, photos);
+  const paragraphs = text.split(/\n[ \t]*\n/).map(block => block.replace(/^\n+|\n+$/g, "")).filter(block => block.trim());
+  const lines = text.split(/\n/).filter(line => line.trim());
+  const useParagraphs = paragraphs.length > 1 && paragraphs.length === photos.length;
+  const useLines = !useParagraphs && lines.length > 1 && lines.length === photos.length;
+  if (useParagraphs) return zipPhotoBlocks(paragraphs, photos, "\n\n");
+  if (useLines) return zipPhotoLines(text, photos);
+  return joinPhotoMarkers(text, photos);
+}
+
+function joinPhotoMarkers(text, photos) {
+  return [text, ...photos.map(photo => photo.code)].filter(Boolean).join("\n");
+}
+
+function zipPhotoBlocks(blocks, photos, separator) {
+  const pairCount = Math.min(blocks.length, photos.length);
+  const parts = [];
+  for (let i = 0; i < blocks.length; i++) {
+    parts.push(blocks[i]);
+    if (i < pairCount) parts.push(photos[i].code);
+  }
+  for (let i = pairCount; i < photos.length; i++) parts.push(photos[i].code);
+  return parts.join(separator);
+}
+
+function zipPhotoLines(text, photos) {
+  const lines = text.split(/\n/);
+  const contentIndexes = [];
+  lines.forEach((line, index) => { if (line.trim()) contentIndexes.push(index); });
+  const pairCount = Math.min(contentIndexes.length, photos.length);
+  const after = new Map();
+  for (let i = 0; i < pairCount; i++) after.set(contentIndexes[i], photos[i].code);
+  const out = [];
+  lines.forEach((line, index) => {
+    out.push(line);
+    if (after.has(index)) out.push(after.get(index));
+  });
+  for (let i = pairCount; i < photos.length; i++) out.push(photos[i].code);
+  return out.join("\n");
+}
+
+function isMarkdownTable(text) {
+  return String(text || "").split(/\n/).some(line => {
+    const value = line.trim();
+    return value.startsWith("|") && value.endsWith("|") && value.length > 2 && value.slice(1, -1).includes("|");
+  });
 }

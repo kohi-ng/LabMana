@@ -34,7 +34,9 @@ function handleCreateReport_(report) {
       // không compile trước ở đây để tránh làm mất ranh giới dòng "|...|" của bảng.
       action: reportText_(step.action, 10000),
       measurement: compileFormulas_(reportText_(step.measurement, 1000)),
-      observation: compileFormulas_(reportText_(step.observation, 10000)),
+      // Giữ nguyên mã [[IMG_...]] — compileFormulas_ có thể nuốt dấu _ trong công thức
+      // nếu biên dịch cả ô trước khi tách ảnh. Công thức được biên dịch lúc chèn văn bản.
+      observation: reportText_(step.observation, 10000),
       explanation: compileFormulas_(reportText_(step.explanation, 10000)),
       photos: photos.map(photo => {
         const fileId = reportText_(photo.file_id, 200);
@@ -44,7 +46,7 @@ function handleCreateReport_(report) {
         return {
           fileId: fileId,
           name: reportText_(photo.name, 240),
-          code: reportText_(photo.code, 300),
+          code: reportText_(photo.code, 500),
           blob: file.getBlob()
         };
       })
@@ -107,7 +109,7 @@ function handleCreateReport_(report) {
     const actionCell = row.appendTableCell("");
     const observationText = [
       step.measurement ? `Số liệu: ${step.measurement}` : "",
-      step.observation
+      placePhotoMarkers_(step.observation, step.photos)
     ].filter(Boolean).join("\n");
     const observationCell = row.appendTableCell("");
     const explanationCell = row.appendTableCell("");
@@ -118,16 +120,22 @@ function handleCreateReport_(report) {
 
     const photosByCode = {};
     step.photos.forEach(photo => { if (photo.code) photosByCode[photo.code] = photo; });
-    const markers = Object.keys(photosByCode).sort((a, b) => observationText.indexOf(a) - observationText.indexOf(b));
+    const pending = Object.keys(photosByCode);
     let cursor = 0;
-    markers.forEach(code => {
-      const markerAt = observationText.indexOf(code, cursor);
-      if (markerAt < 0) return;
-      appendRichBlocks_(observationCell, observationText.slice(cursor, markerAt));
-      appendReportPhoto_(observationCell, photosByCode[code], () => { imagesSkipped++; });
-      cursor = markerAt + code.length;
-    });
-    appendRichBlocks_(observationCell, observationText.slice(cursor));
+    while (pending.length) {
+      let next = null;
+      pending.forEach(code => {
+        const at = observationText.indexOf(code, cursor);
+        if (at < 0) return;
+        if (!next || at < next.at || (at === next.at && code.length > next.code.length)) next = { at: at, code: code };
+      });
+      if (!next) break;
+      appendRichBlocks_(observationCell, observationText.slice(cursor, next.at));
+      appendReportPhoto_(observationCell, photosByCode[next.code], () => { imagesSkipped++; });
+      cursor = next.at + next.code.length;
+      pending.splice(pending.indexOf(next.code), 1);
+    }
+    appendRichBlocks_(observationCell, stripPhotoCodes_(observationText.slice(cursor), Object.keys(photosByCode)));
     if (!observationText.trim() && !step.photos.length) {
       const placeholder = observationCell.appendParagraph("Chưa ghi nhận hiện tượng.");
       setReportTextStyle_(placeholder.editAsText(), false);
@@ -205,17 +213,18 @@ function appendActionTable_(cell, block) {
 function appendReportPhoto_(cell, photo, onSkipped, index) {
   const caption = cell.appendParagraph(photo.name ? `Ảnh: ${photo.name}` : `Ảnh ${Number(index || 0) + 1}`);
   setReportTextStyle_(caption.editAsText(), false, 9);
-  const mime = photo.blob.getContentType();
-  const byteSize = photo.blob.getBytes().length;
-  const supportedMime = ["image/jpeg", "image/png", "image/gif"].includes(mime);
-  if (supportedMime && byteSize <= 2 * 1024 * 1024) {
+  const blob = embeddableImageBlob_(photo.blob);
+  if (blob) {
     try {
-      const image = cell.appendImage(photo.blob);
-      if (image.getWidth() > 220) {
+      // appendImage() của ô bảng hay đẩy ảnh lên đầu ô hoặc ra ngoài bảng.
+      // Ảnh gắn vào một đoạn mới thì nằm ngay sau hiện tượng vừa chèn.
+      const holder = cell.appendParagraph("");
+      const image = holder.appendInlineImage(blob);
+      if (image.getWidth() > 190) {
         const height = image.getHeight();
-        const ratio = 220 / image.getWidth();
-        image.setWidth(220);
-        image.setHeight(Math.round(height * ratio));
+        const ratio = 190 / image.getWidth();
+        image.setWidth(190);
+        image.setHeight(Math.max(1, Math.round(height * ratio)));
       }
     } catch (err) {
       onSkipped();
@@ -232,6 +241,111 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
   const linkText = link.editAsText();
   setReportTextStyle_(linkText, false, 9);
   linkText.setLinkUrl(0, linkText.getText().length - 1, `https://drive.google.com/file/d/${encodeURIComponent(photo.fileId)}/view`);
+}
+
+/** JPEG/PNG/GIF thật, kể cả khi Drive báo image/jpg hoặc application/octet-stream. */
+function embeddableImageBlob_(blob) {
+  if (!blob) return null;
+  const bytes = blob.getBytes();
+  if (!bytes || bytes.length < 8 || bytes.length > 2 * 1024 * 1024) return null;
+  const sniffed = sniffImageMime_(bytes);
+  const declared = normalizeImageMime_(blob.getContentType());
+  const mime = sniffed || (["image/jpeg", "image/png", "image/gif"].includes(declared) ? declared : "");
+  if (!mime) return null;
+  return Utilities.newBlob(bytes, mime, "hien-tuong");
+}
+
+function normalizeImageMime_(mime) {
+  const value = String(mime || "").toLowerCase().split(";")[0].trim();
+  if (value === "image/jpg" || value === "image/pjpeg" || value === "image/jpe") return "image/jpeg";
+  if (value === "image/x-png") return "image/png";
+  return value;
+}
+
+function sniffImageMime_(bytes) {
+  const b0 = unsignedByte_(bytes, 0), b1 = unsignedByte_(bytes, 1), b2 = unsignedByte_(bytes, 2), b3 = unsignedByte_(bytes, 3);
+  if (b0 === 0xff && b1 === 0xd8 && b2 === 0xff) return "image/jpeg";
+  if (b0 === 0x89 && b1 === 0x50 && b2 === 0x4e && b3 === 0x47) return "image/png";
+  if (b0 === 0x47 && b1 === 0x49 && b2 === 0x46) return "image/gif";
+  return "";
+}
+
+function unsignedByte_(bytes, index) {
+  const value = bytes[index];
+  return value < 0 ? value + 256 : value;
+}
+
+function stripPhotoCodes_(text, codes) {
+  let out = String(text || "");
+  codes.forEach(code => { if (code) out = out.split(code).join(""); });
+  return out;
+}
+
+/**
+ * Gắn ảnh vào hiện tượng cùng thứ tự khi số ảnh bằng số đoạn (dòng trống) hoặc số dòng.
+ * Không khớp số lượng thì ảnh nằm cuối ô hiện tượng của đúng bước.
+ * Mã do client chèn sẵn được gỡ rồi đặt lại, để bản Docs khớp bản xem trước.
+ */
+function placePhotoMarkers_(observation, photos) {
+  const list = Array.isArray(photos) ? photos : [];
+  const codes = list.map(photo => photo.code).filter(Boolean);
+  const text = stripPhotoMarkerLines_(observation, codes);
+  if (!list.length) return text;
+  if (isMarkdownTable_(text)) return joinPhotoMarkers_(text, list);
+  const paragraphs = text.split(/\n[ \t]*\n/).map(block => block.replace(/^\n+|\n+$/g, "")).filter(block => block.trim());
+  const lines = text.split(/\n/).filter(line => line.trim());
+  const useParagraphs = paragraphs.length > 1 && paragraphs.length === list.length;
+  const useLines = !useParagraphs && lines.length > 1 && lines.length === list.length;
+  if (useParagraphs) return zipPhotoBlocks_(paragraphs, list, "\n\n");
+  if (useLines) return zipPhotoLines_(text, list);
+  return joinPhotoMarkers_(text, list);
+}
+
+function stripPhotoMarkerLines_(text, codes) {
+  const marker = {};
+  codes.forEach(code => { if (code) marker[code] = true; });
+  const lines = String(text || "").split(/\n/).filter(line => !marker[line.trim()]);
+  let out = lines.join("\n");
+  codes.forEach(code => { if (code) out = out.split(code).join(""); });
+  return out.replace(/[ \t]+\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+function joinPhotoMarkers_(text, photos) {
+  return [text, ...photos.map(photo => photo.code)].filter(Boolean).join("\n");
+}
+
+function zipPhotoBlocks_(blocks, photos, separator) {
+  const pairCount = Math.min(blocks.length, photos.length);
+  const parts = [];
+  for (let i = 0; i < blocks.length; i++) {
+    parts.push(blocks[i]);
+    if (i < pairCount) parts.push(photos[i].code);
+  }
+  for (let i = pairCount; i < photos.length; i++) parts.push(photos[i].code);
+  return parts.join(separator);
+}
+
+function zipPhotoLines_(text, photos) {
+  const lines = String(text || "").split(/\n/);
+  const contentIndexes = [];
+  lines.forEach((line, index) => { if (line.trim()) contentIndexes.push(index); });
+  const pairCount = Math.min(contentIndexes.length, photos.length);
+  const after = {};
+  for (let i = 0; i < pairCount; i++) after[contentIndexes[i]] = photos[i].code;
+  const out = [];
+  lines.forEach((line, index) => {
+    out.push(line);
+    if (Object.prototype.hasOwnProperty.call(after, index)) out.push(after[index]);
+  });
+  for (let i = pairCount; i < photos.length; i++) out.push(photos[i].code);
+  return out.join("\n");
+}
+
+function isMarkdownTable_(text) {
+  return String(text || "").split(/\n/).some(line => {
+    const value = line.trim();
+    return value.startsWith("|") && value.endsWith("|") && value.length > 2 && value.slice(1, -1).indexOf("|") >= 0;
+  });
 }
 
 function reportText_(value, maxLength) {

@@ -26,7 +26,7 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích, ảnh và sửa
   mẫu ghép cột thao tác bằng `{title}`, `{text}`, `{value}`, `{unit}`. Số bước luôn đứng ở đầu ô,
   nên không đưa `{label}` vào mẫu (sẽ bị bỏ để khỏi in hai lần). Ảnh của mỗi bước
-  được gắn mã từ tên file, chèn đúng ô hiện tượng; sau khi tạo có nút mở Google Docs.
+  được gắn ngay dưới hiện tượng tương ứng khi số ảnh khớp số dòng hoặc số đoạn trong ô đó; sau khi tạo có nút mở Google Docs.
   Apps Script project cần đủ `GAS/code.gs`, `GAS/report.gs` và `GAS/math-render.gs`; triển khai phiên bản mới sau khi sửa.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi dùng các nút tròn dưới tên bài để

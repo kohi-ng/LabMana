@@ -146,7 +146,7 @@ transaction.
 - Script lưu file vào thư mục con, set quyền "Anyone with the link — Viewer", và trả về `{file_id, url, name}`. `url` là thumbnail Drive (`https://drive.google.com/thumbnail?id=...&sz=w1600`).
 - Bình thường Firestore lưu `photo_file_id` và URL. Nếu upload ảnh thực hiện bước nhưng trình duyệt không nhận được xác nhận từ Apps Script, client giữ ảnh gốc dưới dạng data URL trong `photo_url` để không mất kết quả; ảnh này không có `file_id` nên báo cáo không nhúng được.
 - Xóa ảnh trong app gọi `action: "delete"` → Apps Script chuyển file vào Thùng rác Drive của người deploy.
-- Xuất báo cáo gọi `action: "create_report"`. Cột “Thí nghiệm” ghi đúng `section` mà web xem trước đang hiện (`1. Tên thí nghiệm`), không rút thành `TN1`. Bảng Markdown (`|...|`) được vẽ trong cả ba cột nội dung, cùng quy tắc với `richHtml()` — kể cả bảng một dòng. Công thức `$...$` / `\ce{...}` được đổi sang Unicode vì Docs không chạy KaTeX.
+- Xuất báo cáo gọi `action: "create_report"`. Cột “Thí nghiệm” ghi đúng `section` mà web xem trước đang hiện (`1. Tên thí nghiệm`), không rút thành `TN1`. Ảnh của một thao tác được nhúng trong cột hiện tượng của đúng thao tác đó, ngay dưới hiện tượng cùng thứ tự (dòng hoặc đoạn). Bảng Markdown (`|...|`) được vẽ trong cả ba cột nội dung, cùng quy tắc với `richHtml()` — kể cả bảng một dòng. Công thức `$...$` / `\ce{...}` được đổi sang Unicode vì Docs không chạy KaTeX.
 
 ```
 KeHoach/<Tên bài>/<Tên bài>_<Tên thí nghiệm>_<tên tùy chọn>_<yyyyMMdd_HHmmss>.<ext>
