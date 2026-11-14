@@ -4,6 +4,7 @@ import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
+import { registerMediaAsset, removeMediaAsset } from "../media.js";
 import { esc, richHtml, renderMath, toast, openModal, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
@@ -16,7 +17,7 @@ const openingExperiments = new Set();
 
 export function init(el) {
   root = el;
-  ["status", "experiments", "runs", "run", "logs"].forEach(ev => on(ev, schedule));
+  ["status", "experiments", "runs", "run", "logs", "media"].forEach(ev => on(ev, schedule));
   root.addEventListener("click", onClick);
   root.addEventListener("input", onInput);
   root.addEventListener("change", onChange);
@@ -134,6 +135,17 @@ function savedPhotos(log) {
     ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }]
     : [];
 }
+function sharedMediaPhotos(stepId, log) {
+  const known = new Set(savedPhotos(log).map(photo => photo.file_id).filter(Boolean));
+  for (const photo of drafts[stepId]?.photoItems || []) if (photo.imgMeta?.file_id) known.add(photo.imgMeta.file_id);
+  return (state.mediaAssets || []).filter(asset => asset.context === "execution" && asset.status === "ready" && asset.run_id === state.activeRunId && asset.step_id === stepId && asset.file_id && !known.has(asset.file_id));
+}
+function sharedMediaHtml(stepId, log) {
+  return sharedMediaPhotos(stepId, log).map(asset => {
+    const url = asset.url || driveImageUrl(asset.file_id);
+    return '<div class="photo-item shared-photo"><img class="thumb" src="' + esc(url) + '" data-act="zoom" data-src="' + esc(url) + '" alt="Ảnh vừa đồng bộ"><span class="muted small">Ảnh vừa tải lên từ thiết bị khác</span>' + driveLinkHtml(asset.file_id) + '</div>';
+  }).join("");
+}
 function driveLinkHtml(fileId) {
   if (!fileId) return "";
   const url = driveFileUrl(fileId);
@@ -229,6 +241,7 @@ function stepAccordion(f, st) {
   }
 
   body = `<div class="step-text">${richHtml(s.text)}</div>` +
+    sharedMediaHtml(id, log) +
     (s.images.length ? `<div>${s.images.map(im => {
       const imageUrl = im.file_id ? driveImageUrl(im.file_id) : im.url;
       return `<img class="thumb" src="${esc(imageUrl)}" data-act="zoom" data-src="${esc(imageUrl)}" alt="">`;
@@ -383,6 +396,15 @@ async function uploadPhoto(id, index) {
       fileName: photo.name, originalName: file.name
     };
     const img = await driveUpload(file, "log", meta);
+    try {
+      await registerMediaAsset({ ...img, mime_type: file.type, size_bytes: file.size }, {
+        context: "execution", experiment_id: state.activeRun?.exp_id || null,
+        run_id: state.activeRunId, section_id: f?.sec.id || null, step_id: id
+      });
+    } catch (registryError) {
+      await driveDelete(img.file_id).catch(() => {});
+      throw new Error("Ảnh đã lên Drive nhưng chưa đồng bộ được metadata Firestore: " + registryError.message);
+    }
     photo.imgMeta = img;
     photo.file = null;
     updateStepProgress(id);
@@ -509,7 +531,7 @@ async function cancelEdit(id) {
   for (const photo of draft?.photoItems || []) {
     const fileId = photo.imgMeta?.file_id;
     if (!fileId || oldFileIds.has(fileId)) continue;
-    try { await driveDelete(fileId); }
+    try { await removeMediaAsset(fileId, driveDelete); }
     catch (err) {
       console.error(err);
       deleteWarning = true;
