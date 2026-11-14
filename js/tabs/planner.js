@@ -373,10 +373,15 @@ async function addImages(stepId, files) {
       try {
         toast(`Đang tải ảnh lên Drive… (${index + 1}/${files.length})`);
         const img = await driveUpload(file, "plan", { ...meta, originalName: file.name });
-        await registerMediaAsset({ ...img, mime_type: file.type, size_bytes: file.size }, {
-          context: "plan", experiment_id: expId || null, run_id: null,
-          section_id: found.sec.id, step_id: stepId
-        });
+        try {
+          await registerMediaAsset({ ...img, mime_type: file.type, size_bytes: file.size }, {
+            context: "plan", experiment_id: expId || null, run_id: null,
+            section_id: found.sec.id, step_id: stepId
+          });
+        } catch (registryError) {
+          await driveDelete(img.file_id).catch(() => {});
+          throw new Error("Ảnh đã lên Drive nhưng metadata Firestore chưa đồng bộ: " + registryError.message);
+        }
         found.step.images.push(img);
         if (img.file_id) newlyUploadedDriveFiles.add(img.file_id);
         markDirty();
