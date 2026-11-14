@@ -45,73 +45,59 @@ function render() {
   if (!reportForm.peopleEdited) reportForm.peopleText = defaultPeopleText();
   root.innerHTML = `
     <div class="page-head"><h2>Cài đặt</h2></div>
-    <div class="card"><h3>👥 Thành viên nhóm</h3>
+    <div class="section"><h3>Thành viên</h3>
       <div class="inline">
-        <input class="inp" id="st-names" placeholder="Họ tên - MSSV (nhiều người: cách nhau bằng dấu phẩy)" autocomplete="off">
+        <input class="inp" id="st-names" placeholder="Họ tên - MSSV (nhiều người: cách nhau dấu phẩy)" autocomplete="off">
         <button class="btn primary" data-act="add">Thêm</button>
       </div>
-      <p class="muted small" style="margin-top:6px">Ví dụ: <code>Phan Văn A - 123456</code>. MSSV có thể bỏ trống rồi bổ sung sau bằng nút ✎. Danh sách này được tự điền vào mục “Họ và tên - MSSV” khi xuất báo cáo.</p>
       <ul class="members">${team.length ? team.map(n => `<li><span class="nm">${esc(n)}</span>
-        ${state.teamIds[n] ? `<span class="mssv">${esc(state.teamIds[n])}</span>` : '<span class="mssv none">chưa có MSSV</span>'}
-        <button class="icon-btn" data-act="rename" data-name="${esc(n)}" title="Sửa tên / MSSV">✎</button>
-        <button class="icon-btn danger" data-act="del" data-name="${esc(n)}" title="Xóa">🗑</button></li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
+        ${state.teamIds[n] ? `<span class="mssv">${esc(state.teamIds[n])}</span>` : '<span class="mssv none">Chưa có MSSV</span>'}
+        <button class="link-btn" data-act="rename" data-name="${esc(n)}">Sửa</button>
+        <button class="link-btn danger" data-act="del" data-name="${esc(n)}">Xóa</button></li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
     </div>
 
-    <div class="card"><h3>☁️ Lưu trữ</h3>
-      <div class="kv"><span>Dữ liệu chữ/số/trạng thái</span><b>Firestore</b></div>
-      <div class="kv"><span>Ảnh minh họa & ảnh chụp</span><b>${isDriveConfigured ? "Google Drive ✔" : "⚠️ Chưa cấu hình"}</b></div>
-      ${!isDriveConfigured ? `<p class="muted small" style="margin-top:8px">Mở <code>js/drive.js</code> và dán URL Web App; xem hướng dẫn triển khai ở đầu file <code>GAS/code.gs</code>.</p>` : ""}
-    </div>
-
-    <div class="card report-card"><h3>📄 Xuất báo cáo</h3>
-      <p class="muted small">Tạo Google Docs theo mẫu báo cáo; nội dung, hiện tượng, giải thích và ảnh được lấy từ nhật ký của bài đã chọn.</p>
-      ${!isDriveConfigured ? '<p class="muted small">Cần cấu hình Google Drive trước khi xuất.</p>' : ""}
+    <div class="section report-card"><h3>Xuất báo cáo</h3>
+      ${!isDriveConfigured ? '<p class="muted small">Chưa cấu hình Google Drive. Xem <code>js/drive.js</code>.</p>' : ""}
       <div class="report-form">
-        <label class="lbl">Chọn bài
+        <label class="lbl">Bài
           <select class="inp" data-report-field="experimentId">
-            ${state.experiments.length ? state.experiments.map(exp => `<option value="${esc(exp.id)}" ${reportForm.experimentId === exp.id ? "selected" : ""}>${esc(exp.title || "(không tên)")}</option>`).join("") : '<option value="">Chưa có bài đã lên kế hoạch</option>'}
+            ${state.experiments.length ? state.experiments.map(exp => `<option value="${esc(exp.id)}" ${reportForm.experimentId === exp.id ? "selected" : ""}>${esc(exp.title || "(không tên)")}</option>`).join("") : '<option value="">Chưa có bài</option>'}
           </select>
         </label>
-        <label class="lbl">Bài số (dòng tên bài trong báo cáo)
-          <input class="inp" data-report-field="reportTitle" value="${esc(reportForm.reportTitle)}" autocomplete="off" placeholder="Mặc định lấy theo tên bài">
+        <label class="lbl">Tên bài trong báo cáo
+          <input class="inp" data-report-field="reportTitle" value="${esc(reportForm.reportTitle)}" autocomplete="off">
         </label>
         <label class="lbl report-people-label">Họ và tên - MSSV (mỗi người một dòng)
           <textarea class="inp" rows="4" data-report-field="peopleText" placeholder="Phan Văn A - 123456&#10;Nguyễn Văn B - 234567">${esc(reportForm.peopleText)}</textarea>
         </label>
-        <div class="report-people-hint muted small">
-          <span>Tự lấy từ mục “Thành viên nhóm”, bấm vào ô để sửa trực tiếp.</span>
-          <button type="button" class="btn ghost sm" data-act="reset-report-defaults">↺ Lấy lại từ danh sách &amp; tên bài</button>
+        <div class="report-people-hint">
+          <button type="button" class="link-btn" data-act="reset-report-defaults">Lấy lại từ danh sách thành viên</button>
         </div>
         <label class="lbl">Nhóm
-          <input class="inp" data-report-field="group" value="${esc(reportForm.group)}" autocomplete="off" placeholder="Không bắt buộc">
+          <input class="inp" data-report-field="group" value="${esc(reportForm.group)}" autocomplete="off">
         </label>
-        <label class="lbl">Ngày báo cáo
+        <label class="lbl">Ngày
           <input class="inp" type="date" data-report-field="date" value="${esc(reportForm.date)}">
         </label>
         <label class="lbl">Học kỳ / năm học
-          <input class="inp" data-report-field="semester" value="${esc(reportForm.semester)}" placeholder="Ví dụ: Học kỳ 1, năm học 2026-2027">
+          <input class="inp" data-report-field="semester" value="${esc(reportForm.semester)}">
         </label>
       </div>
-      <details class="report-content-settings" open>
-        <summary>Nội dung ghép vào báo cáo</summary>
-        <p class="muted small">Chọn dữ liệu cần xuất. Cột “Các bước tiến hành” gồm số bước (in đậm), tiêu đề và hướng dẫn thao tác của bước. Ảnh nằm trong ô hiện tượng của đúng bước. Khi số ảnh bằng số dòng hiện tượng, hoặc bằng số đoạn cách nhau bởi một dòng trống, mỗi ảnh được gắn ngay dưới hiện tượng tương ứng. Ảnh quá nặng hoặc không đúng định dạng JPEG/PNG/GIF được thay bằng bản thu nhỏ khi nhúng vào Docs.</p>
-        <div class="report-options">
-          <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu đã nhập</label>
-          <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng quan sát</label>
-          <label><input type="checkbox" data-report-field="includeExplanation" ${reportForm.includeExplanation ? "checked" : ""}> Giải thích / PTPƯ</label>
-          <label><input type="checkbox" data-report-field="includePhotos" ${reportForm.includePhotos ? "checked" : ""}> Ảnh Drive trong cột hiện tượng</label>
-        </div>
-      </details>
+      <div class="lbl-t">Nội dung</div>
+      <div class="report-options">
+        <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu</label>
+        <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng</label>
+        <label><input type="checkbox" data-report-field="includeExplanation" ${reportForm.includeExplanation ? "checked" : ""}> Giải thích / PTPƯ</label>
+        <label><input type="checkbox" data-report-field="includePhotos" ${reportForm.includePhotos ? "checked" : ""}> Ảnh</label>
+      </div>
       <button type="button" class="btn primary report-submit" data-act="export-report" ${reportBusy || !isDriveConfigured || !state.experiments.length ? "disabled" : ""}>
         ${reportBusy ? "Đang tạo tài liệu…" : "Tạo Google Docs"}
       </button>
-      <button type="button" class="btn report-preview" data-act="preview-report" ${reportBusy || !state.experiments.length ? "disabled" : ""}>Xem trước biểu mẫu</button>
-      ${lastReport ? `<p class="report-result"><span>Đã tạo: ${esc(lastReport.name)}</span><a class="btn primary" href="${esc(lastReport.url)}" target="_blank" rel="noopener noreferrer">Xem báo cáo ↗</a></p>` : ""}
+      <button type="button" class="btn report-preview" data-act="preview-report" ${reportBusy || !state.experiments.length ? "disabled" : ""}>Xem trước</button>
+      ${lastReport ? `<p class="report-result"><span>Đã tạo: ${esc(lastReport.name)}</span><a class="btn primary" href="${esc(lastReport.url)}" target="_blank" rel="noopener noreferrer">Xem báo cáo</a></p>` : ""}
     </div>
 
-    <div class="card"><h3>ℹ️ Về ứng dụng</h3>
-      <p class="small muted">LabMana v2.0 · Đăng nhập ẩn danh (mã thiết bị: <code>${esc((auth?.currentUser?.uid || "").slice(0, 6))}</code>)<br>
-      Thí nghiệm đang mở được lưu trên thiết bị; dữ liệu ghi nhận đồng bộ qua Firestore.</p></div>`;
+    <p class="tiny muted" style="margin-top:24px">LabMana v2.0 · Thiết bị <code>${esc((auth?.currentUser?.uid || "").slice(0, 6))}</code></p>`;
   root.querySelector("#st-names").value = keep;
 }
 
@@ -188,7 +174,7 @@ async function onClick(e) {
     reportForm.peopleEdited = false;
     reportForm.titleEdited = false;
     render();
-    return toast("Đã lấy lại Họ tên - MSSV và tên bài từ dữ liệu hiện có", "success");
+    return toast("Đã lấy lại từ danh sách thành viên", "success");
   }
   if (btn.dataset.act === "rename") {
     const currentId = state.teamIds[name] || "";
@@ -233,7 +219,7 @@ async function exportReport() {
     lastReport = { url: result.url, name: result.name };
     console.info("[LabMana] kết quả tạo báo cáo:", result, "| dữ liệu gửi đi:", report);
     const imageCount = report.steps.reduce((total, step) => total + step.photos.length, 0);
-    const outdated = result.build ? "" : " ⚠ Apps Script đang chạy bản CŨ (chưa có report.gs mới) — hãy Deploy → Manage deployments → New version.";
+    const outdated = result.build ? "" : " Apps Script đang chạy bản CŨ (chưa có report.gs mới) — hãy Deploy → Manage deployments → New version.";
     const detail = result.build
       ? ` Lượt: ${report.runName}. Gửi ${result.photos_received} ảnh, nhúng ${result.photos_embedded}.`
       : "";
@@ -342,7 +328,7 @@ async function previewReport() {
         }
         const url = `https://drive.google.com/thumbnail?id=${encodeURIComponent(photo.file_id)}&sz=w800`;
         const link = `https://drive.google.com/file/d/${encodeURIComponent(photo.file_id)}/view`;
-        const html = `<div class="report-photo"><a href="${link}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${esc(photo.name || "Ảnh hiện tượng")}"></a><a href="${link}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a></div>`;
+        const html = `<div class="report-photo"><a href="${link}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${esc(photo.name || "Ảnh hiện tượng")}"></a><a href="${link}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")}</a></div>`;
         return [photo.code, html];
       }));
       const observed = [step.measurement ? `Số liệu: ${step.measurement}` : "", step.observation].filter(Boolean).join("\n");

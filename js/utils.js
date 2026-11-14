@@ -159,13 +159,13 @@ export function pickName(team) {
   if (!team.length) {
     openModal({
       title: "Chưa có danh sách thành viên",
-      html: "<p>Hãy vào tab <b>⚙️ Cài đặt</b> để thêm tên các thành viên trong nhóm, sau đó quay lại bấm Lưu.</p>",
+      html: "<p>Thêm thành viên ở tab <b>Cài đặt</b>, rồi quay lại bấm Lưu.</p>",
       buttons: [{ label: "Để sau", value: null }, { label: "Mở Cài đặt", kind: "primary", value: "go" }]
     }).then(v => { if (v === "go") $('[data-tab="settings"]')?.click(); });
     return Promise.resolve(null);
   }
   const node = document.createElement("div");
-  node.innerHTML = `<p class="muted small">Ai là người thực hiện bước này?</p><div class="tiles"></div>`;
+  node.innerHTML = `<div class="tiles"></div>`;
   const tiles = node.querySelector(".tiles");
   let selected = "";
   team.forEach(name => {
@@ -190,13 +190,12 @@ export function pickName(team) {
 /** Thẻ thông báo khi Firebase chưa sẵn sàng. */
 export function statusCard(st) {
   const e = st.error;
-  if (!e) return `<div class="empty">⏳ Đang kết nối Firebase…</div>`;
-  if (e === "NOT_CONFIGURED") return `<div class="card"><h3>Chưa cấu hình Firebase</h3>
-    <p>Mở <code>js/firebase.js</code> và dán <code>firebaseConfig</code> của dự án (Firebase Console → Project settings → Your apps → Web). Xem README.md.</p>
-    <p class="muted small">Bartender vẫn dùng được ngoại tuyến.</p></div>`;
-  if (/operation-not-allowed|admin-restricted/.test(e)) return `<div class="card"><h3>Chưa bật đăng nhập ẩn danh</h3>
+  if (!e) return `<div class="empty">Đang kết nối…</div>`;
+  if (e === "NOT_CONFIGURED") return `<div class="notice"><h3>Chưa cấu hình Firebase</h3>
+    <p>Mở <code>js/firebase.js</code> và dán <code>firebaseConfig</code> của dự án. Xem README.md.</p></div>`;
+  if (/operation-not-allowed|admin-restricted/.test(e)) return `<div class="notice"><h3>Chưa bật đăng nhập ẩn danh</h3>
     <p>Firebase Console → Authentication → Sign-in method → bật <b>Anonymous</b>.</p></div>`;
-  if (/permission-denied/.test(e)) return `<div class="card"><h3>Bị từ chối quyền (permission-denied)</h3>
-    <p>Kiểm tra Rules của Firestore (xem <code>firestore.rules</code> trong dự án) và đã bật Anonymous Auth.</p></div>`;
-  return `<div class="card"><h3>Lỗi kết nối</h3><p><code>${esc(e)}</code></p><p class="muted small">Thử tải lại trang.</p></div>`;
+  if (/permission-denied/.test(e)) return `<div class="notice"><h3>Bị từ chối quyền</h3>
+    <p>Kiểm tra Rules của Firestore (<code>firestore.rules</code>) và Anonymous Auth.</p></div>`;
+  return `<div class="notice"><h3>Lỗi kết nối</h3><p><code>${esc(e)}</code></p><p class="muted small">Thử tải lại trang.</p></div>`;
 }

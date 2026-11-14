@@ -11,7 +11,6 @@ let root, raf = 0, selectedByUser = false, selectedSectionId = null, selectedSte
 let curExp = null, curFlow = null, curFlat = [];
 const drafts = {};              // stepId → {value, blob, preview}
 const editing = new Set(), saving = new Set(), uploadingPhoto = new Set();
-const expanded = new Set();
 const openingExperiments = new Set();
 
 export function init(el) {
@@ -26,42 +25,40 @@ export function onShow() {
   selectedByUser = false;
   selectedSectionId = null;
   selectedStepId = null;
-  expanded.clear();
   schedule();
 }
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 
-export async function openProgressTarget(expId, sectionId = null, stepId = null) {
-  const opened = await openExperiment(expId);
-  if (!opened) return;
-  const raw = state.experiments.find(item => item.id === expId);
-  const sections = raw ? normalizeExperiment(raw).sections : [];
-  const targetSection = sections.find(section => section.id === sectionId || section.steps.some(step => step.id === stepId)) || sections[0];
-  selectedSectionId = targetSection?.id || null;
-  expanded.clear();
-  const targetStep = stepId
-    ? targetSection?.steps.find(step => step.id === stepId)
-    : targetSection?.steps.find(step => !state.logs[step.id] && !hasDraftProgress(step.id)) || targetSection?.steps[0];
-  selectedStepId = targetStep?.id || null;
-  if (targetStep) expanded.add(targetStep.id);
+/* ---------- API cho menu Tiến trình ---------- */
+export function isExperimentOpen() { return selectedByUser && !!state.activeRun; }
+export function getSelection() { return { sectionId: selectedSectionId, stepId: selectedStepId }; }
+export function isStepProgressDone(stepId) { return isProgressDone(stepId); }
+
+export function goToProgress(sectionId = null, stepId = null) {
+  if (!curExp) return;
+  const section = curExp.sections.find(sec => sec.id === sectionId || sec.steps.some(step => step.id === stepId)) || curExp.sections[0];
+  selectedSectionId = section?.id || null;
+  const target = stepId
+    ? section?.steps.find(step => step.id === stepId)
+    : section?.steps.find(step => !isProgressDone(step.id)) || section?.steps[0];
+  selectedStepId = target?.id || null;
   render();
   window.dispatchEvent(new CustomEvent("labmana:progress-change"));
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-export function isStepProgressDone(stepId) { return isProgressDone(stepId); }
-
 /* ---------- vẽ ---------- */
 function render() {
+  document.body.classList.toggle("sop-open", !!(state.ready && state.activeRunId && selectedByUser));
   if (!state.ready) { root.innerHTML = statusCard(state); return; }
   const focus = captureFocus();
 
   if (!state.activeRunId || !selectedByUser) { root.innerHTML = startHtml(); return; }
-  if (!state.activeRunLoaded || !state.experimentsLoaded) { root.innerHTML = `<div class="empty">⏳ Đang tải thí nghiệm…</div>`; return; }
+  if (!state.activeRunLoaded || !state.experimentsLoaded) { root.innerHTML = `<div class="empty">Đang tải…</div>`; return; }
   const run = state.activeRun;
-  if (!run) { root.innerHTML = `<div class="empty">Không tìm thấy thí nghiệm đang mở. Hãy chọn lại bên dưới.</div>` + startHtml(); return; }
+  if (!run) { root.innerHTML = `<div class="empty">Không tìm thấy thí nghiệm đang mở.</div>` + startHtml(); return; }
   const raw = state.experiments.find(e => e.id === run.exp_id);
-  if (!raw) { root.innerHTML = `<div class="empty">Kế hoạch này đã bị xóa. Hãy chọn một thí nghiệm khác.</div>` + startHtml(); return; }
+  if (!raw) { root.innerHTML = `<div class="empty">Kế hoạch này đã bị xóa.</div>` + startHtml(); return; }
 
   curExp = normalizeExperiment(raw);
   curFlow = computeFlow(curExp, state.logs);
@@ -76,38 +73,35 @@ function render() {
   if (!selectedStep) {
     selectedStep = sectionFlat.find(f => !isProgressDone(f.step.id)) || sectionFlat[0];
     selectedStepId = selectedStep?.step.id || null;
-    expanded.clear();
-    if (selectedStep) expanded.add(selectedStep.step.id);
   }
   const sectionDone = sectionFlat.filter(f => isProgressDone(f.step.id)).length;
-  let html = `<div class="sop-active-head">
-      <button class="btn sm sop-back" data-act="sop-home" aria-label="Quay lại danh sách bài" title="Quay lại danh sách bài">←</button>
-      <div class="sop-active-title">
-        <h2>${esc(curExp.title || "Bài thí nghiệm")}</h2>
-        ${sectionPickerHtml()}
-      </div>
-    </div>
+  const pct = sectionFlat.length ? Math.round(sectionDone / sectionFlat.length * 100) : 0;
+  let html = `<div class="sop-head"><button type="button" class="link-btn" data-act="sop-home">Danh sách bài</button></div>
+    <h1 class="sop-title">${esc(curExp.title || "Bài thí nghiệm")}</h1>
+    ${sectionTabs()}
     <div class="section-run-head">
-      <h2>TN ${sectionIndex + 1} · ${richHtml(selectedSection.section_name)}</h2>
-      <p class="muted small">${sectionDone}/${sectionFlat.length} bước đã thực hiện</p>
+      <h2>${richHtml(selectedSection.section_name) || `Thí nghiệm ${sectionIndex + 1}`}</h2>
+      <p class="muted small">${sectionDone}/${sectionFlat.length} bước</p>
+      <div class="bar"><span style="width:${pct}%"></span></div>
       ${tocStrip(sectionFlat)}
     </div>`;
-  if (sectionFlat.length && sectionFlat.every(f => state.logs[f.step.id])) html += `<div class="done-banner">🎉 Đã hoàn thành thí nghiệm này!</div>`;
-  if (selectedStep) html += stepAccordion(selectedStep, flowStatus(selectedStep.step.id));
+  if (sectionFlat.length && sectionFlat.every(f => state.logs[f.step.id])) html += `<p class="done-line">Đã hoàn thành thí nghiệm này</p>`;
+  if (selectedStep) html += stepView(selectedStep);
   else html += `<div class="empty">Thí nghiệm này chưa có thao tác.</div>`;
   root.innerHTML = html;
   renderMath(root);
   restoreFocus(focus);
 }
 
-function sectionPickerHtml() {
-  return `<nav class="sop-section-picker" aria-label="Chọn thí nghiệm">
+function sectionTabs() {
+  if (curExp.sections.length < 2) return "";
+  return `<nav class="tabs" aria-label="Chọn thí nghiệm">
     ${curExp.sections.map((section, index) => {
       const steps = curFlat.filter(item => item.sec.id === section.id);
       const done = steps.length > 0 && steps.every(item => isProgressDone(item.step.id));
-      return `<button type="button" class="sop-section-dot ${section.id === selectedSectionId ? "active" : ""} ${done ? "done" : ""}"
-        data-act="select-section" data-section="${esc(section.id)}" aria-label="Thí nghiệm ${index + 1}: ${esc(section.section_name || "Chưa đặt tên")}"
-        aria-pressed="${section.id === selectedSectionId}" title="${esc(section.section_name || `Thí nghiệm ${index + 1}`)}">${index + 1}</button>`;
+      const active = section.id === selectedSectionId;
+      return `<button type="button" class="tab-btn ${active ? "active" : ""} ${done ? "done" : ""}"
+        data-act="select-section" data-section="${esc(section.id)}" aria-pressed="${active}">TN ${index + 1}</button>`;
     }).join("")}
   </nav>`;
 }
@@ -116,7 +110,7 @@ function tocStrip(steps) {
   return `<nav class="toc-strip" aria-label="Chọn thao tác">${steps.map(f => {
     const st = flowStatus(f.step.id);
     const active = f.step.id === selectedStepId;
-    return `<button type="button" class="toc-pip ${st} ${active ? "active" : ""}" data-act="jump" data-step="${f.step.id}" aria-label="Hiện bước ${f.label}" aria-pressed="${active}" title="Bước ${f.label}">${f.label}</button>`;
+    return `<button type="button" class="toc-pip ${st} ${active ? "active" : ""}" data-act="jump" data-step="${f.step.id}" aria-pressed="${active}">${f.label}</button>`;
   }).join("")}</nav>`;
 }
 
@@ -137,13 +131,9 @@ function savedPhotos(log) {
 function driveLinkHtml(fileId) {
   if (!fileId) return "";
   const url = driveFileUrl(fileId);
-  return `<div class="drive-link-panel">
-    <span class="muted small">Link Google Drive</span>
-    <div class="drive-link-row">
-      <a href="${esc(url)}" target="_blank" rel="noopener noreferrer">Mở ảnh ↗</a>
-      <input class="inp drive-link-input" type="text" readonly value="${esc(url)}" aria-label="Link Google Drive của ảnh">
-      <button type="button" class="btn sm" data-act="copy-drive-link" data-link="${esc(url)}">Sao chép</button>
-    </div>
+  return `<div class="drive-link-row">
+    <a class="link-btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer">Mở ảnh</a>
+    <button type="button" class="link-btn" data-act="copy-drive-link" data-link="${esc(url)}">Sao chép link</button>
   </div>`;
 }
 function photoKey(photo) {
@@ -163,37 +153,28 @@ function updateStepProgress(id) {
     pip.classList.toggle("active", selectedStepId === id);
     if (done) pip.classList.remove("current");
   });
-  root.querySelectorAll(".sopstep").forEach(step => {
-    if (step.dataset.step !== id) return;
-    step.classList.toggle("done", done);
-    step.classList.toggle("current", !done && curFlow.status[id] === "current");
-    const dot = step.querySelector(".status-dot");
-    if (dot) {
-      dot.classList.toggle("done", done);
-      if (done) dot.classList.remove("current");
-      dot.textContent = done ? "✓" : curFlat.find(f => f.step.id === id)?.label.split(".").pop() || "";
-    }
-  });
   const sectionSteps = curFlat.filter(f => f.sec.id === selectedSectionId);
   const sectionDoneCount = sectionSteps.filter(f => isProgressDone(f.step.id)).length;
   const summary = root.querySelector(".section-run-head .muted");
-  if (summary) summary.textContent = `${sectionDoneCount}/${sectionSteps.length} bước đã thực hiện`;
-  root.querySelectorAll(".sop-section-dot").forEach(dot => {
-    const steps = curFlat.filter(f => f.sec.id === dot.dataset.section);
-    dot.classList.toggle("done", steps.length > 0 && steps.every(f => isProgressDone(f.step.id)));
+  if (summary) summary.textContent = `${sectionDoneCount}/${sectionSteps.length} bước`;
+  const barFill = root.querySelector(".section-run-head .bar>span");
+  if (barFill) barFill.style.width = `${sectionSteps.length ? Math.round(sectionDoneCount / sectionSteps.length * 100) : 0}%`;
+  root.querySelectorAll(".tab-btn").forEach(tab => {
+    const steps = curFlat.filter(f => f.sec.id === tab.dataset.section);
+    tab.classList.toggle("done", steps.length > 0 && steps.every(f => isProgressDone(f.step.id)));
   });
   window.dispatchEvent(new CustomEvent("labmana:progress-change"));
 }
 
 function startHtml() {
-  if (!state.experimentsLoaded) return `<div class="empty">⏳ Đang tải danh sách bài thí nghiệm…</div>`;
+  if (!state.experimentsLoaded) return `<div class="empty">Đang tải…</div>`;
   if (!state.experiments.length) return `<div class="page-head"><h2>Quy trình</h2></div>
-    <div class="empty">Chưa có bài thí nghiệm đã lên kế hoạch.</div>`;
+    <div class="empty">Chưa có bài thí nghiệm.</div>`;
   return `<div class="page-head"><h2>Quy trình</h2></div>
-    <div class="planned-experiments">${state.experiments.map(raw => {
+    <div class="list">${state.experiments.map(raw => {
       const exp = normalizeExperiment(raw);
-      return `<button type="button" class="card plan-card planned-experiment" data-act="open-experiment" data-exp="${esc(raw.id)}">
-        ${esc(exp.title || "(không tên)")}
+      return `<button type="button" class="row" data-act="open-experiment" data-exp="${esc(raw.id)}">
+        <span class="grow row-title">${esc(exp.title || "(không tên)")}</span><span class="row-end">Mở</span>
       </button>`;
     }).join("")}</div>`;
 }
@@ -203,38 +184,29 @@ function hintFor(step, raw) {
   const v = parseNum(raw);
   if (Number.isNaN(v)) return "";
   const t = resolveBranch(step, { input_data: v });
-  if (!t) return "↪ Gợi ý theo điều kiện: tiếp tục các bước.";
-  if (t === END) return "↪ Gợi ý theo điều kiện: kết thúc phần này.";
+  if (!t) return "Gợi ý: tiếp tục các bước.";
+  if (t === END) return "Gợi ý: kết thúc phần này.";
   const f = curFlat.find(x => x.step.id === t);
-  return f ? `↪ Gợi ý theo điều kiện: ưu tiên bước ${f.label}; các bước khác vẫn có thể mở.` : "";
+  return f ? `Gợi ý: ưu tiên bước ${f.label}.` : "";
 }
 
-function stepAccordion(f, st) {
+function stepView(f) {
   const s = f.step, id = s.id, log = state.logs[id];
-  const isOpen = expanded.has(id);
   const isEdit = editing.has(id);
   const form = !log || isEdit;
-  const role = s.assigned_role ? `Phụ trách: ${esc(s.assigned_role)}` : "";
-  const dotContent = { done: "✓", current: f.label.split(".").pop(), pending: f.label.split(".").pop() }[st];
 
-  let body = "";
-  if (!isOpen) {
-    return `<article class="sopstep ${st}" data-step="${id}">
-      <div class="acc-head" data-act="toggle-acc">
-        <span class="status-dot ${st}">${dotContent}</span>
-        <span class="acc-title">${f.label} · ${richHtml(s.title || s.text)}</span>
-        ${role ? `<span class="acc-role">${role}</span>` : ""}
-        <span class="acc-chev">▾</span>
-      </div></article>`;
-  }
-
-  body = `<div class="step-text">${richHtml(s.text)}</div>` +
+  let body = `<div class="step-meta">
+      <span class="step-label">Bước ${f.label}</span>
+      ${s.assigned_role ? `<span class="step-role">Phụ trách: ${esc(s.assigned_role)}</span>` : ""}
+    </div>
+    ${s.title ? `<h3 class="step-h">${richHtml(s.title)}</h3>` : ""}
+    <div class="step-text">${richHtml(s.text)}</div>` +
     (s.images.length ? `<div>${s.images.map(im => {
       const imageUrl = im.file_id ? driveImageUrl(im.file_id) : im.url;
       return `<img class="thumb" src="${esc(imageUrl)}" data-act="zoom" data-src="${esc(imageUrl)}" alt="">`;
     }).join("")}</div>` : "");
 
-  if (st === "done" && !isEdit && log) {
+  if (log && !isEdit) {
     const target = resolveBranch(s, log);
     const tf = target && target !== END ? curFlat.find(x => x.step.id === target) : null;
     body += `<div class="result-box">
@@ -248,9 +220,9 @@ function stepAccordion(f, st) {
           ${photo.file_id ? driveLinkHtml(photo.file_id) : ""}
         </div>`;
       }).join("")}
-      ${target ? `<div class="muted small">↪ Điều kiện rẽ nhánh: ${target === END ? "kết thúc bài" : tf ? "bước " + tf.label : ""}</div>` : ""}
-      <div class="by">✔ ${esc(log.executed_by_name)} · ${fmtTime(log.timestamp_ms)}</div>
-      <div class="btn-row"><button class="btn sm" data-act="edit">✎ Sửa</button><button class="btn sm" data-act="toggle-acc">Gập lại</button></div></div>`;
+      ${target ? `<div class="muted small">Rẽ nhánh: ${target === END ? "kết thúc bài" : tf ? "bước " + tf.label : ""}</div>` : ""}
+      <div class="by">${esc(log.executed_by_name)} · ${fmtTime(log.timestamp_ms)}</div>
+      <div class="btn-row"><button class="btn sm" data-act="edit">Sửa</button></div></div>`;
   }
 
   if (form) {
@@ -263,16 +235,17 @@ function stepAccordion(f, st) {
     const newPhotos = d.photoItems || [];
     const isSaving = saving.has(id);
     const isUploading = uploadingPhoto.has(id);
+    const pendingUpload = newPhotos.some(photo => !photo.imgMeta && !photo.removed);
     body += `<div class="form">
       ${ri ? `<label class="lbl">${esc(ri.label || "Số liệu")}${ri.unit ? ` (${esc(ri.unit)})` : ""}
         <input class="inp big" data-draft="${id}" data-field="value" type="text" inputmode="${num ? "decimal" : "text"}" autocomplete="off"
-          value="${esc(d.value ?? "")}" placeholder="${num ? "Nhập số…" : "Nhập…"}"></label>
+          value="${esc(d.value ?? "")}" placeholder="${num ? "Nhập số" : "Nhập"}"></label>
         <div class="hint" id="hint-${id}">${esc(hintFor(s, d.value))}</div>` : ""}
 
       ${s.observation?.enabled ? `<label class="lbl">${esc(s.observation.label || "Hiện tượng quan sát thực tế")}
-        <textarea class="inp" rows="2" data-draft="${id}" data-field="observation" placeholder="Mô tả hiện tượng đã quan sát được…">${esc(d.observation ?? (isEdit ? log?.observation_text ?? "" : ""))}</textarea></label>` : ""}
+        <textarea class="inp" rows="2" data-draft="${id}" data-field="observation" placeholder="Mô tả hiện tượng">${esc(d.observation ?? (isEdit ? log?.observation_text ?? "" : ""))}</textarea></label>` : ""}
       ${s.explanation?.enabled ? `<label class="lbl">${esc(s.explanation.label || "Giải thích và PTPƯ minh họa")}
-        <textarea class="inp" rows="2" data-draft="${id}" data-field="explanation" placeholder="Giải thích hiện tượng, viết PTPƯ: $\\ce{...}$">${esc(d.explanation ?? (isEdit ? log?.explanation_text ?? "" : ""))}</textarea></label>` : ""}
+        <textarea class="inp" rows="2" data-draft="${id}" data-field="explanation" placeholder="Giải thích, PTPƯ: $\\ce{...}$">${esc(d.explanation ?? (isEdit ? log?.explanation_text ?? "" : ""))}</textarea></label>` : ""}
 
       <div class="photo-list">
         ${retainedPhotos.map(photo => {
@@ -280,42 +253,34 @@ function stepAccordion(f, st) {
           return `<div class="photo-item saved-photo">
             <img class="thumb" src="${esc(url)}" data-act="zoom" data-src="${esc(url)}" alt="ảnh đã lưu">
             ${photo.file_id ? driveLinkHtml(photo.file_id) : '<span class="muted small">Ảnh đã lưu</span>'}
-            <button type="button" class="btn sm danger" data-act="remove-saved-photo" data-photo-key="${esc(photoKey(photo))}" ${isSaving || isUploading ? "disabled" : ""}>Xóa ảnh</button>
+            <button type="button" class="link-btn danger" data-act="remove-saved-photo" data-photo-key="${esc(photoKey(photo))}" ${isSaving || isUploading ? "disabled" : ""}>Xóa ảnh</button>
           </div>`;
         }).join("")}
         ${newPhotos.map((photo, index) => photo.removed ? "" : `<div class="photo-item">
           <img class="thumb" src="${esc(photo.preview)}" alt="ảnh ${index + 1}">
           ${photo.imgMeta ? (photo.imgMeta.storage_fallback
-            ? '<span class="muted small">Ảnh đã lưu kèm nhật ký ✓</span>'
+            ? '<span class="muted small">Đã lưu kèm nhật ký</span>'
             : driveLinkHtml(photo.imgMeta.file_id))
-            : `<label class="lbl">Tên file trên Drive (không bắt buộc)
-                <input class="inp" data-photo-name="${index}" value="${esc(photo.name || "")}" placeholder="Để trống để dùng tên mặc định">
+            : `<label class="lbl">Tên file trên Drive
+                <input class="inp" data-photo-name="${index}" value="${esc(photo.name || "")}" placeholder="Mặc định">
               </label>
               <button type="button" class="btn sm primary" data-act="upload-photo" data-photo-index="${index}" ${isSaving || isUploading ? "disabled" : ""}>
-                ${isUploading ? '<span class="spin-ring dark"></span> Đang tải…' : "Tải ảnh lên Drive"}
+                ${isUploading ? '<span class="spin-ring"></span>&nbsp;Đang tải' : "Tải lên Drive"}
               </button>`}
-          <button type="button" class="btn sm danger" data-act="remove-new-photo" data-photo-index="${index}" ${isSaving || isUploading ? "disabled" : ""}>Bỏ ảnh</button>
+          <button type="button" class="link-btn danger" data-act="remove-new-photo" data-photo-index="${index}" ${isSaving || isUploading ? "disabled" : ""}>Bỏ ảnh</button>
         </div>`).join("")}
       </div>
-      ${retainedPhotos.some(photo => photo.file_id) ? '<span class="muted small">Ảnh đã lưu trên Drive.</span>' : ""}
       <div class="step-submit-row">
-        <label class="btn photo-action">📷 Chụp / thêm ảnh${s.require_photo ? " · Bắt buộc" : ""}
+        <label class="btn photo-action">Chụp / thêm ảnh${s.require_photo ? " (bắt buộc)" : ""}
           <input type="file" accept="image/*" capture="environment" multiple hidden data-photo="${id}" ${isSaving || isUploading ? "disabled" : ""}></label>
-        <button class="btn primary" data-act="save" ${isSaving || isUploading || newPhotos.some(photo => !photo.imgMeta && !photo.removed) ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "Lưu"}</button>
+        <button class="btn primary" data-act="save" ${isSaving || isUploading || pendingUpload ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "Lưu"}</button>
       </div>
-      ${newPhotos.some(photo => !photo.imgMeta && !photo.removed) ? '<span class="muted small">Tải ảnh mới lên Drive trước khi lưu bước.</span>' : ""}
+      ${pendingUpload ? '<span class="muted small">Tải ảnh lên Drive trước khi lưu.</span>' : ""}
       ${isEdit ? `<button class="btn cancel-edit" data-act="cancel-edit" ${isSaving || isUploading ? "disabled" : ""}>Hủy sửa</button>` : ""}
       </div>`;
   }
 
-  return `<article class="sopstep ${st} expanded" data-step="${id}">
-    <div class="acc-head" data-act="toggle-acc">
-      <span class="status-dot ${st}">${dotContent}</span>
-      <span class="acc-title">${f.label} · ${richHtml(s.title || s.text)}</span>
-      ${role ? `<span class="acc-role">${role}</span>` : ""}
-      <span class="acc-chev">▾</span>
-    </div>
-    <div class="acc-body">${body}</div></article>`;
+  return `<article class="sopstep" data-step="${id}">${body}</article>`;
 }
 
 /* ---------- focus ---------- */
@@ -388,7 +353,7 @@ async function uploadPhoto(id, index) {
     updateStepProgress(id);
     toast(img.storage_fallback
       ? `Drive chưa xác nhận (${img.error || "không rõ lỗi"}). Ảnh được giữ trong nhật ký để lưu bước.`
-      : `Đã tải ảnh ${img.name || "lên Drive"} ✔`, img.storage_fallback ? "warn" : "success", img.storage_fallback ? 12000 : 5000);
+      : `Đã tải ảnh ${img.name || "lên Drive"}`, img.storage_fallback ? "warn" : "success", img.storage_fallback ? 12000 : 5000);
   } catch (err) { console.error(err); toast("Tải ảnh lỗi: " + err.message, "error", 4500); }
   finally { uploadingPhoto.delete(id); render(); }
 }
@@ -396,27 +361,21 @@ async function uploadPhoto(id, index) {
 async function onClick(e) {
   const btn = e.target.closest("[data-act]");
   if (!btn || !root.contains(btn)) return;
-  if (btn.dataset.act === "toggle-acc" && e.target.closest("input, textarea, select")) return;
   const id = btn.closest("[data-step]")?.dataset.step || btn.dataset.step;
   switch (btn.dataset.act) {
     case "save": return save(id);
     case "upload-photo": return uploadPhoto(id, Number(btn.dataset.photoIndex));
     case "copy-drive-link": return copyDriveLink(btn.dataset.link);
-    case "toggle-acc": {
-      expanded.has(id) ? expanded.delete(id) : expanded.add(id);
-      render(); break;
-    }
     case "jump": {
       selectedStepId = id;
-      expanded.clear();
-      expanded.add(id);
       render();
+      window.dispatchEvent(new CustomEvent("labmana:progress-change"));
       window.scrollTo({ top: 0, behavior: "smooth" });
       break;
     }
     case "edit": {
       const log = state.logs[id];
-      editing.add(id); expanded.add(id);
+      editing.add(id);
       drafts[id] = {
         value: log?.input_data != null ? String(log.input_data) : "",
         observation: log?.observation_text || "", explanation: log?.explanation_text || "",
@@ -425,18 +384,7 @@ async function onClick(e) {
       render(); break;
     }
     case "cancel-edit": return cancelEdit(id);
-    case "select-section": {
-      selectedSectionId = btn.dataset.section;
-      expanded.clear();
-      const sectionSteps = curFlat.filter(f => f.sec.id === selectedSectionId);
-      const target = sectionSteps.find(f => !isProgressDone(f.step.id)) || sectionSteps[0];
-      selectedStepId = target?.step.id || null;
-      if (target) expanded.add(target.step.id);
-      render();
-      window.dispatchEvent(new CustomEvent("labmana:progress-change"));
-      window.scrollTo({ top: 0, behavior: "smooth" });
-      break;
-    }
+    case "select-section": return goToProgress(btn.dataset.section);
     case "remove-saved-photo": {
       if (!(await confirmBox("Ảnh sẽ bị gỡ khỏi bản ghi và xóa khỏi Google Drive khi bạn lưu. Tiếp tục?", "Xóa ảnh"))) return;
       const draft = (drafts[id] ||= {});
@@ -460,8 +408,8 @@ async function onClick(e) {
       selectedByUser = false;
       selectedSectionId = null;
       selectedStepId = null;
-      expanded.clear();
       render();
+      window.dispatchEvent(new CustomEvent("labmana:progress-change"));
       break;
     case "csv": return exportCsv();
   }
@@ -483,7 +431,7 @@ async function copyDriveLink(url) {
       input.remove();
       if (!copied) throw new Error("Trình duyệt không cho phép sao chép liên kết.");
     }
-    toast("Đã sao chép link Google Drive ✔", "success");
+    toast("Đã sao chép link", "success");
   } catch (err) {
     console.error(err);
     toast("Không sao chép được link: " + err.message, "error");
@@ -570,10 +518,9 @@ async function save(id) {
     for (const photo of d.photoItems || []) {
       if (photo.removed && photo.imgMeta?.file_id) filesToDelete.add(photo.imgMeta.file_id);
     }
-    clearDraft(id); editing.delete(id); expanded.delete(id);
+    clearDraft(id); editing.delete(id);
     const next = curFlat.find(item => item.sec.id === f.sec.id && item.ti > f.ti && !state.logs[item.step.id] && !hasDraftProgress(item.step.id));
     selectedStepId = next?.step.id || id;
-    if (next) expanded.add(next.step.id);
     let deleteWarning = "";
     for (const fileId of filesToDelete) {
       try { await driveDelete(fileId); }
@@ -582,7 +529,7 @@ async function save(id) {
         deleteWarning = " Bản ghi đã lưu nhưng có ảnh chưa xóa được khỏi Drive.";
       }
     }
-    toast(deleteWarning ? `Đã lưu ✔${deleteWarning}` : "Đã lưu ✔", deleteWarning ? "warn" : "success", 5000);
+    toast(deleteWarning ? `Đã lưu.${deleteWarning}` : "Đã lưu", deleteWarning ? "warn" : "success", 5000);
   } catch (err) {
     console.error(err); toast("Lưu thất bại: " + (err.code || err.message), "error", 4500);
   } finally { saving.delete(id); render(); }
@@ -623,8 +570,6 @@ async function openExperiment(expId) {
     selectedSectionId = firstSection?.id || null;
     const firstStep = firstSection?.steps.find(step => !state.logs[step.id] && !hasDraftProgress(step.id)) || firstSection?.steps[0];
     selectedStepId = firstStep?.id || null;
-    expanded.clear();
-    if (firstStep) expanded.add(firstStep.id);
     setActiveRun(run.id);
     render();
     return true;
@@ -649,6 +594,6 @@ function exportCsv() {
       rows.push([f.label, f.step.title || "", f.step.text.replace(/\s+/g, " "), l.executed_by_name, l.input_data ?? "", l.input_unit || "",
         l.observation_text || "", l.explanation_text || "", savedPhotos(l).map(photo => photo.url || photo.file_id).join(" | "), new Date(l.timestamp_ms).toLocaleString("vi-VN")]);
   });
-  const csv = "\ufeff" + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
+  const csv = "﻿" + rows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\r\n");
   downloadFile(`${(state.activeRun?.name || "luot").replace(/[^\w\-]+/g, "_")}.csv`, csv, "text/csv;charset=utf-8");
 }

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f5f5f7">
-  <title>LabMana</title>
+  <meta name="theme-color" content="#ffffff">
+  <title>LABMANA</title>
 
   <!-- KaTeX + mhchem (công thức & phương trình hóa học) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
@@ -20,13 +20,13 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="dot"></span>LabMana</div>
+    <div class="brand">LABMANA</div>
     <div class="topbar-actions">
-      <button id="progress-menu-toggle" class="progress-menu-toggle" type="button" aria-expanded="false" aria-controls="progress-menu">Tiến trình</button>
+      <button id="progress-menu-toggle" class="link-btn progress-menu-toggle" type="button" aria-expanded="false" aria-controls="progress-menu">Tiến trình</button>
     </div>
   </header>
 
-  <aside id="progress-menu" class="progress-menu" aria-label="Tiến trình thí nghiệm" hidden></aside>
+  <aside id="progress-menu" class="progress-menu" aria-label="Tiến trình" hidden></aside>
   <div id="progress-backdrop" class="progress-backdrop"></div>
   <div id="banner" class="banner hidden"></div>
 
@@ -37,18 +37,18 @@
   </main>
 
   <nav class="bottom-nav" aria-label="Điều hướng chính">
-    <button data-tab="planner"><span>Kế hoạch</span></button>
-    <button data-tab="sop"><span>Quy trình</span></button>
-    <button data-tab="settings"><span>Cài đặt</span></button>
+    <button data-tab="planner">Kế hoạch</button>
+    <button data-tab="sop">Quy trình</button>
+    <button data-tab="settings">Cài đặt</button>
   </nav>
 
-  <!-- Bartender: nút nổi góc màn hình, mở cửa sổ tra cứu nhanh — xem mọi tab -->
-  <button id="calc-fab" class="calc-fab" aria-label="Mở Bartender" title="Bartender">⚗️</button>
+  <!-- Bartender: nút nổi, mở bảng tra cứu nhanh ở mọi tab -->
+  <button id="calc-fab" class="calc-fab" aria-label="Mở Bartender">Pha chế</button>
   <div id="calc-sheet-backdrop" class="calc-sheet-backdrop"></div>
   <div id="calc-sheet" class="calc-sheet" role="dialog" aria-modal="true" aria-label="Bartender">
     <div class="calc-sheet-head">
-      <h3>⚗️ Bartender</h3>
-      <button class="icon-btn" id="calc-sheet-close" aria-label="Đóng">✕</button>
+      <h3>Bartender</h3>
+      <button class="link-btn" id="calc-sheet-close" type="button">Đóng</button>
     </div>
     <div class="calc-sheet-body" id="calc-sheet-body"></div>
   </div>
