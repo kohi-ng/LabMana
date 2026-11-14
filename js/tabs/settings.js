@@ -2,7 +2,7 @@
 import { state, on } from "../store.js";
 import { auth, db } from "../firebase.js";
 import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { esc, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
+import { esc, richHtml, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
 import { driveCreateReport, isDriveConfigured } from "../drive.js";
 import { normalizeExperiment, flatten } from "../plan-logic.js";
 
@@ -272,9 +272,10 @@ async function previewReport() {
         return [photo.code, html];
       }));
       const observed = [step.measurement ? `Số liệu: ${step.measurement}` : "", step.observation].filter(Boolean).join("\n");
-      let observationHtml = esc(observed).replace(/\n/g, "<br>");
+      // Dùng chung bộ chuyển Markdown/LaTeX với SOP: hỗ trợ bảng viết bằng |...|.
+      let observationHtml = richHtml(observed);
       for (const [code, html] of photosByCode) observationHtml = observationHtml.split(esc(code)).join(html);
-      return `<tr><td>${esc(step.section)}</td><td>${esc(step.label)}<br>${esc(step.action).replace(/\n/g, "<br>")}</td><td>${observationHtml}</td><td>${esc(step.explanation).replace(/\n/g, "<br>")}</td></tr>`;
+      return `<tr><td>${esc(step.section)}</td><td>${esc(step.label)}<br>${richHtml(step.action)}</td><td>${observationHtml}</td><td>${richHtml(step.explanation)}</td></tr>`;
     }).join("");
     const peopleHtml = report.people.map(person => `<div>${esc(person.name)} - ${esc(person.studentId)}</div>`).join("");
     const values = {
