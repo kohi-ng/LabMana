@@ -93,13 +93,19 @@ function handleUpload_(req) {
   const id = file.getId();
   console.log("[LabMana] upload: file created; id=" + id + "; setting link permission");
   try {
+    console.log("[LabMana] upload: calling setSharing(ANYONE_WITH_LINK, VIEW)");
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-    if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
-      throw new Error("Drive không xác nhận quyền Anyone with the link.");
+    console.log("[LabMana] upload: setSharing returned; checking effective access");
+    const access = file.getSharingAccess();
+    console.log("[LabMana] upload: getSharingAccess=" + access);
+    if (access !== DriveApp.Access.ANYONE_WITH_LINK) {
+      throw new Error("Drive không xác nhận quyền Anyone with the link; access=" + access);
     }
   } catch (err) {
-    try { file.setTrashed(true); } catch (cleanupErr) { console.error("Không dọn được file upload lỗi " + id + ": " + cleanupErr); }
-    throw new Error("Không thể cấp quyền xem ảnh bằng link. Kiểm tra chính sách chia sẻ Google Workspace: " + String(err));
+    console.error("[LabMana] upload: sharing failed for file " + id + ": " + (err && err.stack || err));
+    // Keep the file for diagnosis/recovery. Do not trash a successfully created upload
+    // merely because public-link sharing is blocked or delayed by account policy.
+    throw new Error("Tạo file thành công nhưng không cấp được quyền xem bằng liên kết. " + String(err));
   }
   console.log("[LabMana] upload: link permission verified; id=" + id);
   return {
