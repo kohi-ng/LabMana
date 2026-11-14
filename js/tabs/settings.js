@@ -3,7 +3,7 @@ import { state, on } from "../store.js";
 import { auth, db } from "../firebase.js";
 import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { esc, richHtml, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
-import { driveCreateReport, isDriveConfigured } from "../drive.js";
+import { driveCreateReport, driveDelete, driveCheck, driveImageUrl, driveFileUrl, driveDownloadUrl, isDriveConfigured } from "../drive.js";
 import { normalizeExperiment, flatten } from "../plan-logic.js";
 
 let root;
@@ -14,6 +14,7 @@ const reportForm = {
   includeMeasurement: true, includeObservation: true, includeExplanation: true, includePhotos: true
 };
 let reportBusy = false, lastReport = null;
+let gallery = { experimentId: "", status: "idle", items: [], error: "", busyId: "" };
 
 export function init(el) {
   root = el;
@@ -36,6 +37,7 @@ function render() {
   const keep = root.querySelector("#st-names")?.value || "";
   const team = state.team;
   if (!reportForm.experimentId && state.experiments.length) reportForm.experimentId = state.experiments[0].id;
+  ensureGallery();
   root.innerHTML = `
     <div class="page-head"><h2>Cài đặt</h2></div>
     <div class="card"><h3>👥 Thành viên nhóm</h3>
@@ -94,6 +96,7 @@ function render() {
         ${reportBusy ? "Đang tạo tài liệu…" : "Tạo Google Docs"}
       </button>
       <button type="button" class="btn report-preview" data-act="preview-report" ${reportBusy || !state.experiments.length ? "disabled" : ""}>Xem trước biểu mẫu</button>
+      ${galleryHtml()}
       ${lastReport ? `<p class="report-result"><span>Đã tạo: ${esc(lastReport.name)}</span><a class="btn primary" href="${esc(lastReport.url)}" target="_blank" rel="noopener noreferrer">Xem báo cáo ↗</a></p>` : ""}
     </div>
 
@@ -107,6 +110,10 @@ function onReportInput(event) {
   const field = event.target.dataset?.reportField;
   if (!field) return;
   reportForm[field] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+  if (field === "experimentId") {
+    gallery.status = "idle";
+    render();
+  }
 }
 
 async function addNames() {
@@ -130,6 +137,9 @@ async function onClick(e) {
   if (btn.dataset.act === "add") return addNames();
   if (btn.dataset.act === "export-report") return exportReport();
   if (btn.dataset.act === "preview-report") return previewReport();
+  if (btn.dataset.act === "refresh-gallery") { gallery.status = "idle"; render(); return; }
+  if (btn.dataset.act === "sync-gallery") return syncMissingImages();
+  if (btn.dataset.act === "del-gallery") return deleteGalleryItem(btn.dataset.key);
   if (btn.dataset.act === "del") {
     if (!(await confirmBox(`Xóa "${name}" khỏi danh sách?`, "Xóa"))) return;
     try { await setDoc(CFG(), { team_members: arrayRemove(name) }, { merge: true }); toast("Đã xóa", "success"); }
@@ -190,6 +200,218 @@ async function exportReport() {
     reportBusy = false;
     render();
   }
+}
+
+
+function ensureGallery() {
+  const id = reportForm.experimentId || "";
+  if (!id) {
+    gallery = { experimentId: "", status: "ready", items: [], error: "", busyId: "" };
+    return;
+  }
+  if (gallery.experimentId === id && gallery.status !== "idle") return;
+  gallery = { experimentId: id, status: "loading", items: [], error: "", busyId: "" };
+  loadGallery(id);
+}
+
+async function loadGallery(id) {
+  try {
+    const raw = state.experiments.find(exp => exp.id === id);
+    if (!raw) throw new Error("Không thấy bài thí nghiệm.");
+    const experiment = normalizeExperiment(raw);
+    const items = [];
+    experiment.sections.forEach((sec, si) => {
+      sec.steps.forEach((step, sti) => {
+        (step.images || []).forEach((im, index) => {
+          const fileId = im.file_id || driveIdFromUrl(im.url);
+          items.push({
+            key: `plan:${step.id}:${index}:${fileId || im.url || ""}`,
+            source: "plan",
+            section: sec.section_name || `Thí nghiệm ${si + 1}`,
+            stepLabel: step.title || `Thao tác ${sti + 1}`,
+            name: im.name || "Ảnh kế hoạch",
+            fileId,
+            url: im.url || "",
+            stepId: step.id
+          });
+        });
+      });
+    });
+    const runsSnapshot = await getDocs(query(collection(db, "runs"), where("exp_id", "==", id)));
+    for (const runDoc of runsSnapshot.docs) {
+      const run = { id: runDoc.id, ...runDoc.data() };
+      const logsSnapshot = await getDocs(query(collection(db, "execution_logs"), where("run_id", "==", run.id)));
+      logsSnapshot.forEach(logDoc => {
+        const log = logDoc.data();
+        const photos = Array.isArray(log.photos) && log.photos.length
+          ? log.photos
+          : (log.photo_file_id || log.photo_url ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: "" }] : []);
+        photos.forEach((photo, index) => {
+          const fileId = photo?.file_id || driveIdFromUrl(photo?.url);
+          items.push({
+            key: `log:${logDoc.id}:${index}:${fileId || photo?.url || ""}`,
+            source: "log",
+            section: "Nhật ký thực hiện",
+            stepLabel: log.step_label || log.step_id || "",
+            name: photo?.name || "Ảnh thực hiện",
+            fileId,
+            url: photo?.url || "",
+            logId: logDoc.id,
+            runName: run.name || run.id
+          });
+        });
+      });
+    }
+    if (gallery.experimentId !== id) return;
+    gallery.status = "ready";
+    gallery.items = items;
+    gallery.error = "";
+    render();
+  } catch (err) {
+    console.error(err);
+    if (gallery.experimentId !== id) return;
+    gallery.status = "error";
+    gallery.error = err.message || String(err);
+    render();
+  }
+}
+
+function galleryHtml() {
+  if (!reportForm.experimentId) return "";
+  const head = `<div class="report-gallery"><h4>Ảnh của bài này</h4>
+    <p class="muted small">Danh sách ảnh kế hoạch và ảnh nhật ký đang gắn với bài. Tải về hoặc xóa. Nếu file đã bị xóa tay trên Drive, bấm Xóa vẫn gỡ id trên Firebase để hết lệch dữ liệu.</p>
+    <div class="report-gallery-actions">
+      <button type="button" class="btn sm" data-act="refresh-gallery">Tải lại danh sách</button>
+      <button type="button" class="btn sm" data-act="sync-gallery" ${gallery.busyId ? "disabled" : ""}>Gỡ ảnh Drive đã mất</button>
+    </div>`;
+  if (gallery.status === "loading") return `${head}<p class="muted small">Đang đọc ảnh…</p></div>`;
+  if (gallery.status === "error") return `${head}<p class="muted small">Không đọc được ảnh: ${esc(gallery.error)}</p></div>`;
+  if (!gallery.items.length) return `${head}<p class="muted small">Bài này chưa có ảnh.</p></div>`;
+  const rows = gallery.items.map(item => {
+    const src = item.fileId ? driveImageUrl(item.fileId) : item.url;
+    const view = item.fileId ? driveFileUrl(item.fileId) : item.url;
+    const down = item.fileId ? driveDownloadUrl(item.fileId) : item.url;
+    const where = [item.section, item.stepLabel, item.runName].filter(Boolean).join(" · ");
+    return `<article class="report-gallery-item">
+      ${src ? `<img src="${esc(src)}" alt="" loading="lazy">` : `<div class="report-gallery-missing">Không xem được</div>`}
+      <div>
+        <b>${esc(item.name || "Ảnh")}</b>
+        <div class="muted small">${esc(where)}${item.fileId ? "" : " · không có file Drive"}</div>
+        <div class="report-gallery-actions">
+          ${down ? `<a class="btn sm" href="${esc(down)}" target="_blank" rel="noopener noreferrer">Tải</a>` : ""}
+          ${view ? `<a class="btn sm" href="${esc(view)}" target="_blank" rel="noopener noreferrer">Mở</a>` : ""}
+          <button type="button" class="btn sm danger" data-act="del-gallery" data-key="${esc(item.key)}" ${gallery.busyId === item.key ? "disabled" : ""}>${gallery.busyId === item.key ? "Đang xóa…" : "Xóa"}</button>
+        </div>
+      </div>
+    </article>`;
+  }).join("");
+  return `${head}${rows}</div>`;
+}
+
+async function deleteGalleryItem(key) {
+  const item = gallery.items.find(entry => entry.key === key);
+  if (!item || gallery.busyId) return;
+  if (!(await confirmBox(`Xóa "${item.name || "ảnh"}"? Bản ghi Firebase sẽ được gỡ dù file Drive đã mất.`, "Xóa ảnh"))) return;
+  gallery.busyId = key;
+  render();
+  try {
+    let missing = false;
+    if (item.fileId) {
+      const result = await driveDelete(item.fileId);
+      missing = !!result?.missing;
+    }
+    if (item.source === "plan") await removePlanImage(item);
+    else await removeLogImage(item);
+    toast(missing ? "Drive không còn file. Đã gỡ id trên Firebase." : "Đã xóa ảnh.", "success", 5000);
+    gallery.status = "idle";
+    gallery.busyId = "";
+    render();
+  } catch (err) {
+    console.error(err);
+    gallery.busyId = "";
+    render();
+    toast("Không xóa được: " + (err.message || err.code || err), "error", 6000);
+  }
+}
+
+async function syncMissingImages() {
+  if (gallery.busyId || gallery.status !== "ready") return;
+  const targets = gallery.items.filter(item => item.fileId);
+  if (!targets.length) return toast("Không có file Drive để đối soát.", "warn");
+  gallery.busyId = "sync";
+  render();
+  try {
+    let removed = 0;
+    let unknown = false;
+    for (const item of targets) {
+      const check = await driveCheck(item.fileId);
+      if (check == null) { unknown = true; break; }
+      if (check.exists) continue;
+      if (item.source === "plan") await removePlanImage(item);
+      else await removeLogImage(item);
+      removed++;
+    }
+    gallery.busyId = "";
+    gallery.status = "idle";
+    render();
+    if (unknown) {
+      toast("Apps Script chưa có lệnh kiểm tra file. Hãy Deploy bản GAS mới (New version). Nút Xóa từng ảnh vẫn gỡ được id đã mất.", "warn", 9000);
+      return;
+    }
+    toast(removed ? `Đã gỡ ${removed} ảnh không còn trên Drive.` : "Mọi ảnh trong danh sách vẫn còn trên Drive.", removed ? "success" : "success", 5000);
+  } catch (err) {
+    console.error(err);
+    gallery.busyId = "";
+    render();
+    toast("Đối soát thất bại: " + (err.message || err), "error", 6000);
+  }
+}
+
+async function removePlanImage(item) {
+  const raw = state.experiments.find(exp => exp.id === reportForm.experimentId);
+  if (!raw) throw new Error("Không thấy bài để cập nhật.");
+  const experiment = normalizeExperiment(raw);
+  let changed = false;
+  for (const sec of experiment.sections) {
+    for (const step of sec.steps) {
+      if (item.stepId && step.id !== item.stepId && item.fileId) {
+        const before = step.images.length;
+        step.images = step.images.filter(im => (im.file_id || driveIdFromUrl(im.url)) !== item.fileId);
+        if (step.images.length !== before) changed = true;
+        continue;
+      }
+      if (step.id !== item.stepId) continue;
+      const before = step.images.length;
+      step.images = step.images.filter(im => {
+        const id = im.file_id || driveIdFromUrl(im.url);
+        if (item.fileId) return id !== item.fileId;
+        return im.url !== item.url;
+      });
+      if (step.images.length !== before) changed = true;
+    }
+  }
+  if (!changed) return;
+  raw.sections = experiment.sections;
+  const { id, ...data } = raw;
+  data.sections = experiment.sections;
+  data.updated_at_ms = Date.now();
+  await setDoc(doc(db, "experiments", reportForm.experimentId), data);
+}
+
+async function removeLogImage(item) {
+  gallery.items = gallery.items.filter(entry => entry.key !== item.key);
+  const siblings = gallery.items.filter(entry => entry.source === "log" && entry.logId === item.logId);
+  const photos = siblings.map(entry => ({
+    file_id: entry.fileId || "",
+    url: entry.url || (entry.fileId ? driveImageUrl(entry.fileId) : ""),
+    name: entry.name || ""
+  }));
+  const primary = photos[0] || null;
+  await setDoc(doc(db, "execution_logs", item.logId), {
+    photos,
+    photo_file_id: primary?.file_id || null,
+    photo_url: primary?.url || null
+  }, { merge: true });
 }
 
 async function collectReportData() {

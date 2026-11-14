@@ -42,6 +42,7 @@ function doPost(e) {
     let result;
     if (req.action === "upload") result = handleUpload_(req);
     else if (req.action === "delete") result = handleDelete_(req);
+    else if (req.action === "check") result = handleCheck_(req);
     else if (req.action === "create_report") result = handleCreateReport_(req.report);
     else result = { ok: false, error: "Hành động không hợp lệ" };
     return json_(result);
@@ -94,13 +95,30 @@ function handleUpload_(req) {
 
 function handleDelete_(req) {
   if (!req.file_id) return { ok: false, error: "Thiếu file_id" };
+  // File đã xóa tay trên Drive vẫn phải trả ok để app gỡ id trên Firestore.
+  let file;
+  try { file = DriveApp.getFileById(req.file_id); }
+  catch (err) { return { ok: true, missing: true }; }
   try {
-    const file = DriveApp.getFileById(req.file_id);
+    if (file.isTrashed()) return { ok: true, missing: true, trashed: true };
     if (!isInRootFolder_(file)) return { ok: false, error: "Ảnh không thuộc thư mục LabMana." };
     file.setTrashed(true);
     return { ok: true };
   } catch (err) {
-    return { ok: false, error: String(err) };
+    const msg = String(err);
+    if (/not found|could not be found|No item/i.test(msg)) return { ok: true, missing: true };
+    return { ok: false, error: msg };
+  }
+}
+
+function handleCheck_(req) {
+  if (!req.file_id) return { ok: false, error: "Thiếu file_id" };
+  try {
+    const file = DriveApp.getFileById(req.file_id);
+    if (file.isTrashed()) return { ok: true, exists: false, trashed: true };
+    return { ok: true, exists: true, name: file.getName(), trashed: false };
+  } catch (err) {
+    return { ok: true, exists: false };
   }
 }
 
