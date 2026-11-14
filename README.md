@@ -22,7 +22,7 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   tên tùy chọn (nếu nhập) và thời gian; link Drive hiển thị dưới ảnh kèm nút sao chép.
   `GAS/code.gs` nhận/xóa ảnh; sau khi đổi mã cần triển khai phiên bản mới của Apps Script Web App.
 - **Xuất báo cáo** trong Cài đặt: nhập danh sách thành viên (mỗi dòng `Họ tên - MSSV`), nhóm,
-  ngày và học kỳ/năm học; chọn bài để xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
+  ngày và học kỳ/năm học; ô **Bài số** in sau “BÀI SỐ:” trong Docs (mặc định là tên bài, bấm vào để sửa). Chọn bài để xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
   Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích, ảnh và sửa
   mẫu ghép cột thao tác bằng `{title}`, `{text}`, `{value}`, `{unit}`. Số bước luôn đứng ở đầu ô,
   nên không đưa `{label}` vào mẫu (sẽ bị bỏ để khỏi in hai lần). Ảnh của mỗi bước

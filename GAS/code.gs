@@ -23,6 +23,8 @@
  *
  * Mỗi lần sửa code.gs, report.gs hoặc math-render.gs: phải Deploy → Manage deployments
  * → ✎ → New version → Deploy lại, nếu không URL cũ vẫn chạy code cũ.
+ * report.gs có gọi UrlFetchApp để lấy ảnh JPEG nhỏ khi file gốc không nhúng được
+ * (HEIC, WebP, ảnh quá nặng). Lần deploy đầu sau thay đổi này hãy chấp thuận quyền mới.
  */
 
 const ROOT_FOLDER_ID = "163F-EZ36tJ7qc9J9NTvIipvQWxOWEtJi";
