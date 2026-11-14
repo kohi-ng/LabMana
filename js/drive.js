@@ -103,28 +103,53 @@ async function driveRequest(payload, { timeoutMs = 90000 } = {}) {
   }
 }
 
+const UPLOAD_ATTEMPTS = 2;
+
+function newUploadId() {
+  try { if (globalThis.crypto?.randomUUID) return crypto.randomUUID(); } catch { /* dùng dự phòng */ }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export async function driveUpload(blob, kind, meta = {}) {
   const prepared = await prepareImageBlob(blob);
   const converted = prepared !== blob && prepared.type === "image/jpeg";
   const { fileName, originalName, ...driveMeta } = meta;
+  let lastError = null;
+  let payload = null;
   try {
-    const result = await driveRequest({
+    payload = {
       action: "upload",
+      upload_id: newUploadId(), // cùng mã cho mọi lần thử lại → server không tạo ảnh trùng
       kind,
       base64: await blobToBase64(prepared),
       mime: prepared.type || "image/jpeg",
       meta: driveMeta,
       file_name: converted ? withJpegExtension(fileName) : (fileName || ""),
       original_name: converted ? (withJpegExtension(originalName) || "anh.jpg") : (originalName || "")
-    });
-    if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
-    if (result.share_error) console.warn("Ảnh đã lưu nhưng không đặt được quyền xem bằng link:", result.share_error);
-    return {
-      file_id: result.file_id,
-      url: result.url || driveImageUrl(result.file_id),
-      name: result.name || ""
     };
   } catch (err) {
+    lastError = err;
+  }
+  if (payload) {
+    for (let attempt = 1; attempt <= UPLOAD_ATTEMPTS; attempt++) {
+      try {
+        const result = await driveRequest(payload);
+        if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
+        if (result.share_error) console.warn("Ảnh đã lưu nhưng không đặt được quyền xem bằng link:", result.share_error);
+        return {
+          file_id: result.file_id,
+          url: result.url || driveImageUrl(result.file_id),
+          name: result.name || ""
+        };
+      } catch (err) {
+        lastError = err;
+        console.warn(`Tải ảnh lên Drive lần ${attempt}/${UPLOAD_ATTEMPTS} lỗi:`, err);
+        if (attempt < UPLOAD_ATTEMPTS) await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+    }
+  }
+  {
+    const err = lastError || new Error("Không tải được ảnh lên Drive.");
     if (kind !== "log") throw err;
     console.warn("Drive chưa xác nhận upload ảnh; giữ ảnh trong nhật ký để không chặn bước:", err);
     return {

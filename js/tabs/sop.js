@@ -387,8 +387,8 @@ async function uploadPhoto(id, index) {
     photo.file = null;
     updateStepProgress(id);
     toast(img.storage_fallback
-      ? "Drive chưa xác nhận; ảnh đã được giữ trong nhật ký để có thể lưu bước."
-      : `Đã tải ảnh ${img.name || "lên Drive"} ✔`, img.storage_fallback ? "warn" : "success", 5000);
+      ? `Drive chưa xác nhận (${img.error || "không rõ lỗi"}). Ảnh được giữ trong nhật ký để lưu bước.`
+      : `Đã tải ảnh ${img.name || "lên Drive"} ✔`, img.storage_fallback ? "warn" : "success", img.storage_fallback ? 12000 : 5000);
   } catch (err) { console.error(err); toast("Tải ảnh lỗi: " + err.message, "error", 4500); }
   finally { uploadingPhoto.delete(id); render(); }
 }

@@ -75,7 +75,24 @@ function doGet(e) {
 }
 
 /* ---------------- Xử lý nghiệp vụ ---------------- */
+function uploadResult_(file, shareError) {
+  const id = file.getId();
+  return { ok: true, file_id: id, name: file.getName(), url: driveImageUrl_(id), share_error: shareError || "" };
+}
+
 function handleUpload_(req) {
+  // Client thử lại cùng upload_id khi không nhận được xác nhận: trả lại file đã tạo thay vì tạo bản trùng.
+  const cache = CacheService.getScriptCache();
+  const uploadKey = req.upload_id ? "up:" + String(req.upload_id).slice(0, 80) : "";
+  if (uploadKey) {
+    const cachedId = cache.get(uploadKey);
+    if (cachedId) {
+      try {
+        const existing = DriveApp.getFileById(cachedId);
+        if (!existing.isTrashed()) return uploadResult_(existing, "");
+      } catch (err) { /* file đã mất: tải lại bình thường */ }
+    }
+  }
   const meta = req.meta || {};
   const folder = getOrCreateSubFolder_(buildFolderPath_(req.kind, meta));
   const bytes = Utilities.base64Decode(req.base64);
@@ -91,14 +108,10 @@ function handleUpload_(req) {
     shareError = String(err);
     console.warn("setSharing lỗi cho " + file.getId() + ": " + shareError);
   }
-  const id = file.getId();
-  return {
-    ok: true,
-    file_id: id,
-    name: file.getName(),
-    url: driveImageUrl_(id),
-    share_error: shareError
-  };
+  if (uploadKey) {
+    try { cache.put(uploadKey, file.getId(), 21600); } catch (err) { /* cache lỗi không được chặn upload */ }
+  }
+  return uploadResult_(file, shareError);
 }
 
 function handleDelete_(req) {
@@ -165,7 +178,12 @@ function getOrCreateSubFolder_(pathParts) {
 
 function getOrCreateChild_(parent, name) {
   const it = parent.getFoldersByName(name);
-  if (it.hasNext()) return it.next();
+  // getFoldersByName có thể trả cả thư mục đã bị xóa (nằm trong thùng rác): bỏ qua chúng,
+  // nếu không ảnh mới sẽ rơi vào thư mục "đã xóa" và coi như mất.
+  while (it.hasNext()) {
+    const folder = it.next();
+    if (!folder.isTrashed()) return folder;
+  }
   return parent.createFolder(name);
 }
 

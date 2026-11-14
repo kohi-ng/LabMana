@@ -8,9 +8,10 @@ import { normalizeExperiment, flatten } from "../plan-logic.js";
 
 let root;
 const CFG = () => doc(db, "config", "lab");
+// Ảnh dự phòng gửi kèm báo cáo: giới hạn ký tự của data URL (Firestore vốn giới hạn 1 MiB/tài liệu).
+const INLINE_PHOTO_MAX_CHARS = 4_000_000;
 const reportForm = {
   peopleText: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
-  experimentLabel: "", experimentLabelEdited: false,
   actionTemplate: "{title}\n{text}",
   includeMeasurement: true, includeObservation: true, includeExplanation: true, includePhotos: true
 };
@@ -37,7 +38,6 @@ function render() {
   const keep = root.querySelector("#st-names")?.value || "";
   const team = state.team;
   if (!reportForm.experimentId && state.experiments.length) reportForm.experimentId = state.experiments[0].id;
-  if (!reportForm.experimentLabelEdited) reportForm.experimentLabel = selectedExperimentTitle();
   root.innerHTML = `
     <div class="page-head"><h2>Cài đặt</h2></div>
     <div class="card"><h3>👥 Thành viên nhóm</h3>
@@ -65,10 +65,6 @@ function render() {
             ${state.experiments.length ? state.experiments.map(exp => `<option value="${esc(exp.id)}" ${reportForm.experimentId === exp.id ? "selected" : ""}>${esc(exp.title || "(không tên)")}</option>`).join("") : '<option value="">Chưa có bài đã lên kế hoạch</option>'}
           </select>
         </label>
-        <label class="lbl">Bài số
-          <input class="inp" data-report-field="experimentLabel" value="${esc(reportForm.experimentLabel)}" placeholder="Tên in sau BÀI SỐ:">
-        </label>
-        <p class="muted small">Trong file Docs vẫn in dòng “BÀI SỐ:” rồi đến tên ở ô này. Bấm vào ô để sửa; đổi bài ở trên thì tên tự về tên bài đó.</p>
         <label class="lbl report-people-label">Họ và tên - MSSV (mỗi người một dòng)
           <textarea class="inp" rows="4" data-report-field="peopleText" placeholder="Phan Văn A - 123&#10;Nguyễn Văn B - 456">${esc(reportForm.peopleText)}</textarea>
         </label>
@@ -84,7 +80,7 @@ function render() {
       </div>
       <details class="report-content-settings" open>
         <summary>Nội dung ghép vào báo cáo</summary>
-        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Số bước luôn in đậm ở đầu ô, không cần chèn lại trong mẫu. Ảnh nằm trong ô hiện tượng của đúng bước. Khi số ảnh bằng số dòng hiện tượng, hoặc bằng số đoạn cách nhau bởi một dòng trống, mỗi ảnh được gắn ngay dưới hiện tượng tương ứng. Ảnh HEIC, WebP hoặc file nặng được nhúng bằng bản JPEG nhỏ.</p>
+        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Số bước luôn in đậm ở đầu ô, không cần chèn lại trong mẫu. Ảnh nằm trong ô hiện tượng của đúng bước. Khi số ảnh bằng số dòng hiện tượng, hoặc bằng số đoạn cách nhau bởi một dòng trống, mỗi ảnh được gắn ngay dưới hiện tượng tương ứng. Ảnh mới được thu về JPEG/PNG/GIF dưới 2 MB để Docs nhúng được; ảnh cũ không đúng định dạng đó chỉ còn link Drive.</p>
         <div class="report-options">
           <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu đã nhập</label>
           <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng quan sát</label>
@@ -113,19 +109,6 @@ function onReportInput(event) {
   const field = event.target.dataset?.reportField;
   if (!field) return;
   reportForm[field] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
-  if (field === "experimentId") {
-    reportForm.experimentLabelEdited = false;
-    reportForm.experimentLabel = selectedExperimentTitle();
-    const input = root.querySelector('[data-report-field="experimentLabel"]');
-    if (input) input.value = reportForm.experimentLabel;
-  } else if (field === "experimentLabel") {
-    reportForm.experimentLabelEdited = true;
-  }
-}
-
-function selectedExperimentTitle() {
-  const exp = state.experiments.find(item => item.id === reportForm.experimentId);
-  return exp?.title || "";
 }
 
 async function addNames() {
@@ -185,13 +168,22 @@ async function exportReport() {
     const report = await collectReportData();
     const result = await driveCreateReport(report);
     lastReport = { url: result.url, name: result.name };
+    console.info("[LabMana] kết quả tạo báo cáo:", result, "| dữ liệu gửi đi:", report);
     const imageCount = report.steps.reduce((total, step) => total + step.photos.length, 0);
-    toast(result.images_skipped
-      ? `Đã tạo báo cáo; ${result.images_skipped} ảnh không thể nhúng, link ảnh vẫn nằm trong tài liệu.`
-      : reportForm.includePhotos && !imageCount
-        ? "Đã tạo Google Docs nhưng nhật ký bài này chưa có ảnh Drive để chèn."
-        : "Đã tạo Google Docs ✔",
-    result.images_skipped || (reportForm.includePhotos && !imageCount) ? "warn" : "success", 6000);
+    const outdated = result.build ? "" : " ⚠ Apps Script đang chạy bản CŨ (chưa có report.gs mới) — hãy Deploy → Manage deployments → New version.";
+    const detail = result.build
+      ? ` Lượt: ${report.runName}. Gửi ${result.photos_received} ảnh, nhúng ${result.photos_embedded}.`
+      : "";
+    const reasons = result.skip_reasons?.length ? ` Lý do: ${result.skip_reasons[0]}` : "";
+    const notOnDrive = (report.inlinePhotos ? ` ${report.inlinePhotos} ảnh chưa lên Drive nhưng được nhúng từ bản lưu trong nhật ký.` : "")
+      + (result.images_skipped_client ? ` ${result.images_skipped_client} ảnh quá lớn/không đọc được nên bị bỏ.` : "");
+    const embedFailed = result.images_skipped_server ? ` ${result.images_skipped_server} ảnh không nhúng được (link Drive vẫn có trong tài liệu).` : "";
+    const noPhotos = reportForm.includePhotos && !imageCount && !result.images_skipped_client;
+    const message = noPhotos
+      ? `Đã tạo Google Docs nhưng lượt "${report.runName}" chưa có ảnh Drive để chèn.${outdated}`
+      : `Đã tạo báo cáo.${detail}${notOnDrive}${embedFailed}${reasons}${outdated}`;
+    const warn = noPhotos || result.images_skipped || !result.build;
+    toast(message, warn ? "warn" : "success", warn ? 15000 : 6000);
   } catch (err) {
     console.error(err);
     toast("Không xuất được báo cáo: " + (err.code || err.message), "error", 6000);
@@ -222,6 +214,7 @@ async function collectReportData() {
   if (!Object.keys(logs).length) throw new Error("Bài này chưa có nội dung báo cáo để xuất.");
 
   const experiment = normalizeExperiment(raw);
+  let droppedPhotos = 0;
   const steps = flatten(experiment).map(item => {
     const log = logs[item.step.id] || {};
     const photos = Array.isArray(log.photos) && log.photos.length
@@ -229,10 +222,16 @@ async function collectReportData() {
       : (log.photo_file_id || log.photo_url ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }] : []);
     const reportPhotos = reportForm.includePhotos ? photos.map((photo, index) => {
       const fileId = photo?.file_id || driveIdFromUrl(photo?.url);
-      if (!fileId) return null;
+      const url = String(photo?.url || "");
       const name = photo?.name || `TN${item.si + 1}_${item.label}_Anh${index + 1}`;
       const code = photoCode(name, item.label, index);
-      return { file_id: fileId, name, code };
+      if (fileId) return { file_id: fileId, name, code };
+      // Ảnh dự phòng (Drive chưa xác nhận lúc tải): gửi kèm nội dung để Apps Script vẫn nhúng được vào Docs.
+      if (url.startsWith("data:image/")) {
+        if (url.length <= INLINE_PHOTO_MAX_CHARS) return { file_id: "", name, code, data_url: url };
+        droppedPhotos++;
+      }
+      return null;
     }).filter(Boolean) : [];
     const observation = reportForm.includeObservation ? log.observation_text || "" : "";
     return {
@@ -252,25 +251,17 @@ async function collectReportData() {
       photos: reportPhotos
     };
   });
-  const imagesSkipped = reportForm.includePhotos
-    ? flatten(experiment).reduce((count, item) => {
-      const log = logs[item.step.id] || {};
-      const photos = Array.isArray(log.photos) && log.photos.length
-        ? log.photos
-        : (log.photo_file_id || log.photo_url ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "" }] : []);
-      return count + photos.filter(photo => {
-        const url = String(photo?.url || "");
-        return !photo?.file_id && !driveIdFromUrl(url) && url.startsWith("data:image/");
-      }).length;
-    }, 0)
-    : 0;
+  const imagesSkipped = droppedPhotos;
+  const inlinePhotos = steps.reduce((total, step) => total + step.photos.filter(photo => photo.data_url).length, 0);
   return {
-    experimentTitle: reportForm.experimentLabel.trim() || experiment.title || "Bài thí nghiệm",
+    experimentTitle: experiment.title || "Bài thí nghiệm",
+    runName: run.name || run.id,
     people,
     group: reportForm.group.trim(),
     date: reportForm.date || localDate(),
     semester: reportForm.semester.trim(),
     imagesSkipped,
+    inlinePhotos,
     steps
   };
 }
@@ -285,6 +276,10 @@ async function previewReport() {
     let template = await response.text();
     const rows = report.steps.map(step => {
       const photosByCode = new Map(step.photos.map(photo => {
+        if (!photo.file_id) {
+          // Ảnh lưu dự phòng trong nhật ký: hiển thị trực tiếp, chưa có link Drive.
+          return [photo.code, `<div class="report-photo"><img src="${photo.data_url}" alt="${esc(photo.name || "Ảnh hiện tượng")}"><span>${esc(photo.name || "Ảnh lưu kèm nhật ký")}</span></div>`];
+        }
         const url = `https://drive.google.com/thumbnail?id=${encodeURIComponent(photo.file_id)}&sz=w800`;
         const link = `https://drive.google.com/file/d/${encodeURIComponent(photo.file_id)}/view`;
         const html = `<div class="report-photo"><a href="${link}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${esc(photo.name || "Ảnh hiện tượng")}"></a><a href="${link}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a></div>`;
