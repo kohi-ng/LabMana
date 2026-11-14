@@ -1,307 +1,320 @@
-// ============ LabMana ChemCalc — Bộ tính pha chế thống nhất, offline ============
-import { esc, renderMath } from "../utils.js";
-import { parseNum } from "../plan-logic.js";
- 
+// ============ LabMana Bartender v2 — trình hướng dẫn pha chế từng bước + quy đổi đơn vị ============
+import { esc, renderMath, toast } from "../utils.js";
+import {
+  CHEMS, KIND_LABEL, EQ_HINTS, UNITS, UNIT_ORDER, MASS_UNITS,
+  fieldPlan, computeMix, computeConvert, safetyItems, fmt
+} from "../chem-logic.js";
+
 /*
- * Quy ước:
- * - M: mol/L; N: eq/L (cần hệ số đương lượng n do người dùng xác định).
- * - % w/w: g chất tan / 100 g dung dịch.
- * - % w/v: g chất tan / 100 mL dung dịch.
- * - Không suy diễn % v/v hoặc molality khi thiếu dữ liệu vật lý cần thiết.
- * - Khối lượng riêng của dung dịch đậm đặc chỉ là giá trị tham khảo, phải thay
- *   bằng số liệu trên nhãn/SDS ở nhiệt độ phù hợp.
+ * Luồng pha chế (mỗi bước chỉ hiện đúng thứ cần cho lựa chọn trước đó):
+ *   1 Hóa chất → 2 Cách pha → 3 Thông số → 4 Kết quả & thao tác
+ * Chế độ Quy đổi: nhập một nồng độ → xem ngay mọi đơn vị còn lại.
+ * Mọi phép tính nằm trong chem-logic.js (thuần, đã kiểm thử).
  */
-const CHEMS = {
-  hcl:       { name:"Axit clohidric", formula:"HCl", mw:36.4609, density:1.19, assay:37, state:"liquid", kind:"acid", refs:"Dung dịch đậm đặc tham khảo: 37% w/w; d≈1,19 g/mL." },
-  h2so4:     { name:"Axit sulfuric", formula:"H₂SO₄", mw:98.079, density:1.84, assay:98, state:"liquid", kind:"acid", refs:"Dung dịch đậm đặc tham khảo: 98% w/w; d≈1,84 g/mL." },
-  hno3:      { name:"Axit nitric", formula:"HNO₃", mw:63.012, density:1.39, assay:65, state:"liquid", kind:"oxidizer", refs:"Dung dịch đậm đặc tham khảo: 65% w/w; d≈1,39 g/mL." },
-  ch3cooh:   { name:"Axit axetic băng", formula:"CH₃COOH", mw:60.052, density:1.049, assay:99.8, state:"liquid", kind:"acid", refs:"Axit axetic băng tham khảo: 99,8% w/w; d≈1,049 g/mL." },
-  nh3:       { name:"Amoniac", formula:"NH₃", mw:17.031, density:0.91, assay:25, state:"liquid", kind:"base", refs:"Dung dịch amoniac tham khảo: 25% w/w; d≈0,91 g/mL." },
-  naoh:      { name:"Natri hydroxide", formula:"NaOH", mw:39.997, purity:98, state:"solid", kind:"base" },
-  koh:       { name:"Kali hydroxide", formula:"KOH", mw:56.106, purity:85, state:"solid", kind:"base", refs:"KOH hút ẩm và hấp thụ CO₂; độ tinh khiết phải theo nhãn." },
-  nacl:      { name:"Natri clorua", formula:"NaCl", mw:58.443, purity:99.5, state:"solid", kind:"salt" },
-  kcl:       { name:"Kali clorua", formula:"KCl", mw:74.551, purity:99.5, state:"solid", kind:"salt" },
-  mgcl2:     { name:"Magie clorua khan", formula:"MgCl₂", mw:95.211, purity:98, state:"solid", kind:"salt" },
-  cacl2:     { name:"Canxi clorua khan", formula:"CaCl₂", mw:110.98, purity:96, state:"solid", kind:"salt", refs:"CaCl₂ hút ẩm mạnh; nếu dùng dạng ngậm nước phải chọn đúng công thức." },
-  bacl2_2h2o:{ name:"Bari clorua dihydrate", formula:"BaCl₂·2H₂O", mw:244.263, purity:99, state:"solid", kind:"toxic", refs:"Muối bari độc; tránh phát tán bụi và thu gom chất thải riêng." },
-  al2so4_18: { name:"Nhôm sulfate octadecahydrate", formula:"Al₂(SO₄)₃·18H₂O", mw:666.425, purity:98, state:"solid", kind:"salt", refs:"Dạng ngậm nước được nêu trong giáo trình (phèn nhôm kali)." },
-  cuso4_5:   { name:"Đồng(II) sulfate pentahydrate", formula:"CuSO₄·5H₂O", mw:249.685, purity:99, state:"solid", kind:"toxic", refs:"Dạng ngậm nước được nêu trong giáo trình điều chế phức đồng-amoniac." },
-  feso4_7:   { name:"Sắt(II) sulfate heptahydrate", formula:"FeSO₄·7H₂O", mw:278.01, purity:98, state:"solid", kind:"salt" },
-  mohr:      { name:"Muối Mohr", formula:"(NH₄)₂Fe(SO₄)₂·6H₂O", mw:392.14, purity:99, state:"solid", kind:"salt" },
-  mnso4_h2o: { name:"Mangan(II) sulfate monohydrate", formula:"MnSO₄·H₂O", mw:169.02, purity:98, state:"solid", kind:"salt" },
-  znso4_7:   { name:"Kẽm sulfate heptahydrate", formula:"ZnSO₄·7H₂O", mw:287.54, purity:99, state:"solid", kind:"salt" },
-  sncl2_2:   { name:"Thiếc(II) clorua dihydrate", formula:"SnCl₂·2H₂O", mw:225.63, purity:98, state:"solid", kind:"salt" },
-  na2co3:    { name:"Natri carbonate khan", formula:"Na₂CO₃", mw:105.988, purity:99, state:"solid", kind:"salt" },
-  na2co3_10: { name:"Natri carbonate decahydrate", formula:"Na₂CO₃·10H₂O", mw:286.14, purity:99, state:"solid", kind:"salt" },
-  na2so4:    { name:"Natri sulfate khan", formula:"Na₂SO₄", mw:142.04, purity:99, state:"solid", kind:"salt" },
-  na2s2o3_5: { name:"Natri thiosulfate pentahydrate", formula:"Na₂S₂O₃·5H₂O", mw:248.18, purity:99, state:"solid", kind:"salt", refs:"Dạng ngậm nước xuất hiện trong phần điều chế thiosulfate của giáo trình." },
-  k2cr2o7:   { name:"Kali dichromate", formula:"K₂Cr₂O₇", mw:294.185, purity:99.5, state:"solid", kind:"toxic", refs:"Hợp chất Cr(VI) độc, gây ung thư; chỉ thao tác theo SOP và thu gom riêng." },
-  kmno4:     { name:"Kali permanganate", formula:"KMnO₄", mw:158.034, purity:99, state:"solid", kind:"oxidizer" },
-  ki:        { name:"Kali iodide", formula:"KI", mw:166.003, purity:99, state:"solid", kind:"salt" },
-  kbr:       { name:"Kali bromide", formula:"KBr", mw:119.002, purity:99, state:"solid", kind:"salt" },
-  agno3:     { name:"Bạc nitrate", formula:"AgNO₃", mw:169.873, purity:99.5, state:"solid", kind:"oxidizer" },
-  h2c2o4_2:  { name:"Axit oxalic dihydrate", formula:"H₂C₂O₄·2H₂O", mw:126.065, purity:99, state:"solid", kind:"toxic" },
-  nh4cl:     { name:"Amoni clorua", formula:"NH₄Cl", mw:53.491, purity:99, state:"solid", kind:"salt" },
-  crcl3_6:   { name:"Crom(III) clorua hexahydrate", formula:"CrCl₃·6H₂O", mw:266.45, purity:98, state:"solid", kind:"toxic" },
-  fecl3_6:   { name:"Sắt(III) clorua hexahydrate", formula:"FeCl₃·6H₂O", mw:270.30, purity:98, state:"solid", kind:"salt" },
-  niso4_6:   { name:"Niken(II) sulfate hexahydrate", formula:"NiSO₄·6H₂O", mw:262.85, purity:98, state:"solid", kind:"toxic" },
-  cocl2_6:   { name:"Coban(II) clorua hexahydrate", formula:"CoCl₂·6H₂O", mw:237.93, purity:98, state:"solid", kind:"toxic" },
-  pbno3_2:   { name:"Chì(II) nitrate", formula:"Pb(NO₃)₂", mw:331.21, purity:99, state:"solid", kind:"toxic" },
-  k2cro4:    { name:"Kali chromate", formula:"K₂CrO₄", mw:194.19, purity:99, state:"solid", kind:"toxic" },
-  k2so4:     { name:"Kali sulfate", formula:"K₂SO₄", mw:174.259, purity:99, state:"solid", kind:"salt" },
-  na2s:      { name:"Natri sulfide khan", formula:"Na₂S", mw:78.045, purity:98, state:"solid", kind:"toxic" },
-  h2o2:      { name:"Hydrogen peroxide", formula:"H₂O₂", mw:34.015, density:1.11, assay:30, state:"liquid", kind:"oxidizer", refs:"Dung dịch H₂O₂ 30% tham khảo; cần đối chiếu assay và khối lượng riêng trên nhãn." },
-  na2sio3_9: { name:"Natri metasilicate nonahydrate", formula:"Na₂SiO₃·9H₂O", mw:284.20, purity:98, state:"solid", kind:"salt" },
-  custom:    { name:"Hóa chất tự nhập", formula:"", mw:null, purity:100, state:"solid", kind:"unknown" }
+
+const POPULAR = ["hcl", "h2so4", "hno3", "naoh", "nh3", "ch3cooh", "nacl", "kmno4"];
+const STEPS = [["1", "Hóa chất"], ["2", "Cách pha"], ["3", "Thông số"], ["4", "Kết quả"]];
+const NEED_SHORT = { mw: "nhập M (g/mol)", n: "nhập n", d: "nhập d" };
+
+const SUB = "₀₁₂₃₄₅₆₇₈₉";
+const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "")
+  .replace(/đ/g, "d").replace(/[₀-₉]/g, c => String(SUB.indexOf(c))).replace(/[^a-z0-9]/g, "");
+// Gõ kiểu tiếng Việt quen thuộc (sunfat, sunphat, clorua…) vẫn khớp tên trong danh sách
+const alias = t => t.replace(/sunfat|sunphat|sulphat|sulfat/g, "sulfat").replace(/hidroxit|hydroxit|hidroxid/g, "hydroxide").replace(/cacbonat|cacbonate|carbonat/g, "carbonate").replace(/nitrat/g, "nitrate");
+const matches = (id, q) => {
+  const tokens = String(q).trim().split(/\s+/).map(t => alias(norm(t))).filter(Boolean);
+  return tokens.every(t => SEARCH_ALIASED[id].includes(t));
 };
- 
-const SAFETY = {
-  acid: ["Rót từ từ axit vào nước, không rót nước vào axit. Khuấy và kiểm soát nhiệt."],
-  oxidizer: ["Chất oxy hóa: tránh tiếp xúc chất hữu cơ, chất khử và vật liệu dễ cháy; dùng dụng cụ tương thích."],
-  base: ["Kiềm ăn mòn. Khi hòa tan chất rắn, cho từ từ hóa chất vào nước; quá trình có thể tỏa nhiệt mạnh."],
-  toxic: ["Hóa chất độc: hạn chế lượng thao tác, tránh bụi/giọt bắn, làm việc theo SOP và thu gom chất thải chuyên biệt."]
+const SEARCH = Object.fromEntries(Object.entries(CHEMS).map(([id, x]) => [id, norm(`${x.formula} ${x.name} ${id} ${KIND_LABEL[x.kind]}`)]));
+const SEARCH_ALIASED = Object.fromEntries(Object.entries(SEARCH).map(([id, t]) => [id, alias(t)]));
+
+const S = {
+  mode: "mix", step: 1, chem: null, method: null,
+  stockUnit: "M", targetUnit: "M",
+  v: {}, scale: { vol: "mL", mass: "g" }, q: "",
+  conv: { from: "M", chem: null, pick: false, v: { value: "", mw: "", d: "", n: "" } }
 };
- 
-let root, chem = "h2so4", sourceType = "ww", targetType = "M", sourcePreset = true;
-const vals = Object.create(null);
- 
+let root;
+
 export function init(el) {
   root = el;
+  root.addEventListener("click", e => {
+    const b = e.target.closest("[data-act]");
+    if (b && !b.disabled) act(b.dataset.act, b.dataset.val);
+  });
   root.addEventListener("input", e => {
-    if (e.target.id === "cc-search") { filterChemicals(e.target.value); return; }
-    if (e.target.matches("[data-k]")) vals[e.target.dataset.k] = e.target.value;
-    compute();
+    const t = e.target;
+    if (t.id === "bt-search") {
+      S.q = t.value;
+      const box = root.querySelector("#bt-chemlist-wrap");
+      if (box) box.innerHTML = chemListHtml(S.mode === "conv" ? "convChem" : "pickChem", S.q);
+    } else if (t.dataset.v !== undefined) { S.v[t.dataset.v] = t.value; refreshLive(); }
+    else if (t.dataset.c !== undefined) { S.conv.v[t.dataset.c] = t.value; refreshConv(); }
   });
   root.addEventListener("change", e => {
-    if (e.target.id === "cc-chem") { chem = e.target.value; resetChemicalFields(); render(); }
-    if (e.target.id === "cc-source-type") { sourceType = e.target.value; delete vals.source; delete vals.factor; render(); }
-    if (e.target.id === "cc-target-type") { targetType = e.target.value; delete vals.target; render(); }
+    const t = e.target;
+    if (t.dataset.sc) { S.scale[t.dataset.sc] = t.value; refreshLive(); }
   });
-  render();
+  root.addEventListener("keydown", e => {
+    if (e.key === "Enter" && e.target.matches?.("[data-v]")) {
+      const nb = root.querySelector("#bt-next");
+      if (nb && !nb.disabled) nb.click();
+    }
+  });
+  render({ top: true });
 }
 export function onShow() {}
- 
-function resetChemicalFields() {
-  ["mw","purity","density","source","target","volume","mass","factor"].forEach(k => delete vals[k]);
-  sourcePreset = true;
+
+/* ------------------------------ Hành động ------------------------------ */
+function act(a, val) {
+  const x = CHEMS[S.chem];
+  switch (a) {
+    case "mode": S.mode = val; S.q = ""; render({ top: true }); break;
+    case "goStep": S.step = +val; render({ top: true }); break;
+    case "pickChem": pickChem(val); break;
+    case "pickMethod":
+      S.method = val;
+      if (val === "dilute" && x?.state === "solid") { S.stockUnit = "M"; S.v.stock = ""; }
+      S.step = 3; render({ top: true }); break;
+    case "stockUnit":
+      S.stockUnit = val;
+      S.v.stock = val === "ww" && x?.assay ? String(x.assay) : "";
+      if (val === "ww" && x?.density && !S.v.density) S.v.density = String(x.density);
+      render(); break;
+    case "targetUnit": {
+      const was = MASS_UNITS.has(S.targetUnit), now = MASS_UNITS.has(val);
+      S.targetUnit = val; S.v.target = "";
+      if (was !== now) S.v.amount = "";
+      render(); break;
+    }
+    case "nHint": S.v.n = val; render(); break;
+    case "next": S.step = 4; render({ top: true }); break;
+    case "back": S.step = x?.state === "liquid" ? 1 : 2; render({ top: true }); break;
+    case "reset":
+      Object.assign(S, { step: 1, chem: null, method: null, stockUnit: "M", targetUnit: "M", v: {}, q: "", scale: { vol: "mL", mass: "g" } });
+      render({ top: true }); break;
+    case "convUnit": S.conv.from = val; S.conv.v.value = ""; render(); break;
+    case "convPick": S.conv.pick = !S.conv.pick; S.q = ""; render(); break;
+    case "convChem": {
+      const c = CHEMS[val];
+      S.conv.chem = val; S.conv.pick = false; S.q = "";
+      S.conv.v.mw = c.mw ? String(c.mw) : "";
+      render(); break;
+    }
+    case "convPreset": {
+      const c = CHEMS[S.conv.chem];
+      if (c?.assay) { S.conv.from = "ww"; S.conv.v.value = String(c.assay); S.conv.v.d = String(c.density); }
+      render(); break;
+    }
+    case "copy":
+      try { navigator.clipboard?.writeText(val).then(() => toast(`Đã sao chép ${val}`, "success", 1400)).catch(() => {}); } catch { /* ignore */ }
+      break;
+  }
 }
-const c = () => CHEMS[chem] || CHEMS.custom;
-const n = k => {
-  const raw = String(vals[k] ?? "").trim();
-  if (!raw) return null;
-  const x = parseNum(raw);
-  return Number.isFinite(x) ? x : NaN;
-};
-const val = (k, fallback = "") => esc(vals[k] ?? fallback);
-const f = (k, label, unit, placeholder = "", fallback = "") => `
-  <label class="lbl">${label}<div class="inp-unit">
-    <input class="inp" data-k="${k}" inputmode="decimal" autocomplete="off" value="${val(k, fallback)}" placeholder="${placeholder}">
-    <span class="unit">${unit}</span></div></label>`;
-const select = (id, label, options, selected) => `<label class="lbl">${label}<select class="inp" id="${id}">${options.map(([v,t]) => `<option value="${v}" ${v===selected?"selected":""}>${t}</option>`).join("")}</select></label>`;
-const optionsSource = [["M","M (mol/L)"],["N","N (eq/L)"],["ww","% khối lượng (w/w)"],["wv","% khối lượng/thể tích (w/v)"]];
-const optionsTarget = [["M","M (mol/L)"],["N","N (eq/L)"],["ww","% khối lượng (w/w)"],["wv","% khối lượng/thể tích (w/v)"]];
- 
-function chemicalOptions() {
-  return Object.entries(CHEMS).map(([id,x]) => `<option value="${id}" ${id===chem?"selected":""}>${x.formula ? x.formula+" — " : ""}${x.name}</option>`).join("");
+
+function pickChem(id) {
+  const x = CHEMS[id];
+  S.chem = id; S.q = "";
+  S.v = { mw: x.mw ? String(x.mw) : "", purity: x.purity ? String(x.purity) : "" };
+  if (x.state === "liquid") {            // Chất lỏng chỉ pha loãng → bỏ qua bước 2
+    S.method = "dilute"; S.stockUnit = "ww";
+    S.v.stock = String(x.assay); S.v.density = String(x.density);
+    S.step = 3;
+  } else {
+    S.method = null; S.stockUnit = "M"; S.step = 2;
+  }
+  render({ top: true });
 }
-function filterChemicals(q) {
-  const s = q.trim().toLocaleLowerCase("vi");
-  const sel = root.querySelector("#cc-chem");
-  if (!sel) return;
-  [...sel.options].forEach(o => { o.hidden = !!s && !o.text.toLocaleLowerCase("vi").includes(s); });
-  const current = [...sel.options].find(o => o.value === chem);
-  if (current && current.hidden) current.selected = false;
-}
-function render() {
-  const x = c();
-  const defaultSource = sourceType === "ww" ? (x.assay ?? "") : sourceType === "M" ? "" : "";
-  const defaultPurity = x.purity ?? 99;
-  const solid = x.state === "solid";
-  root.innerHTML = `
-    <div class="card">
-      <label class="lbl">Tìm hóa chất<input class="inp" id="cc-search" placeholder="Tên hoặc công thức: H₂SO₄, CuSO₄·5H₂O..."></label>
-      <label class="lbl">Hóa chất<select class="inp" id="cc-chem">${chemicalOptions()}</select></label>
-      <div class="muted small">${esc(x.refs || (solid ? "Chọn đúng dạng khan/ngậm nước và độ tinh khiết theo chai hóa chất." : "Thông số tham khảo; luôn xác nhận nồng độ và khối lượng riêng trên nhãn/SDS."))}</div>
-    </div>
-    <div class="card">
-      <h3>1. Dung dịch ban đầu</h3>
-      ${select("cc-source-type","Đơn vị nồng độ ban đầu",optionsSource,sourceType)}
-      <div class="grid2">
-        ${f("source","Nồng độ ban đầu",sourceType==="M"?"mol/L":sourceType==="N"?"eq/L": "%", "Ví dụ: 98", solid?"":defaultSource)}
-        ${f("mw","Khối lượng mol M","g/mol","Ví dụ: 98.079",x.mw ?? "")}
-      </div>
-      <div class="grid2">
-        ${f("density","Khối lượng riêng dung dịch gốc","g/mL","Cần cho % w/w ↔ M",x.density ?? "")}
-        ${f("purity","Độ tinh khiết chất rắn (khi cân)","%","Theo nhãn hóa chất",x.purity ?? 100)}
-      </div>
-      ${(sourceType==="N" || targetType==="N") ? f("factor","Hệ số đương lượng n","eq/mol","Bắt buộc khi dùng N","") : ""}
-      <p class="muted small">${solid ? "Hóa chất đang chọn là chất rắn. Chọn “Pha từ chất rắn” ở phần cách pha bên dưới nếu cân trực tiếp." : "Với dung dịch % w/w, cần khối lượng riêng để quy đổi sang mol/L hoặc tính theo thể tích."}</p>
-    </div>
-    <div class="card">
-      <h3>2. Dung dịch cần pha</h3>
-      ${select("cc-target-type","Đơn vị nồng độ đích",optionsTarget,targetType)}
-      <div class="grid2">
-        ${f("target","Nồng độ đích",targetType==="M"?"mol/L":targetType==="N"?"eq/L":"%", "Ví dụ: 0.1")}
-        ${targetType==="ww" ? f("mass","Khối lượng dung dịch cuối","g","Ví dụ: 250") : f("volume","Thể tích dung dịch cuối","mL","Ví dụ: 250")}
-      </div>
-    </div>
-    <div class="card">
-      <h3>3. Cách pha</h3>
-      <label class="check"><input type="radio" name="cc-method" value="solution" ${x.state==="liquid"?"checked":""}> Pha loãng từ dung dịch ban đầu</label>
-      <label class="check"><input type="radio" name="cc-method" value="solid" ${x.state==="solid"?"checked":""}> Cân chất rắn rồi hòa tan</label>
-      <p class="muted small">Khi chọn chất rắn, dùng đúng công thức hydrate hiển thị và khối lượng mol tương ứng.</p>
-    </div>
-    <div id="cc-result"></div>
-    <div id="cc-guide"></div>
-    <div class="card">
-      <h3>Cách sử dụng và quy ước tính</h3>
-      <ol class="small">
-        <li>Chọn đúng hóa chất và đúng dạng khan/ngậm nước. Khối lượng mol phải ứng với công thức đang cân.</li>
-        <li>Chọn đơn vị nồng độ của dung dịch gốc, nhập nồng độ thực tế trên nhãn; với % w/w phải nhập khối lượng riêng.</li>
-        <li>Chọn đơn vị nồng độ đích và nhập thể tích cuối hoặc khối lượng cuối theo yêu cầu.</li>
-        <li>Chọn “Cân chất rắn” nếu pha trực tiếp từ hóa chất rắn. Phần mềm tự hiệu chỉnh theo độ tinh khiết.</li>
-      </ol>
-      <p class="small"><b>Quy ước:</b> % w/w = g chất tan/100 g dung dịch; % w/v = g chất tan/100 mL dung dịch; M = mol/L; N = đương lượng/L.</p>
-      <p class="small"><b>Lưu ý quy đổi:</b> M ↔ % w/w cần khối lượng riêng dung dịch; % w/v ↔ M cần khối lượng mol; N cần hệ số đương lượng theo phản ứng. Không có đủ dữ liệu thì không tự ước lượng.</p>
-      <p class="small"><b>Độ chính xác:</b> kết quả là giá trị lý thuyết theo dữ liệu nhập. Dùng bình định mức để định thể tích; không cộng trừ thể tích dung môi một cách máy móc.</p>
-    </div>
-    ${safetyHtml()}`;
-  // Persist the current selection after rebuilding the controls.
-  root.querySelector("#cc-chem").value = chem;
-  root.querySelector("#cc-source-type").value = sourceType;
-  root.querySelector("#cc-target-type").value = targetType;
-  root.querySelectorAll("[data-k]").forEach(i => i.addEventListener("input", () => { vals[i.dataset.k] = i.value; compute(); }));
-  root.querySelectorAll('input[name="cc-method"]').forEach(i => i.addEventListener("change", compute));
+
+/* ------------------------------ Dựng giao diện ------------------------------ */
+const mixInput = () => ({
+  chem: S.chem, method: S.method, stockUnit: S.stockUnit, targetUnit: S.targetUnit, v: S.v, scale: S.scale
+});
+
+function render({ top = false } = {}) {
+  const st = root.scrollTop;
+  root.innerHTML = `<div class="bt">${modesHtml()}${S.mode === "mix" ? mixHtml() : convHtml()}</div>`;
+  root.scrollTop = top ? 0 : st;
+  if (S.mode === "mix" && S.step === 3) refreshLive();
+  if (S.mode === "conv") refreshConv();
   renderMath(root);
-  compute();
 }
- 
-function fmt(x, digits=5) {
-  if (!Number.isFinite(x)) return "—";
-  return Number(x.toPrecision(digits)).toLocaleString("vi-VN", {maximumSignificantDigits:digits});
+
+const modesHtml = () => `<div class="bt-modes" role="tablist">
+  <button type="button" role="tab" class="${S.mode === "mix" ? "on" : ""}" data-act="mode" data-val="mix">⚗️ Pha chế</button>
+  <button type="button" role="tab" class="${S.mode === "conv" ? "on" : ""}" data-act="mode" data-val="conv">🔁 Quy đổi đơn vị</button></div>`;
+
+/* ---------- Chọn hóa chất (dùng chung cho Pha chế và Quy đổi) ---------- */
+function chemListHtml(actName, q) {
+  const qn = norm(q);
+  let ids = Object.keys(CHEMS).filter(id => !qn || matches(id, q));
+  if (!ids.length) ids = ["custom"];
+  const cur = actName === "convChem" ? S.conv.chem : S.chem;
+  const row = id => {
+    const x = CHEMS[id];
+    return `<button type="button" class="bt-chem ${id === cur ? "on" : ""}" data-act="${actName}" data-val="${id}">
+      <span class="bt-chem-f">${esc(x.formula || "＋")}</span>
+      <span class="bt-chem-n">${esc(x.name)}<small>${x.state === "liquid" ? "dung dịch / lỏng" : "chất rắn"}</small></span>
+      <span class="bt-tag ${x.kind}">${KIND_LABEL[x.kind]}</span></button>`;
+  };
+  const quick = !qn ? `<div class="bt-sub">Hay dùng</div><div class="bt-quick">${POPULAR.map(id =>
+    `<button type="button" class="bt-qchip" data-act="${actName}" data-val="${id}">${esc(CHEMS[id].formula)}</button>`).join("")}</div>
+    <div class="bt-sub">Tất cả hóa chất</div>` : "";
+  return `${quick}<div class="bt-chemlist">${ids.map(row).join("")}</div>`;
 }
-function rows(items) {
-  return `<div class="result">${items.map(([label,value,unit]) => `<div class="res-row"><span>${label}</span><b>${fmt(value)} ${unit||""}</b></div>`).join("")}</div>`;
+const searchHtml = actName => `<input class="inp" id="bt-search" type="search" autocomplete="off" placeholder="Gõ tên hoặc công thức: H2SO4, đồng sunfat, NaOH…" value="${esc(S.q)}">
+  <div id="bt-chemlist-wrap">${chemListHtml(actName, S.q)}</div>`;
+
+/* ---------- Chế độ Pha chế ---------- */
+function maxStep() {
+  if (!S.chem) return 1;
+  if (!S.method) return 2;
+  return computeMix(mixInput()).status === "ok" ? 4 : 3;
 }
-function error(t) { return `<div class="result error">${t}</div>`; }
-function info(t) { return `<div class="result info">${t}</div>`; }
-function method() { return root.querySelector('input[name="cc-method"]:checked')?.value || "solution"; }
- 
-function compute() {
-  if (!root?.querySelector("#cc-result")) return;
-  root.querySelectorAll("[data-k]").forEach(i => { vals[i.dataset.k] = i.value; });
-  const result = root.querySelector("#cc-result");
-  const guide = root.querySelector("#cc-guide");
-  const chemical = c();
-  const mw = n("mw") ?? chemical.mw;
-  const purity = n("purity") ?? chemical.purity ?? 100;
-  const target = n("target");
-  const isSolid = method() === "solid";
-  const volume = n("volume");
-  const finalMass = n("mass");
-  if (isSolid && chemical.state === "liquid") { result.innerHTML = error("Hóa chất đang chọn là dung dịch/lỏng; hãy chọn “Pha loãng từ dung dịch ban đầu” hoặc chọn chất rắn phù hợp."); guide.innerHTML = ""; return; }
-  if (!(mw > 0)) { result.innerHTML = info("Nhập khối lượng mol của chất tan để tính."); guide.innerHTML = ""; return; }
-  if (!(target > 0)) { result.innerHTML = info("Nhập nồng độ đích để xem kết quả."); guide.innerHTML = ""; return; }
-  if (purity <= 0 || purity > 100) { result.innerHTML = error("Độ tinh khiết phải lớn hơn 0 và không vượt quá 100%."); return; }
- 
-  if (isSolid) {
-    if (targetType === "ww") {
-      if (!(finalMass > 0)) { result.innerHTML = info("Nhập khối lượng dung dịch cuối (g)."); return; }
-      const solute = finalMass * target / 100;
-      const weigh = solute * 100 / purity;
-      if (weigh > finalMass) { result.innerHTML = error("Khối lượng chất rắn cần cân vượt khối lượng dung dịch cuối."); return; }
-      result.innerHTML = rows([["Khối lượng chất tan tinh khiết cần có",solute,"g"],["Khối lượng chất rắn cần cân (đã hiệu chỉnh độ tinh khiết)",weigh,"g"],["Khối lượng nước/dung môi cần thêm (xấp xỉ)",finalMass-weigh,"g"]]);
-      guide.innerHTML = guideHtml(`Cân ${fmt(weigh)} g ${chemical.formula || chemical.name}. Hòa tan trong một phần dung môi, để nguội nếu có tỏa nhiệt, sau đó bổ sung dung môi đến tổng khối lượng ${fmt(finalMass)} g.`, "Công thức: m cân = (P đích × m dung dịch cuối / 100) × 100 / độ tinh khiết.");
-      return;
-    }
-    if (!(volume > 0)) { result.innerHTML = info("Nhập thể tích dung dịch cuối (mL)."); return; }
-    let molarity = target;
-    if (targetType === "N") {
-      const factor = n("factor");
-      if (!(factor > 0)) { result.innerHTML = error("Nồng độ N cần hệ số đương lượng n (eq/mol), phụ thuộc phản ứng cụ thể."); return; }
-      molarity = target / factor;
-    } else if (targetType === "ww" || targetType === "wv") {
-      result.innerHTML = error("Để pha chất rắn theo % khối lượng/thể tích, chọn đơn vị đích % w/w hoặc % w/v và nhập đúng đại lượng khối lượng/thể tích."); return;
-    }
-    const pureMass = molarity * volume / 1000 * mw;
-    const weigh = pureMass * 100 / purity;
-    result.innerHTML = rows([["Nồng độ mol tương đương",molarity,"mol/L"],["Số mol chất tan",molarity*volume/1000,"mol"],["Khối lượng chất tan tinh khiết",pureMass,"g"],["Khối lượng chất rắn cần cân",weigh,"g"]]);
-    guide.innerHTML = guideHtml(`Cân ${fmt(weigh)} g ${chemical.formula || chemical.name}. Hòa tan trong khoảng 60–70% thể tích dung môi, để nguội về nhiệt độ phòng, chuyển định lượng vào bình định mức ${fmt(volume)} mL và thêm dung môi đến vạch.`, "Với muối ngậm nước, M phải là khối lượng mol của toàn bộ công thức hydrate, không phải muối khan.");
-    return;
-  }
- 
-  // Convert stock concentration into grams of solute per litre of stock.
-  const source = n("source");
-  if (!(source > 0)) { result.innerHTML = info("Nhập nồng độ dung dịch ban đầu."); return; }
-  let stockGL = NaN;
-  if (sourceType === "M") stockGL = source * mw;
-  if (sourceType === "N") {
-    const factor = n("factor");
-    if (!(factor > 0)) { result.innerHTML = error("Nồng độ N cần hệ số đương lượng n (eq/mol), phụ thuộc phản ứng cụ thể."); return; }
-    stockGL = source / factor * mw;
-  }
-  if (sourceType === "ww") {
-    const d = n("density");
-    if (!(d > 0)) { result.innerHTML = error("Muốn quy đổi % w/w cần nhập khối lượng riêng dung dịch ban đầu (g/mL)."); return; }
-    stockGL = source / 100 * d * 1000;
-  }
-  if (sourceType === "wv") stockGL = source * 10;
-  if (!(stockGL > 0)) { result.innerHTML = error("Không thể quy đổi nồng độ ban đầu với dữ liệu hiện có."); return; }
- 
-  if (targetType === "ww") {
-    if (!(finalMass > 0)) { result.innerHTML = info("Nhập khối lượng dung dịch cuối (g) để pha theo % khối lượng."); return; }
-    const soluteMass = finalMass * target / 100;
-    let stockMass, stockVol;
-    if (sourceType === "ww") {
-      stockMass = soluteMass / (source/100);
-      stockVol = stockMass / n("density");
-    } else {
-      const d = n("density");
-      if (!(d > 0)) { result.innerHTML = error("Cần khối lượng riêng dung dịch gốc để chuyển lượng lấy từ thể tích sang khối lượng."); return; }
-      stockVol = soluteMass / stockGL * 1000;
-      stockMass = stockVol * d;
-    }
-    if (stockMass > finalMass) { result.innerHTML = error("Dung dịch gốc cần dùng có khối lượng lớn hơn khối lượng dung dịch cuối. Nồng độ đích có thể cao hơn nồng độ gốc."); return; }
-    result.innerHTML = rows([["Khối lượng chất tan cần có",soluteMass,"g"],["Khối lượng dung dịch gốc cần lấy",stockMass,"g"],["Thể tích dung dịch gốc (nếu có d)",stockVol,"mL"],["Khối lượng nước/dung môi thêm (xấp xỉ)",finalMass-stockMass,"g"]]);
-    guide.innerHTML = guideHtml(`Cân/lấy ${fmt(stockMass)} g dung dịch gốc, thêm dung môi đến tổng khối lượng ${fmt(finalMass)} g.`, "Pha theo khối lượng: cân chính xác dung dịch gốc và dung môi; không lấy hiệu hai thể tích để suy ra thể tích dung môi.");
-    return;
-  }
- 
-  if (!(volume > 0)) { result.innerHTML = info("Nhập thể tích dung dịch cuối (mL)."); return; }
-  let targetGL;
-  if (targetType === "M") targetGL = target * mw;
-  if (targetType === "N") {
-    const factor = n("factor");
-    if (!(factor > 0)) { result.innerHTML = error("Nồng độ N cần hệ số đương lượng n (eq/mol), phụ thuộc phản ứng cụ thể."); return; }
-    targetGL = target / factor * mw;
-  }
-  if (targetType === "wv") targetGL = target * 10;
-  if (!(targetGL > 0)) { result.innerHTML = error("Đơn vị nồng độ đích không hợp lệ."); return; }
-  if (targetGL > stockGL * (1 + 1e-10)) { result.innerHTML = error(`Nồng độ đích tương đương ${fmt(targetGL)} g/L lớn hơn dung dịch gốc ${fmt(stockGL)} g/L. Không thể pha loãng để đạt nồng độ này.`); return; }
-  const stockVol = targetGL * volume / stockGL;
-  if (stockVol > volume * (1 + 1e-10)) { result.innerHTML = error("Thể tích dung dịch gốc cần lấy vượt thể tích cuối."); return; }
-  const list = [["Nồng độ chất tan trong dung dịch gốc",stockGL,"g/L"],["Nồng độ đích quy đổi",targetGL,"g/L"],["Thể tích dung dịch gốc cần lấy",stockVol,"mL"],["Thể tích cuối cần định mức",volume,"mL"]];
-  if (sourceType === "ww" && n("density") > 0) list.push(["Khối lượng dung dịch gốc tương ứng",stockVol*n("density"),"g"]);
-  result.innerHTML = rows(list);
-  guide.innerHTML = guideHtml(`Dùng pipet lấy ${fmt(stockVol)} mL dung dịch gốc, chuyển vào bình định mức ${fmt(volume)} mL. Thêm dung môi đến gần vạch, trộn đều, chờ cân bằng nhiệt rồi định mức đến vạch.`, "Không tính nước thêm bằng phép trừ thể tích một cách tuyệt đối: thể tích sau khi trộn có thể không cộng tính, nhất là với axit/kiềm đậm đặc.");
+function stepperHtml() {
+  const mx = maxStep();
+  return `<div class="bt-stepper">${STEPS.map(([n, t], i) => {
+    const k = i + 1, cls = k < S.step ? "done" : k === S.step ? "cur" : "";
+    return `<button type="button" class="bt-st ${cls}" ${k > mx ? "disabled" : ""} data-act="goStep" data-val="${k}" ${k === S.step ? 'aria-current="step"' : ""}>
+      <i>${k < S.step ? "✓" : n}</i><span>${t}</span></button>`;
+  }).join("")}</div>`;
 }
- 
-function guideHtml(action, formula) {
-  return `<div class="card"><h3>Hướng dẫn thao tác</h3><ol>
-    <li>${action}</li>
-    <li>Đậy nút, đảo trộn đồng nhất và dán nhãn: tên hóa chất, công thức, nồng độ, ngày pha, người pha.</li>
-    <li>Ghi rõ dạng hóa chất, độ tinh khiết, nhiệt độ và dụng cụ định mức trong sổ thí nghiệm.</li>
-  </ol><p class="muted small"><b>Cơ sở tính:</b> ${formula}</p></div>`;
+function summaryHtml() {
+  const x = CHEMS[S.chem];
+  if (!x || S.step < 2) return "";
+  return `<div class="bt-sum"><button type="button" class="bt-sumchip" data-act="goStep" data-val="1"><b>${esc(x.formula || "?")}</b> ${esc(x.name)} <i>sửa</i></button>${
+    S.method && S.step >= 3 ? `<button type="button" class="bt-sumchip" data-act="goStep" data-val="2">${S.method === "solid" ? "⚖️ Cân chất rắn" : "💧 Pha loãng"} <i>sửa</i></button>` : ""}</div>`;
 }
- 
-function safetyHtml() {
-  const x = c(), items = [...(SAFETY[x.kind] || [])];
-  if (x.kind === "acid") items.unshift("Luôn rót axit vào nước, từ từ và có khuấy; không làm ngược lại.");
-  if (chem === "h2so4") items.push("H₂SO₄ đặc pha loãng tỏa nhiệt rất mạnh: dùng bình chịu nhiệt, làm mát, để nguội hoàn toàn rồi mới định mức.");
-  if (chem === "hno3") items.push("HNO₃ là chất oxy hóa mạnh; thao tác trong tủ hút, tránh chất hữu cơ và vật liệu dễ cháy.");
-  if (chem === "nh3") items.push("Dung dịch NH₃ bay hơi mạnh; thao tác trong tủ hút, tránh hít hơi.");
-  if (chem === "naoh" || chem === "koh") items.push("Cho từ từ chất rắn vào nước; hòa tan tỏa nhiệt. Cân nhanh vì chất hút ẩm/CO₂.");
-  items.push("Mặc áo blouse, kính bảo hộ và găng phù hợp; đọc SDS và làm theo hướng dẫn giảng viên.");
-  items.push("Không dùng thông số mặc định thay cho nhãn chai/SDS. Nếu không rõ hydrate, assay hoặc khối lượng riêng, dừng tính và xác minh trước.");
-  return `<div class="safety"><h3>⚠️ An toàn — ${esc(x.formula || x.name)}</h3><ul>${items.map(t=>`<li>${esc(t)}</li>`).join("")}</ul></div>`;
+
+function mixHtml() {
+  // Đảm bảo bước hiện tại hợp lệ với dữ liệu đã chọn
+  S.step = Math.min(S.step, maxStep());
+  const body = S.step === 1 ? step1() : S.step === 2 ? step2() : S.step === 3 ? step3() : step4();
+  return `${stepperHtml()}${summaryHtml()}<div class="bt-panel">${body}</div>`;
+}
+
+const step1 = () => `<h4 class="bt-q">Bạn muốn pha hóa chất nào?</h4>${searchHtml("pickChem")}`;
+
+function step2() {
+  const liquid = CHEMS[S.chem].state === "liquid";
+  return `<h4 class="bt-q">Bạn pha bằng cách nào?</h4>
+    <button type="button" class="bt-opt ${S.method === "dilute" ? "on" : ""}" data-act="pickMethod" data-val="dilute">
+      <span class="bt-ico">💧</span><span><b>Pha loãng từ dung dịch gốc</b>
+      <small>Bạn đã có dung dịch (đậm đặc hoặc dung dịch chuẩn) và muốn pha loãng.</small></span></button>
+    <button type="button" class="bt-opt ${S.method === "solid" ? "on" : ""}" ${liquid ? "disabled" : ""} data-act="pickMethod" data-val="solid">
+      <span class="bt-ico">⚖️</span><span><b>Cân chất rắn rồi hòa tan</b>
+      <small>${liquid ? "Không áp dụng — hóa chất này ở dạng lỏng." : "Cân trực tiếp từ chai hóa chất rắn; tự hiệu chỉnh độ tinh khiết."}</small></span></button>`;
+}
+
+const unitChips = (actName, cur) => `<div class="bt-units">${UNIT_ORDER.map(u =>
+  `<button type="button" class="bt-unit ${u === cur ? "on" : ""}" data-act="${actName}" data-val="${u}"><b>${UNITS[u].sym}</b><small>${UNITS[u].unit}</small></button>`).join("")}</div>`;
+
+const fld = (key, label, suffix, ph, hint = "", attr = "data-v") => `<label class="lbl">${label}
+  <div class="inp-unit"><input class="inp" ${attr}="${key}" inputmode="decimal" autocomplete="off" placeholder="${esc(ph)}" value="${esc((attr === "data-v" ? S.v[key] : S.conv.v[key]) ?? "")}">${suffix}</div>
+  ${hint ? `<span class="bt-hint">${hint}</span>` : ""}</label>`;
+const unitSpan = u => `<span class="unit">${esc(u)}</span>`;
+const scaleSel = (key, opts) => `<select class="bt-scale" data-sc="${key}" aria-label="Đơn vị">${opts.map(o => `<option ${S.scale[key] === o ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+
+function step3() {
+  const x = CHEMS[S.chem], plan = fieldPlan(mixInput()), solid = S.method === "solid";
+  const tMass = MASS_UNITS.has(S.targetUnit);
+  const hints = (EQ_HINTS[S.chem] || []).map(([n, note]) =>
+    `<button type="button" class="bt-nhint" data-act="nHint" data-val="${n}">n = ${n}<small>${esc(note)}</small></button>`).join("");
+
+  const blockA = solid
+    ? `<div class="bt-block"><div class="bt-bh"><span class="bt-bn">A</span>Chất rắn <small>(hóa chất bạn cân)</small></div>
+        ${fld("purity", "Độ tinh khiết", unitSpan("%"), "VD: 98", "Xem trên nhãn chai — phần mềm tự hiệu chỉnh khối lượng cân.")}</div>`
+    : `<div class="bt-block"><div class="bt-bh"><span class="bt-bn">A</span>Dung dịch gốc <small>(đang có)</small></div>
+        ${unitChips("stockUnit", S.stockUnit)}
+        ${fld("stock", "Nồng độ gốc", unitSpan(UNITS[S.stockUnit].unit), "VD: 98")}
+        ${plan.showD ? fld("density", "Khối lượng riêng dung dịch gốc", unitSpan("g/mL"), "VD: 1,84",
+          plan.dRequired ? "Bắt buộc: để chuyển giữa nồng độ theo khối lượng và theo thể tích." : "Không bắt buộc — để hiện thêm thể tích tương ứng.") : ""}
+        ${x.assay ? '<p class="bt-note">Giá trị điền sẵn là loại đậm đặc phổ biến — đối chiếu nhãn chai/SDS rồi chỉnh nếu khác.</p>' : ""}</div>`;
+
+  const blockB = `<div class="bt-block"><div class="bt-bh"><span class="bt-bn">B</span>Dung dịch cần pha</div>
+      ${unitChips("targetUnit", S.targetUnit)}
+      ${fld("target", "Nồng độ cần pha", unitSpan(UNITS[S.targetUnit].unit), "VD: 0,1")}
+      ${fld("amount", tMass ? "Khối lượng dung dịch cuối" : "Thể tích dung dịch cuối",
+        tMass ? scaleSel("mass", ["g", "kg"]) : scaleSel("vol", ["mL", "L"]), tMass ? "VD: 100" : "VD: 250")}</div>`;
+
+  const blockC = plan.showMw || plan.showN ? `<div class="bt-block"><div class="bt-bh"><span class="bt-bn">C</span>Thông số hóa chất</div>
+      ${plan.showMw ? fld("mw", "Khối lượng mol M", unitSpan("g/mol"), "VD: 98,079",
+        x.formula.includes("·") ? "Đã gồm nước kết tinh của đúng công thức hydrate." : (S.chem === "custom" ? "Nhập theo đúng công thức đang dùng." : "")) : ""}
+      ${plan.showN ? fld("n", "Hệ số đương lượng n", unitSpan("eq/mol"), "VD: 2", "Phụ thuộc phản ứng cụ thể — chọn gợi ý bên dưới hoặc tự nhập.") : ""}
+      ${plan.showN && hints ? `<div class="bt-nhints">${hints}</div>` : ""}</div>` : "";
+
+  return `<h4 class="bt-q">Nhập thông số</h4>${blockA}<div class="bt-arrow" aria-hidden="true">⬇</div>${blockB}${blockC}
+    <div id="bt-live" class="bt-live"></div>
+    <div class="bt-nav"><button type="button" class="btn" data-act="back">← Quay lại</button>
+      <button type="button" class="btn primary" id="bt-next" data-act="next" disabled>Xem kết quả →</button></div>`;
+}
+
+function liveHtml(r) {
+  if (r.status === "ok") return `<div class="bt-live-ok"><span>${esc(r.hero.label)}</span><b>${esc(r.hero.value)}</b></div>`;
+  return `<div class="bt-live-msg ${r.status}">${r.status === "error" ? "⚠️ " : "👉 "}${esc(r.msg)}</div>`;
+}
+function refreshLive() {
+  const live = root.querySelector("#bt-live");
+  if (!live) return;
+  const r = computeMix(mixInput());
+  live.innerHTML = liveHtml(r);
+  const nb = root.querySelector("#bt-next");
+  if (nb) nb.disabled = r.status !== "ok";
+}
+
+function step4() {
+  const r = computeMix(mixInput());
+  const items = safetyItems(S.chem);
+  return `<div class="bt-hero"><div class="bt-hero-k">${esc(r.hero.label)}</div>
+      <div class="bt-hero-v">${esc(r.hero.value)}</div><div class="bt-hero-s">${esc(r.hero.sub)}</div></div>
+    ${r.warns.map(w => `<div class="bt-warn">⚠️ ${esc(w)}</div>`).join("")}
+    <div class="bt-rows">${r.rows.map(([k, v]) => `<div class="bt-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}</div>
+    ${r.equiv.length ? `<div class="bt-equiv"><span>Dung dịch đích tương đương</span>${r.equiv.map(e => `<i>${esc(e)}</i>`).join("")}</div>` : ""}
+    <h4 class="bt-q">Thao tác từng bước</h4>
+    <ol class="bt-steps">${r.steps.map(t => `<li>${esc(t)}</li>`).join("")}</ol>
+    <p class="bt-basis"><b>Cơ sở tính:</b> ${esc(r.basis)}</p>
+    <div class="safety"><h3>⚠️ An toàn — ${esc(CHEMS[S.chem].formula || CHEMS[S.chem].name)}</h3><ul>${items.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>
+    <div class="bt-nav"><button type="button" class="btn" data-act="goStep" data-val="3">← Sửa thông số</button>
+      <button type="button" class="btn primary" data-act="reset">↺ Pha dung dịch khác</button></div>`;
+}
+
+/* ---------- Chế độ Quy đổi ---------- */
+function convHtml() {
+  const x = CHEMS[S.conv.chem], c = S.conv;
+  return `<div class="bt-block"><div class="bt-bh">🧪 Hóa chất <small>(để tự điền khối lượng mol)</small></div>
+      <button type="button" class="bt-pill" data-act="convPick">${x ? `<b>${esc(x.formula || "—")}</b> ${esc(x.name)}` : "Chưa chọn — hoặc tự nhập M bên dưới"}<i>${c.pick ? "đóng" : "đổi"}</i></button>
+      ${c.pick ? searchHtml("convChem") : ""}
+      ${x?.assay && !c.pick ? `<button type="button" class="bt-link" data-act="convPreset">Điền thông số nhãn tham khảo (${x.assay}% w/w, d = ${x.density})</button>` : ""}</div>
+    <div class="bt-block"><div class="bt-bh"><span class="bt-bn">1</span>Nồng độ đang có</div>
+      ${unitChips("convUnit", c.from)}
+      ${fld("value", "Giá trị", unitSpan(UNITS[c.from].unit), "VD: 98", "", "data-c")}</div>
+    <div class="bt-block"><div class="bt-bh"><span class="bt-bn">2</span>Thông số bổ sung <small>(chỉ điền khi cần)</small></div>
+      <div class="bt-grid3">
+        ${fld("mw", "M (g/mol)", "", "", "", "data-c")}
+        ${fld("d", "d (g/mL)", "", "", "", "data-c")}
+        ${fld("n", "n (eq/mol)", "", "", "", "data-c")}
+      </div>
+      <p class="bt-note">M: đổi mol ↔ gam · d: đổi % w/w, molal ↔ nồng độ theo thể tích · n: đổi sang N.</p></div>
+    <div class="bt-block"><div class="bt-bh"><span class="bt-bn">3</span>Kết quả quy đổi</div>
+      <div id="bt-conv-msg"></div><div id="bt-tiles" class="bt-tiles"></div>
+      <p class="bt-note">Chạm vào ô để sao chép giá trị.</p></div>`;
+}
+
+function refreshConv() {
+  const tilesEl = root.querySelector("#bt-tiles"), msgEl = root.querySelector("#bt-conv-msg");
+  if (!tilesEl) return;
+  const cv = S.conv.v;
+  const r = computeConvert({ from: S.conv.from, value: cv.value, mw: cv.mw, d: cv.d, n: cv.n });
+  msgEl.innerHTML = r.status === "ok" ? "" : `<div class="bt-live-msg ${r.status}">${r.status === "error" ? "⚠️ " : "👉 "}${esc(r.msg)}</div>`;
+  const tiles = r.status === "ok" ? r.tiles : UNIT_ORDER.map(u => ({ unit: u, value: null, empty: true }));
+  tilesEl.innerHTML = tiles.map(t => {
+    const u = UNITS[t.unit];
+    let body, copy = "";
+    if (t.value != null) { copy = fmt(t.value, 5); body = `<b>${copy}</b>`; }
+    else if (t.need) body = `<em>${NEED_SHORT[t.need]}</em>`;
+    else if (t.err) body = `<em class="e">${esc(t.err)}</em>`;
+    else body = `<b class="bt-dash">—</b>`;
+    return `<button type="button" class="bt-tile ${t.src ? "src" : ""} ${t.value == null ? "na" : ""}" ${copy ? `data-act="copy" data-val="${esc(copy)}"` : "disabled"}>
+      <span class="bt-tile-k">${u.sym}${t.src ? " · đang có" : ""}</span>${body}<small>${u.unit}</small></button>`;
+  }).join("");
 }
