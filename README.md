@@ -23,6 +23,8 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   `code.gs` nhận/xóa ảnh; sau khi đổi mã cần triển khai phiên bản mới của Apps Script Web App.
 - **Xuất báo cáo** trong Cài đặt: nhập họ tên, MSSV, nhóm, ngày và học kỳ/năm học; chọn bài để
   xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
+  Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích, ảnh và sửa
+  mẫu ghép cột thao tác bằng `{label}`, `{title}`, `{text}`, `{value}`, `{unit}`.
   Apps Script project cần có cả `code.gs` và `report.gs`; triển khai phiên bản mới sau khi thêm helper này.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi dùng các nút tròn dưới tên bài để

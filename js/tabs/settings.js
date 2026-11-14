@@ -8,7 +8,11 @@ import { normalizeExperiment, flatten } from "../plan-logic.js";
 
 let root;
 const CFG = () => doc(db, "config", "lab");
-const reportForm = { name: "", studentId: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027" };
+const reportForm = {
+  name: "", studentId: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
+  actionTemplate: "{title}\n{text}",
+  includeMeasurement: true, includeObservation: true, includeExplanation: true, includePhotos: true
+};
 let reportBusy = false, lastReport = null;
 
 export function init(el) {
@@ -75,6 +79,20 @@ function render() {
           <input class="inp" data-report-field="semester" value="${esc(reportForm.semester)}" placeholder="Ví dụ: Học kỳ 1, năm học 2026-2027">
         </label>
       </div>
+      <details class="report-content-settings" open>
+        <summary>Nội dung ghép vào báo cáo</summary>
+        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Ảnh lớn hơn 2 MB hoặc không phải JPEG/PNG/GIF sẽ có link Drive thay vì ảnh nhúng.</p>
+        <div class="report-options">
+          <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu đã nhập</label>
+          <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng quan sát</label>
+          <label><input type="checkbox" data-report-field="includeExplanation" ${reportForm.includeExplanation ? "checked" : ""}> Giải thích / PTPƯ</label>
+          <label><input type="checkbox" data-report-field="includePhotos" ${reportForm.includePhotos ? "checked" : ""}> Ảnh Drive trong cột hiện tượng</label>
+        </div>
+        <label class="lbl">Mẫu ghép “Các bước tiến hành”
+          <textarea class="inp" rows="3" data-report-field="actionTemplate" placeholder="{title}\\n{text}">${esc(reportForm.actionTemplate)}</textarea>
+        </label>
+        <p class="muted small">Biến dùng được: <code>{title}</code> tiêu đề, <code>{text}</code> hướng dẫn thao tác, <code>{value}</code> số liệu, <code>{unit}</code> đơn vị. Số bước luôn được ghép ở đầu ô.</p>
+      </details>
       <button type="button" class="btn primary report-submit" data-act="export-report" ${reportBusy || !isDriveConfigured || !state.experiments.length ? "disabled" : ""}>
         ${reportBusy ? "Đang tạo tài liệu…" : "Tạo Google Docs"}
       </button>
@@ -91,7 +109,7 @@ function render() {
 function onReportInput(event) {
   const field = event.target.dataset?.reportField;
   if (!field) return;
-  reportForm[field] = event.target.value;
+  reportForm[field] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
 }
 
 async function addNames() {
@@ -152,7 +170,13 @@ async function exportReport() {
     const report = await collectReportData();
     const result = await driveCreateReport(report);
     lastReport = { url: result.url, name: result.name };
-    toast("Đã tạo Google Docs ✔", "success");
+    const imageCount = report.steps.reduce((total, step) => total + step.photos.length, 0);
+    toast(result.images_skipped
+      ? `Đã tạo báo cáo; ${result.images_skipped} ảnh không thể nhúng, link ảnh vẫn nằm trong tài liệu.`
+      : reportForm.includePhotos && !imageCount
+        ? "Đã tạo Google Docs nhưng nhật ký bài này chưa có ảnh Drive để chèn."
+        : "Đã tạo Google Docs ✔",
+    result.images_skipped || (reportForm.includePhotos && !imageCount) ? "warn" : "success", 6000);
   } catch (err) {
     console.error(err);
     toast("Không xuất được báo cáo: " + (err.code || err.message), "error", 6000);
@@ -191,16 +215,34 @@ async function collectReportData() {
     return {
       section: `${item.si + 1}. ${item.sec.section_name || "Thí nghiệm"}`,
       label: item.label,
-      action: [item.step.title, item.step.text].filter(Boolean).join("\n"),
-      measurement: log.input_data == null ? "" : `${log.input_data}${log.input_unit ? ` ${log.input_unit}` : ""}`,
-      observation: log.observation_text || "",
-      explanation: log.explanation_text || "",
-      photos: photos.map(photo => ({
+      action: reportForm.actionTemplate
+        .replaceAll("{label}", item.label)
+        .replaceAll("{title}", item.step.title || "")
+        .replaceAll("{text}", item.step.text || "")
+        .replaceAll("{value}", reportForm.includeMeasurement && log.input_data != null ? String(log.input_data) : "")
+        .replaceAll("{unit}", reportForm.includeMeasurement ? log.input_unit || "" : "")
+        .trim(),
+      measurement: reportForm.includeMeasurement && log.input_data != null ? `${log.input_data}${log.input_unit ? ` ${log.input_unit}` : ""}` : "",
+      observation: reportForm.includeObservation ? log.observation_text || "" : "",
+      explanation: reportForm.includeExplanation ? log.explanation_text || "" : "",
+      photos: reportForm.includePhotos ? photos.map(photo => ({
         file_id: photo?.file_id || driveIdFromUrl(photo?.url),
         name: photo?.name || ""
-      })).filter(photo => photo.file_id)
+      })).filter(photo => photo.file_id) : []
     };
   });
+  const imagesSkipped = reportForm.includePhotos
+    ? flatten(experiment).reduce((count, item) => {
+      const log = logs[item.step.id] || {};
+      const photos = Array.isArray(log.photos) && log.photos.length
+        ? log.photos
+        : (log.photo_file_id || log.photo_url ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "" }] : []);
+      return count + photos.filter(photo => {
+        const url = String(photo?.url || "");
+        return !photo?.file_id && !driveIdFromUrl(url) && url.startsWith("data:image/");
+      }).length;
+    }, 0)
+    : 0;
   return {
     experimentTitle: experiment.title || "Bài thí nghiệm",
     studentName: reportForm.name.trim(),
@@ -208,6 +250,7 @@ async function collectReportData() {
     group: reportForm.group.trim(),
     date: reportForm.date || localDate(),
     semester: reportForm.semester.trim(),
+    imagesSkipped,
     steps
   };
 }

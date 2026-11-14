@@ -11,6 +11,7 @@ function handleCreateReport_(report) {
   const semester = reportText_(report.semester, 100);
   const group = reportText_(report.group, 100);
   const steps = Array.isArray(report.steps) ? report.steps : [];
+  let imagesSkipped = Number(report.imagesSkipped) || 0;
   if (!studentName || !studentId || !experimentTitle || !reportDate) {
     throw new Error("Báo cáo cần có tên, MSSV, bài thí nghiệm và ngày báo cáo.");
   }
@@ -80,12 +81,26 @@ function handleCreateReport_(report) {
     step.photos.forEach((photo, index) => {
       const imageParagraph = observationCell.appendParagraph(`Ảnh ${index + 1}${photo.name ? `: ${photo.name}` : ""}`);
       imageParagraph.editAsText().setFontSize(9);
-      const image = observationCell.appendImage(photo.blob);
-      if (image.getWidth() > 220) {
-        const height = image.getHeight();
-        const ratio = 220 / image.getWidth();
-        image.setWidth(220);
-        image.setHeight(Math.round(height * ratio));
+      const mime = photo.blob.getContentType();
+      const byteSize = photo.blob.getBytes().length;
+      const supportedMime = ["image/jpeg", "image/png", "image/gif"].includes(mime);
+      if (supportedMime && byteSize <= 2 * 1024 * 1024) {
+        try {
+          const image = observationCell.appendImage(photo.blob);
+          if (image.getWidth() > 220) {
+            const height = image.getHeight();
+            const ratio = 220 / image.getWidth();
+            image.setWidth(220);
+            image.setHeight(Math.round(height * ratio));
+          }
+        } catch (err) {
+          imagesSkipped++;
+          observationCell.appendParagraph("Không nhúng được ảnh; dùng link Drive bên dưới.");
+          console.warn(`Không chèn được ảnh ${photo.fileId}: ${err}`);
+        }
+      } else {
+        imagesSkipped++;
+        observationCell.appendParagraph("Ảnh quá lớn hoặc định dạng không hỗ trợ nhúng; dùng link Drive bên dưới.");
       }
       const link = observationCell.appendParagraph("Mở ảnh trên Google Drive");
       link.editAsText().setLinkUrl(0, link.getText().length - 1, `https://drive.google.com/file/d/${encodeURIComponent(photo.fileId)}/view`);
@@ -100,7 +115,8 @@ function handleCreateReport_(report) {
     ok: true,
     document_id: document.getId(),
     name: document.getName(),
-    url: document.getUrl()
+    url: document.getUrl(),
+    images_skipped: imagesSkipped
   };
 }
 
