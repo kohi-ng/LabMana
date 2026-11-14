@@ -509,7 +509,7 @@ async function save() {
         continue;
       }
       try {
-        await driveDelete(fileId);
+        await removeMediaAsset(fileId, driveDelete);
         failedDriveDeletes.delete(fileId);
         newlyUploadedDriveFiles.delete(fileId);
       } catch (err) {
