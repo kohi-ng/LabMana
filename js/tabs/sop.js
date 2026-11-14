@@ -407,9 +407,11 @@ async function onClick(e) {
       render(); break;
     }
     case "jump": {
-      selectedStepId = id;
+      const stepId = btn.dataset.step || id;
+      if (!stepId) break;
+      selectedStepId = stepId;
       expanded.clear();
-      expanded.add(id);
+      expanded.add(stepId);
       render();
       window.scrollTo({ top: 0, behavior: "smooth" });
       break;
