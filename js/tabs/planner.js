@@ -365,7 +365,11 @@ async function addImages(stepId, files) {
     for (const [index, file] of files.entries()) {
       try {
         toast(`Đang tải ảnh lên Drive… (${index + 1}/${files.length})`);
-        const img = await driveUpload(file, "plan", meta);
+        const img = await driveUpload(file, "plan", { ...meta, originalName: file.name });
+        await registerMediaAsset({ ...img, mime_type: file.type, size_bytes: file.size }, {
+          context: "plan", experiment_id: expId || null, run_id: null,
+          section_id: found.sec.id, step_id: stepId
+        });
         found.step.images.push(img);
         if (img.file_id) newlyUploadedDriveFiles.add(img.file_id);
         markDirty();
