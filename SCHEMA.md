@@ -152,3 +152,47 @@ transaction.
 KeHoach/<Tên bài>/<Tên bài>_<Tên thí nghiệm>_<tên tùy chọn>_<yyyyMMdd_HHmmss>.<ext>
 ThucHien/<Tên bài>/<Tên lượt>/<Tên bài>_<Tên thí nghiệm>_<Nhãn bước>_<tên tùy chọn>_<yyyyMMdd_HHmmss>.<ext>
 ```
+## 8. Schema v3 — media registry dùng chung
+
+Schema v3 bổ sung collection media_assets/{fileId} làm registry metadata ảnh tập trung. Không thay thế experiments, runs, execution_logs hoặc config/lab; không yêu cầu migration dữ liệu cũ.
+
+```json
+{
+  "schema_version": 1,
+  "asset_id": "google_drive_file_id",
+  "file_id": "google_drive_file_id",
+  "experiment_id": "experiment_id",
+  "run_id": "run_id",
+  "section_id": "section_id",
+  "step_id": "step_id",
+  "context": "execution",
+  "name": "hien-tuong-01.jpg",
+  "mime_type": "image/jpeg",
+  "size_bytes": 485200,
+  "storage": "google_drive",
+  "url": "https://drive.google.com/thumbnail?id=...&sz=w1600",
+  "status": "ready",
+  "uploaded_by": null,
+  "created_at_ms": 1794660000000,
+  "updated_at_ms": 1794660000000
+}
+```
+
+- Document ID là file_id, giúp thao tác upload lại có thể merge metadata vào cùng asset.
+- context: plan cho ảnh minh họa, execution cho ảnh ghi nhận trong lượt thực hiện.
+- status: ready, deleting, delete_failed (và uploading dành cho trạng thái mở rộng).
+- Client chỉ đăng ký ready sau khi GAS xác nhận file đã được lưu và có quyền ANYONE_WITH_LINK / VIEW.
+- store.js subscribe toàn bộ media_assets bằng onSnapshot; mọi thiết bị đăng nhập LabMana nhận metadata ảnh realtime, không phụ thuộc active run cục bộ.
+- Ảnh vẫn lưu byte trên Drive; Firestore chỉ lưu metadata. Data URL không còn là phương án lưu ảnh mới.
+- Báo cáo ưu tiên media_assets theo run_id + step_id; nếu không có registry, tiếp tục đọc execution_logs.photos, photo_file_id và photo_url cũ.
+- Xóa ảnh đánh dấu deleting, gọi GAS chuyển file vào thùng rác, sau đó xóa metadata. Nếu Drive lỗi, giữ asset với delete_failed để có thể xử lý lại.
+
+### Quy trình triển khai
+
+1. Cập nhật Firestore Rules để cho phép người dùng đã đăng nhập đọc/ghi media_assets.
+2. Dán các file GAS vào cùng Apps Script project; chạy authorizeDrive().
+3. Deploy Web App bằng quyền chủ sở hữu, quyền truy cập phù hợp chính sách chia sẻ của tổ chức; triển khai New version.
+4. Cấu hình GAS_URL trong js/drive.js bằng URL /exec của deployment đang hoạt động.
+5. Kiểm thử upload từ thiết bị A, quan sát metadata và ảnh từ B, xóa từ B, sau đó xuất Google Docs từ C.
+
+Lưu ý quyền riêng tư: Anyone with the link cho phép người có URL xem file ngoài LabMana. Chính sách Google Workspace có thể chặn quyền này; khi đó upload phải thất bại rõ ràng thay vì trả thành công giả.
