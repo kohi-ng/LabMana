@@ -626,3 +626,13 @@ textarea.inp{ resize:vertical; min-height:88px; font-family:inherit; }
 }
 .toc-pip:focus,
 .toc-pip:focus-visible{ outline:none; box-shadow:none; }
+
+
+/* Bước đang làm (nhảy theo tiến độ) tô đỏ; nút đang bấm vẫn xanh lam nếu không phải bước hiện tại */
+.toc-pip.current{
+  outline:none;
+  box-shadow:none;
+  border-color:var(--err);
+  background:var(--err);
+  color:#fff;
+}
