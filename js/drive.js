@@ -106,10 +106,8 @@ async function driveRequest(payload, { timeoutMs = 45000 } = {}) {
       fn(value);
     };
     const onMessage = event => {
-      // HtmlService may wrap its response in a Google sandbox iframe. In that case
-      // event.source is a nested frame, not the form-target iframe itself. Match the
-      // unguessable request id and require a Google-served response origin instead.
-      if (!/(^|\\.)googleusercontent\\.com$/.test(new URL(event.origin).hostname)) return;
+      // HtmlService may wrap its response in a Google sandbox iframe.
+      // Correlate by the unguessable request_id instead of frame origin/source.
       const data = event.data;
       if (!data || data.labmana !== "drive-response" || data.request_id !== requestId) return;
       if (data.result?.ok) finish(resolve, data.result);
