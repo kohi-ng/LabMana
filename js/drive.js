@@ -57,7 +57,7 @@ function withJpegExtension(name) {
 }
 
 /**
- * Apps Script ContentService redirects its response to script.googleusercontent.com.
+      if (!/(^|\.)googleusercontent\.com$/.test(new URL(event.origin).hostname)) return;
  * Browser fetch() cannot reliably read that cross-origin response (CORS), even when
  * the request uses text/plain. Submit a normal HTML form to a hidden iframe instead;
  * the HtmlService response posts the structured result back with postMessage.
