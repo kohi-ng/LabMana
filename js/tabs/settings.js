@@ -104,7 +104,7 @@ function render() {
     </div>
 
     <div class="card"><h3>ℹ️ Về ứng dụng</h3>
-      <p class="small muted">LabMana v2.0 · Đăng nhập ẩn danh (mã thiết bị: <code>${esc((auth?.currentUser?.uid || "").slice(0, 6))}</code>)<br>
+      <p class="small muted">LabMana v3.0 · Đăng nhập ẩn danh (mã thiết bị: <code>${esc((auth?.currentUser?.uid || "").slice(0, 6))}</code>)<br>
       Thí nghiệm đang mở được lưu trên thiết bị; dữ liệu ghi nhận đồng bộ qua Firestore.</p></div>`;
   root.querySelector("#st-names").value = keep;
 }
@@ -220,6 +220,7 @@ async function collectReportData() {
     const asset = item.data();
     if (asset.status === "ready" && asset.file_id && asset.context === "execution") (mediaByStep[asset.step_id] ||= []).push(asset);
   });
+  Object.values(mediaByStep).forEach(list => list.sort((a, b) => (a.created_at_ms || 0) - (b.created_at_ms || 0)));
   const logs = {};
   logsSnapshot.forEach(item => {
     const log = item.data();
