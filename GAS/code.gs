@@ -4,6 +4,10 @@
  * với tên file rõ ràng theo Bài / Thí nghiệm / Lượt, trả mã ảnh để app hiển thị
  * bằng URL thumbnail Drive và hỗ trợ xóa ảnh đã lưu.
  *
+ * Giao tiếp: client gọi thẳng bằng fetch() (POST JSON / GET), server trả JSON
+ * thuần qua ContentService. KHÔNG dùng iframe + postMessage nữa (cơ chế cũ hay
+ * rớt phản hồi dù Drive đã nhận file xong, khiến app báo lỗi dù upload thành công).
+ *
  * CÀI ĐẶT (làm 1 lần):
  * 1. Tạo 1 thư mục trên Google Drive, ví dụ "LabMana - Ảnh thí nghiệm".
  *    Mở thư mục đó, copy ID trong URL: drive.google.com/drive/folders/<ID NÀY>
@@ -28,6 +32,8 @@ function authorizeDrive() {
 }
 
 /* ---------------- Nhận ảnh / xóa ảnh (POST) ---------------- */
+// Trả JSON thuần qua ContentService để client gọi bằng fetch() trực tiếp,
+// KHÔNG còn dùng cơ chế iframe + postMessage (hay bị rớt phản hồi trên thực tế).
 function doPost(e) {
   try {
     const req = parseRequest_(e);
@@ -36,28 +42,33 @@ function doPost(e) {
     else if (req.action === "delete") result = handleDelete_(req);
     else if (req.action === "create_report") result = handleCreateReport_(req.report);
     else result = { ok: false, error: "Hành động không hợp lệ" };
-    return response_(result, req.request_id);
+    return json_(result);
   } catch (err) {
-    let requestId = "";
-    try { requestId = parseRequest_(e).request_id || ""; } catch (_) {}
-    return response_({ ok: false, error: String(err) }, requestId);
+    return json_({ ok: false, error: String(err) });
   }
 }
 
 /* ---------------- Xem ảnh (GET) — chuyển đến ảnh Drive xem được ---------------- */
+// Thêm tham số check=1 để client kiểm tra JSON xem file đã thực sự có trên Drive
+// chưa (dùng làm phương án dự phòng nếu một lần fetch() nào đó bị lỗi mạng).
 function doGet(e) {
   const id = e.parameter && e.parameter.id;
-  if (!id) return HtmlService.createHtmlOutput("Thiếu tham số id");
+  const check = e.parameter && e.parameter.check;
+  if (!id) return check ? json_({ ok: false, error: "Thiếu tham số id" }) : HtmlService.createHtmlOutput("Thiếu tham số id");
   try {
     const file = DriveApp.getFileById(id);
-    if (!isInRootFolder_(file)) return HtmlService.createHtmlOutput("Ảnh không thuộc thư mục LabMana.");
+    if (!isInRootFolder_(file)) {
+      return check ? json_({ ok: false, error: "Ảnh không thuộc thư mục LabMana." })
+        : HtmlService.createHtmlOutput("Ảnh không thuộc thư mục LabMana.");
+    }
+    if (check) return json_({ ok: true, file_id: id, name: file.getName(), url: driveImageUrl_(id) });
     const imageUrl = driveImageUrl_(id);
     return HtmlService.createHtmlOutput(
       '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<a href="' + imageUrl + '"><img src="' + imageUrl + '" alt="LabMana" style="display:block;max-width:100%;height:auto;margin:auto"></a>'
     );
   } catch (err) {
-    return HtmlService.createHtmlOutput("Không tìm thấy ảnh hoặc chưa có quyền truy cập.");
+    return check ? json_({ ok: false, error: String(err) }) : HtmlService.createHtmlOutput("Không tìm thấy ảnh hoặc chưa có quyền truy cập.");
   }
 }
 
@@ -170,15 +181,4 @@ function isInRootFolder_(file) {
     while (ancestors.hasNext()) pending.push(ancestors.next());
   }
   return false;
-}
-
-function response_(result, requestId) {
-  if (!requestId) return json_(result);
-  const message = JSON.stringify({ requestId: requestId, result: result }).replace(/</g, "\\u003c");
-  return HtmlService.createHtmlOutput(
-    '<!doctype html><script>(function(){' +
-    'var data=' + message + ';' +
-    'window.parent.postMessage({source:"labmana-drive",requestId:data.requestId,result:data.result},"*");' +
-    '})();</script>'
-  ).setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }

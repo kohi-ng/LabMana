@@ -1,6 +1,9 @@
 /**
  * LabMana — helpers for exporting a completed experiment to Google Docs.
- * Add this file to the same Apps Script project as code.gs.
+ * Add this file to the same Apps Script project as code.gs VÀ math-render.gs
+ * (math-render.gs cung cấp hàm compileFormulas_() dùng bên dưới để "biên dịch"
+ * công thức $...$ / \ce{...} sang Unicode — Apps Script dùng chung scope giữa
+ * các file .gs trong cùng project nên không cần import gì thêm).
  */
 function handleCreateReport_(report) {
   if (!report || typeof report !== "object") throw new Error("Thiếu dữ liệu báo cáo.");
@@ -24,12 +27,15 @@ function handleCreateReport_(report) {
   const preparedSteps = steps.map(step => {
     const photos = Array.isArray(step.photos) ? step.photos : [];
     return {
-      section: reportText_(step.section, 240),
+      section: compileFormulas_(reportText_(step.section, 240)),
       label: reportText_(step.label, 32),
+      // "Các bước tiến hành" giữ dạng thô ở đây: có thể chứa bảng Markdown (cú pháp Planner),
+      // nên việc tách bảng + biên dịch công thức được làm khi chèn vào Docs (xem appendActionCell_),
+      // không compile trước ở đây để tránh làm mất ranh giới dòng "|...|" của bảng.
       action: reportText_(step.action, 10000),
-      measurement: reportText_(step.measurement, 1000),
-      observation: reportText_(step.observation, 10000),
-      explanation: reportText_(step.explanation, 10000),
+      measurement: compileFormulas_(reportText_(step.measurement, 1000)),
+      observation: compileFormulas_(reportText_(step.observation, 10000)),
+      explanation: compileFormulas_(reportText_(step.explanation, 10000)),
       photos: photos.map(photo => {
         const fileId = reportText_(photo.file_id, 200);
         if (!fileId) throw new Error("Báo cáo có ảnh thiếu mã Drive.");
@@ -69,11 +75,14 @@ function handleCreateReport_(report) {
     `NGÀY: ${reportDate_(reportDate)}`,
     "GVGD: TS. NGUYỄN BÌNH NGUYÊN"
   ].forEach(text => setReportTextStyle_(body.appendParagraph(text).editAsText(), false));
-  const experimentLine = body.appendParagraph(`BÀI SỐ: ${experimentTitle}`);
+  const experimentTitleCompiled = compileFormulas_(experimentTitle);
+  const experimentLine = body.appendParagraph(`BÀI SỐ: ${experimentTitleCompiled}`);
   const experimentText = experimentLine.editAsText();
   setReportTextStyle_(experimentText, false);
-  const experimentOffset = experimentText.getText().indexOf(experimentTitle);
-  experimentText.setBold(experimentOffset, experimentOffset + experimentTitle.length - 1, true);
+  const experimentOffset = experimentText.getText().indexOf(experimentTitleCompiled);
+  if (experimentOffset >= 0 && experimentTitleCompiled.length) {
+    experimentText.setBold(experimentOffset, experimentOffset + experimentTitleCompiled.length - 1, true);
+  }
   body.appendParagraph("");
 
   const table = body.appendTable([[
@@ -96,7 +105,7 @@ function handleCreateReport_(report) {
     const row = table.appendTableRow();
     const sectionNumber = String(step.label).split(".")[0];
     const sectionCell = row.appendTableCell(`TN${sectionNumber}`);
-    const actionCell = row.appendTableCell(`${step.label}\n${step.action || "Chưa có nội dung thao tác."}`);
+    const actionCell = row.appendTableCell("");
     const observationText = [
       step.measurement ? `Số liệu: ${step.measurement}` : "",
       step.observation
@@ -104,7 +113,7 @@ function handleCreateReport_(report) {
     const observationCell = row.appendTableCell("");
     const explanationCell = row.appendTableCell(step.explanation || "Chưa ghi nhận giải thích.");
     setReportTextStyle_(sectionCell.editAsText(), false);
-    setReportTextStyle_(actionCell.editAsText(), false);
+    appendActionCell_(actionCell, step.label, step.action);
     setReportTextStyle_(explanationCell.editAsText(), false);
 
     const photosByCode = {};
@@ -151,6 +160,47 @@ function appendReportText_(cell, text) {
   String(text).split(/\r?\n/).forEach(line => {
     setReportTextStyle_(cell.appendParagraph(line).editAsText(), false);
   });
+}
+
+/**
+ * Chèn cột "Các bước tiến hành": nhãn bước in đậm, sau đó nội dung thao tác —
+ * có thể xen kẽ đoạn văn thường và bảng Markdown (cú pháp Planner "| a | b |").
+ * Bảng được chèn bằng appendTable() lồng ngay trong ô, không in ký tự "|" như chữ thường.
+ */
+function appendActionCell_(cell, label, action) {
+  const labelPara = cell.appendParagraph(String(label || ""));
+  setReportTextStyle_(labelPara.editAsText(), true);
+
+  const trimmedAction = String(action || "").trim();
+  if (!trimmedAction) {
+    setReportTextStyle_(cell.appendParagraph("Chưa có nội dung thao tác.").editAsText(), false);
+    return;
+  }
+  const blocks = parseMarkdownBlocks_(trimmedAction);
+  blocks.forEach(block => {
+    if (block.type === "table") {
+      appendActionTable_(cell, block);
+    } else {
+      block.lines.forEach(line => setReportTextStyle_(cell.appendParagraph(line).editAsText(), false));
+    }
+  });
+}
+
+function appendActionTable_(cell, block) {
+  const rows = [block.header, ...block.rows].map(row => row.map(value => value || ""));
+  const nested = cell.appendTable(rows);
+  const headerRow = nested.getRow(0);
+  for (let column = 0; column < block.header.length; column++) {
+    const headerCell = headerRow.getCell(column);
+    headerCell.setBackgroundColor("#f0f3f7");
+    setReportTextStyle_(headerCell.editAsText(), true, 10);
+  }
+  for (let r = 1; r < nested.getNumRows(); r++) {
+    for (let c = 0; c < nested.getRow(r).getNumCells(); c++) {
+      setReportTextStyle_(nested.getRow(r).getCell(c).editAsText(), false, 10);
+    }
+  }
+  cell.appendParagraph(""); // khoảng cách nhỏ sau bảng để không dính đoạn văn kế tiếp
 }
 
 function appendReportPhoto_(cell, photo, onSkipped, index) {
