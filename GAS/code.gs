@@ -63,7 +63,7 @@ function doGet(e) {
       return check ? json_({ ok: false, error: "Ảnh không thuộc thư mục LabMana." })
         : HtmlService.createHtmlOutput("Ảnh không thuộc thư mục LabMana.");
     }
-    if (check) return json_({ ok: true, file_id: id, name: file.getName(), url: driveImageUrl_(id) });
+    if (check) return json_({ ok: true, file_id: id, name: file.getName(), url: driveImageUrl_(id), access: file.getSharingAccess() === DriveApp.Access.ANYONE_WITH_LINK ? "anyone_with_link_viewer" : "restricted" });
     const imageUrl = driveImageUrl_(id);
     return HtmlService.createHtmlOutput(
       '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
@@ -82,22 +82,24 @@ function handleUpload_(req) {
   const mime = req.mime || "image/jpeg";
   const blob = Utilities.newBlob(bytes, mime, buildFileName_(req.kind, meta, req.file_name, req.original_name, mime));
   const file = folder.createFile(blob);
-  // Một số tài khoản Workspace chặn chia sẻ "Anyone with the link": nếu setSharing ném lỗi thì file vẫn
-  // đã nằm trong Drive, nên trả file_id kèm cảnh báo thay vì báo lỗi (tránh ảnh mồ côi + lưu dự phòng).
-  let shareError = "";
-  try {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (err) {
-    shareError = String(err);
-    console.warn("setSharing lỗi cho " + file.getId() + ": " + shareError);
-  }
   const id = file.getId();
+  try {
+    // Chỉ xác nhận upload khi mọi thiết bị có thể đọc file bằng link.
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
+      throw new Error("Drive không xác nhận quyền Anyone with the link.");
+    }
+  } catch (err) {
+    // Không để lại file mồ côi khi quyền chia sẻ không được cấp.
+    try { file.setTrashed(true); } catch (cleanupErr) { console.error("Không dọn được file upload lỗi " + id + ": " + cleanupErr); }
+    throw new Error("Không thể cấp quyền xem ảnh bằng link. Kiểm tra chính sách chia sẻ Google Workspace: " + String(err));
+  }
   return {
     ok: true,
     file_id: id,
     name: file.getName(),
     url: driveImageUrl_(id),
-    share_error: shareError
+    access: "anyone_with_link_viewer"
   };
 }
 
