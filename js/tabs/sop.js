@@ -598,7 +598,7 @@ async function save(id) {
     if (next) expanded.add(next.step.id);
     let deleteWarning = "";
     for (const fileId of filesToDelete) {
-      try { await driveDelete(fileId); }
+      try { await removeMediaAsset(fileId, driveDelete); }
       catch (err) {
         console.error(err);
         deleteWarning = " Bản ghi đã lưu nhưng có ảnh chưa xóa được khỏi Drive.";
