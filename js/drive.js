@@ -1,5 +1,5 @@
 // ============ Drive: tải / xóa ảnh qua Google Apps Script Web App ============
-import { blobToBase64, blobToDataUrl } from "./utils.js";
+import { blobToBase64 } from "./utils.js";
 
 export const GAS_URL = "https://script.google.com/macros/s/AKfycbyMxFpoicWLq3dg5YNyfePuaSUKO55xoQNx-8EY5MroyMQir-PHiRYUpl5YOXdb8mjcIw/exec";
 export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
@@ -12,19 +12,13 @@ function canvasToBlob(canvas, type, quality) {
   });
 }
 
-/**
- * Google Docs chỉ nhúng JPEG/PNG/GIF ≤ 2 MB. Web thì hiện mọi ảnh qua thumbnail Drive,
- * nên ảnh HEIC/WebP/BMP hoặc file quá nặng nhìn được trên app nhưng biến mất trong báo cáo.
- * Chuyển những ảnh đó sang JPEG vừa cỡ trước khi upload. Ảnh đã nhúng được thì giữ nguyên.
- */
 async function prepareImageBlob(blob) {
   const type = String(blob?.type || "").toLowerCase();
   const embeddable = type === "image/jpeg" || type === "image/png" || type === "image/gif";
   if (embeddable && blob.size <= DOCS_EMBED_MAX_BYTES) return blob;
   if (typeof createImageBitmap !== "function") return blob;
   let bitmap;
-  try { bitmap = await createImageBitmap(blob); }
-  catch { return blob; }
+  try { bitmap = await createImageBitmap(blob); } catch { return blob; }
   try {
     let width = bitmap.width || 1;
     let height = bitmap.height || 1;
@@ -63,84 +57,97 @@ function withJpegExtension(name) {
 }
 
 /**
- * Gọi thẳng Apps Script Web App bằng fetch() và đọc JSON trả về.
- * Thay cho cơ chế iframe + postMessage cũ: cơ chế đó từng khiến app báo lỗi/timeout
- * dù phía Drive đã nhận và lưu file thành công — vì phản hồi qua postMessage không
- * phải lúc nào cũng tới được cửa sổ chính (phụ thuộc trình duyệt / iframe lồng nhau
- * của Apps Script). fetch() đọc thẳng response của doPost/doGet nên không bị vậy.
+      if (!/(^|\.)googleusercontent\.com$/.test(new URL(event.origin).hostname)) return;
+ * Browser fetch() cannot reliably read that cross-origin response (CORS), even when
+ * the request uses text/plain. Submit a normal HTML form to a hidden iframe instead;
+ * the HtmlService response posts the structured result back with postMessage.
  */
-async function driveRequest(payload, { timeoutMs = 90000 } = {}) {
+async function driveRequest(payload, { timeoutMs = 45000 } = {}) {
   if (!isDriveConfigured) throw new Error("NOT_CONFIGURED_DRIVE");
 
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const response = await fetch(GAS_URL, {
-      method: "POST",
-      // text/plain tránh preflight CORS (OPTIONS) mà Apps Script Web App không xử lý được;
-      // code.gs vẫn đọc đúng nội dung qua e.postData.contents vì đây vẫn là JSON hợp lệ.
-      headers: { "Content-Type": "text/plain;charset=utf-8" },
-      body: JSON.stringify(payload),
-      signal: controller.signal
-    });
-    if (!response.ok) throw new Error(`Google Apps Script phản hồi lỗi HTTP ${response.status}.`);
-    let result;
-    try { result = await response.json(); }
-    catch (err) { throw new Error("Không đọc được phản hồi từ Google Apps Script (không phải JSON hợp lệ)."); }
-    if (!result?.ok) throw new Error(result?.error || "Google Drive từ chối yêu cầu.");
-    return result;
-  } catch (err) {
-    if (err.name === "AbortError") {
-      throw new Error("Hết thời gian chờ Google Drive. Kiểm tra mạng rồi thử lại; nếu vẫn lỗi, triển khai lại phiên bản mới của code.gs.");
+  const requestId = `labmana-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  const targetName = `labmana-drive-${requestId}`;
+  const iframe = document.createElement("iframe");
+  iframe.name = targetName;
+  iframe.title = "LabMana Drive request";
+  iframe.style.cssText = "position:fixed;width:1px;height:1px;left:-10px;bottom:-10px;border:0;opacity:0;pointer-events:none";
+  iframe.setAttribute("aria-hidden", "true");
+
+  const form = document.createElement("form");
+  form.method = "POST";
+  form.action = GAS_URL;
+  form.target = targetName;
+  form.enctype = "application/x-www-form-urlencoded";
+  form.acceptCharset = "UTF-8";
+
+  const payloadInput = document.createElement("textarea");
+  payloadInput.name = "payload";
+  payloadInput.value = JSON.stringify(payload);
+  payloadInput.style.display = "none";
+  const requestInput = document.createElement("input");
+  requestInput.type = "hidden";
+  requestInput.name = "request_id";
+  requestInput.value = requestId;
+  form.append(payloadInput, requestInput);
+  document.body.append(iframe, form);
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      window.removeEventListener("message", onMessage);
+      clearTimeout(timer);
+      form.remove();
+      iframe.remove();
+    };
+    const finish = (fn, value) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      fn(value);
+    };
+    const onMessage = event => {
+      // HtmlService may wrap its response in a Google sandbox iframe.
+      // Correlate by the unguessable request_id instead of frame origin/source.
+      const data = event.data;
+      if (!data || data.labmana !== "drive-response" || data.request_id !== requestId) return;
+      if (data.result?.ok) finish(resolve, data.result);
+      else finish(reject, new Error(data.result?.error || "Google Drive từ chối yêu cầu."));
+    };
+    const timer = setTimeout(() => {
+      finish(reject, new Error("Apps Script đã nhận yêu cầu nhưng LabMana không nhận được phản hồi sau 45 giây. Kiểm tra deployment GAS có dùng code.gs mới; nếu thư mục đã được tạo mà chưa có file, kiểm tra nhật ký Executions trong Apps Script để xem lỗi tại bước tạo file hoặc cấp quyền chia sẻ."));
+    }, timeoutMs);
+
+    window.addEventListener("message", onMessage);
+    try {
+      form.submit();
+    } catch (err) {
+      finish(reject, new Error("Không gửi được yêu cầu tới Google Drive: " + String(err?.message || err)));
     }
-    if (err instanceof TypeError) {
-      // fetch() thất bại ở tầng mạng/CORS trước khi có response (mất mạng, bị chặn, URL sai…)
-      throw new Error("Không kết nối được tới Google Drive (mạng hoặc cấu hình CORS). Kiểm tra mạng và URL Apps Script trong js/drive.js.");
-    }
-    throw err;
-  } finally {
-    clearTimeout(timer);
-  }
+  });
 }
 
 export async function driveUpload(blob, kind, meta = {}) {
   const prepared = await prepareImageBlob(blob);
   const converted = prepared !== blob && prepared.type === "image/jpeg";
   const { fileName, originalName, ...driveMeta } = meta;
-  try {
-    const result = await driveRequest({
-      action: "upload",
-      kind,
-      base64: await blobToBase64(prepared),
-      mime: prepared.type || "image/jpeg",
-      meta: driveMeta,
-      file_name: converted ? withJpegExtension(fileName) : (fileName || ""),
-      original_name: converted ? (withJpegExtension(originalName) || "anh.jpg") : (originalName || "")
-    });
-    if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
-    if (result.share_error) console.warn("Ảnh đã lưu nhưng không đặt được quyền xem bằng link:", result.share_error);
-    return {
-      file_id: result.file_id,
-      url: result.url || driveImageUrl(result.file_id),
-      name: result.name || ""
-    };
-  } catch (err) {
-    if (kind !== "log") throw err;
-    console.warn("Drive chưa xác nhận upload ảnh; giữ ảnh trong nhật ký để không chặn bước:", err);
-    return {
-      file_id: "",
-      // Dùng bản đã nén (prepared) thay vì ảnh gốc để nhẹ hơn cho Firestore (giới hạn 1 MiB/tài liệu).
-      url: await blobToDataUrl(prepared),
-      name: "Ảnh lưu kèm nhật ký",
-      storage_fallback: true,
-      error: String(err?.message || err)
-    };
-  }
+  const result = await driveRequest({
+    action: "upload",
+    kind,
+    base64: await blobToBase64(prepared),
+    mime: prepared.type || "image/jpeg",
+    meta: driveMeta,
+    file_name: converted ? withJpegExtension(fileName) : (fileName || ""),
+    original_name: converted ? (withJpegExtension(originalName) || "anh.jpg") : (originalName || "")
+  });
+  if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
+  return {
+    file_id: result.file_id,
+    url: result.url || driveImageUrl(result.file_id),
+    name: result.name || ""
+  };
 }
 
 export async function driveCreateReport(report) {
-  // Nhiều ảnh (tới 80) + chèn vào Google Docs có thể mất hơn 90s; cho thời gian rộng hơn,
-  // Apps Script tự giới hạn ở 6 phút/lượt chạy nên 4 phút ở client là mức an toàn.
   return driveRequest({ action: "create_report", report }, { timeoutMs: 240000 });
 }
 

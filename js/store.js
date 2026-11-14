@@ -14,7 +14,8 @@ export const state = {
   runs: [], runsLoaded: false,
   activeRunId: (() => { try { return localStorage.getItem(LS_RUN) || null; } catch { return null; } })(),
   activeRun: null, activeRunLoaded: false,
-  logs: {}            // step_id → log (của lượt đang chọn)
+  logs: {},           // step_id → log (của lượt đang chọn)
+  mediaAssets: [], mediaAssetsLoaded: false // metadata ảnh toàn LabMana
 };
 
 const subs = {};
@@ -70,6 +71,14 @@ export async function startStore() {
   onSnapshot(doc(db, "config", "lab"), snap => {
     state.team = (snap.data()?.team_members || []).map(String);
     emit("config");
+  }, fail);
+
+  // Tải toàn bộ metadata ảnh: không phụ thuộc lượt đang mở, để mọi tab/thiết bị cùng thấy.
+  onSnapshot(collection(db, "media_assets"), snap => {
+    state.mediaAssets = snap.docs.map(d => ({ id: d.id, ...d.data() }))
+      .sort((a, b) => (a.created_at_ms || 0) - (b.created_at_ms || 0));
+    state.mediaAssetsLoaded = true;
+    emit("media");
   }, fail);
 
   onSnapshot(collection(db, "experiments"), snap => {

@@ -1,30 +1,18 @@
 /**
  * LabMana — Google Apps Script Web App
- * Vai trò: nhận ảnh (base64) từ app, lưu vào MỘT thư mục Google Drive cố định
- * với tên file rõ ràng theo Bài / Thí nghiệm / Lượt, trả mã ảnh để app hiển thị
- * bằng URL thumbnail Drive và hỗ trợ xóa ảnh đã lưu.
+ * Nhận ảnh base64, lưu vào Google Drive, xóa ảnh và tạo báo cáo Google Docs.
  *
- * Giao tiếp: client gọi thẳng bằng fetch() (POST JSON / GET), server trả JSON
- * thuần qua ContentService. KHÔNG dùng iframe + postMessage nữa (cơ chế cũ hay
- * rớt phản hồi dù Drive đã nhận file xong, khiến app báo lỗi dù upload thành công).
+ * Giao tiếp: form POST từ app vào iframe ẩn. Apps Script trả HtmlService và gửi
+ * JSON về cửa sổ app bằng postMessage. Cách này tránh lỗi CORS do ContentService
+ * redirect response sang script.googleusercontent.com khi gọi fetch() trực tiếp.
  *
- * CÀI ĐẶT (làm 1 lần):
- * 1. Tạo 1 thư mục trên Google Drive, ví dụ "LabMana - Ảnh thí nghiệm".
- *    Mở thư mục đó, copy ID trong URL: drive.google.com/drive/folders/<ID NÀY>
- * 2. Vào https://script.google.com → New project → dán CẢ BA file trong thư mục GAS/:
- *    code.gs, report.gs và math-render.gs (cùng một project, không cần import).
- * 3. Dán ID thư mục vào ROOT_FOLDER_ID bên dưới.
- * 4. Chạy hàm authorizeDrive() một lần trong editor và chấp thuận quyền Google Drive
- *    (và quyền "kết nối dịch vụ bên ngoài" — report.gs dùng UrlFetchApp để lấy thumbnail
- *    khi ảnh quá nặng/HEIC). Mỗi khi thêm quyền mới phải chạy lại rồi Deploy phiên bản mới.
- * 5. Deploy → New deployment → chọn loại "Web app".
- *      - Execute as: Me
- *      - Who has access: Anyone
- *    Bấm Deploy, copy "Web app URL".
- * 6. Dán URL đó vào js/drive.js (biến GAS_URL).
- *
- * Mỗi lần sửa code.gs, report.gs hoặc math-render.gs: phải Deploy → Manage deployments
- * → ✎ → New version → Deploy lại, nếu không URL cũ vẫn chạy code cũ.
+ * CÀI ĐẶT:
+ * 1. Tạo thư mục Drive và dán ID vào ROOT_FOLDER_ID.
+ * 2. Dán code.gs, report.gs và math-render.gs vào cùng một Apps Script project.
+ * 3. Chạy authorizeDrive() một lần để cấp quyền.
+ * 4. Deploy Web app: Execute as Me; Who has access: Anyone.
+ * 5. Dán Web app URL vào GAS_URL trong js/drive.js.
+ * 6. Mỗi lần sửa mã GAS: Manage deployments → Edit → New version → Deploy.
  */
 
 const ROOT_FOLDER_ID = "163F-EZ36tJ7qc9J9NTvIipvQWxOWEtJi";
@@ -33,37 +21,55 @@ function authorizeDrive() {
   return DriveApp.getFolderById(ROOT_FOLDER_ID).getName();
 }
 
-/* ---------------- Nhận ảnh / xóa ảnh (POST) ---------------- */
-// Trả JSON thuần qua ContentService để client gọi bằng fetch() trực tiếp,
-// KHÔNG còn dùng cơ chế iframe + postMessage (hay bị rớt phản hồi trên thực tế).
+/* ---------------- Nhận ảnh / xóa ảnh / tạo báo cáo ---------------- */
 function doPost(e) {
+  const requestId = e && e.parameter && e.parameter.request_id || "";
+  console.log("[LabMana] doPost received; request_id=" + requestId);
   try {
     const req = parseRequest_(e);
+    console.log("[LabMana] payload parsed; action=" + req.action);
     let result;
     if (req.action === "upload") result = handleUpload_(req);
     else if (req.action === "delete") result = handleDelete_(req);
     else if (req.action === "create_report") result = handleCreateReport_(req.report);
     else result = { ok: false, error: "Hành động không hợp lệ" };
-    return json_(result);
+    console.log("[LabMana] action complete; ok=" + !!result.ok);
+    return htmlResponse_(result, requestId);
   } catch (err) {
-    return json_({ ok: false, error: String(err) });
+    console.error("[LabMana] doPost failed: " + (err && err.stack || err));
+    return htmlResponse_({ ok: false, error: String(err) }, requestId);
   }
 }
 
-/* ---------------- Xem ảnh (GET) — chuyển đến ảnh Drive xem được ---------------- */
-// Thêm tham số check=1 để client kiểm tra JSON xem file đã thực sự có trên Drive
-// chưa (dùng làm phương án dự phòng nếu một lần fetch() nào đó bị lỗi mạng).
+/**
+ * Trả HTML chạy trong iframe đích của form POST. ALLOWALL cho phép iframe app
+ * nhúng trang phản hồi; request_id giúp app ghép đúng phản hồi với đúng request.
+ */
+function htmlResponse_(result, requestId) {
+  const message = JSON.stringify({
+    labmana: "drive-response",
+    request_id: String(requestId || ""),
+    result: result
+  }).replace(/</g, "\\u003c").replace(/>/g, "\\u003e").replace(/&/g, "\\u0026");
+  const html = '<!doctype html><html><head><meta charset="utf-8"></head><body>' +
+    '<script>window.top.postMessage(' + message + ', "*");</script>' +
+    '</body></html>';
+  return HtmlService.createHtmlOutput(html)
+    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+/* ---------------- Xem ảnh (GET) ---------------- */
 function doGet(e) {
   const id = e.parameter && e.parameter.id;
   const check = e.parameter && e.parameter.check;
-  if (!id) return check ? json_({ ok: false, error: "Thiếu tham số id" }) : HtmlService.createHtmlOutput("Thiếu tham số id");
+  if (!id) return check ? json_( { ok: false, error: "Thiếu tham số id" }) : HtmlService.createHtmlOutput("Thiếu tham số id");
   try {
     const file = DriveApp.getFileById(id);
     if (!isInRootFolder_(file)) {
       return check ? json_({ ok: false, error: "Ảnh không thuộc thư mục LabMana." })
         : HtmlService.createHtmlOutput("Ảnh không thuộc thư mục LabMana.");
     }
-    if (check) return json_({ ok: true, file_id: id, name: file.getName(), url: driveImageUrl_(id) });
+    if (check) return json_({ ok: true, file_id: id, name: file.getName(), url: driveImageUrl_(id), access: file.getSharingAccess() === DriveApp.Access.ANYONE_WITH_LINK ? "anyone_with_link_viewer" : "restricted" });
     const imageUrl = driveImageUrl_(id);
     return HtmlService.createHtmlOutput(
       '<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1">' +
@@ -74,30 +80,40 @@ function doGet(e) {
   }
 }
 
-/* ---------------- Xử lý nghiệp vụ ---------------- */
 function handleUpload_(req) {
   const meta = req.meta || {};
+  console.log("[LabMana] upload: creating/finding folder");
   const folder = getOrCreateSubFolder_(buildFolderPath_(req.kind, meta));
+  console.log("[LabMana] upload: folder ready; decoding " + String(req.base64 || "").length + " base64 chars");
   const bytes = Utilities.base64Decode(req.base64);
   const mime = req.mime || "image/jpeg";
   const blob = Utilities.newBlob(bytes, mime, buildFileName_(req.kind, meta, req.file_name, req.original_name, mime));
+  console.log("[LabMana] upload: blob ready; bytes=" + bytes.length + "; creating file");
   const file = folder.createFile(blob);
-  // Một số tài khoản Workspace chặn chia sẻ "Anyone with the link": nếu setSharing ném lỗi thì file vẫn
-  // đã nằm trong Drive, nên trả file_id kèm cảnh báo thay vì báo lỗi (tránh ảnh mồ côi + lưu dự phòng).
-  let shareError = "";
-  try {
-    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  } catch (err) {
-    shareError = String(err);
-    console.warn("setSharing lỗi cho " + file.getId() + ": " + shareError);
-  }
   const id = file.getId();
+  console.log("[LabMana] upload: file created; id=" + id + "; setting link permission");
+  try {
+    console.log("[LabMana] upload: calling setSharing(ANYONE_WITH_LINK, VIEW)");
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    console.log("[LabMana] upload: setSharing returned; checking effective access");
+    const access = file.getSharingAccess();
+    console.log("[LabMana] upload: getSharingAccess=" + access);
+    if (access !== DriveApp.Access.ANYONE_WITH_LINK) {
+      throw new Error("Drive không xác nhận quyền Anyone with the link; access=" + access);
+    }
+  } catch (err) {
+    console.error("[LabMana] upload: sharing failed for file " + id + ": " + (err && err.stack || err));
+    // Keep the file for diagnosis/recovery. Do not trash a successfully created upload
+    // merely because public-link sharing is blocked or delayed by account policy.
+    throw new Error("Tạo file thành công nhưng không cấp được quyền xem bằng liên kết. " + String(err));
+  }
+  console.log("[LabMana] upload: link permission verified; id=" + id);
   return {
     ok: true,
     file_id: id,
     name: file.getName(),
     url: driveImageUrl_(id),
-    share_error: shareError
+    access: "anyone_with_link_viewer"
   };
 }
 
@@ -107,8 +123,6 @@ function handleDelete_(req) {
   try {
     file = DriveApp.getFileById(req.file_id);
   } catch (err) {
-    // File không còn trên Drive (ví dụ đã bị xóa tay): mục tiêu "xóa" đã đạt nên coi là thành công,
-    // để app không báo "chưa xóa được khỏi Drive" mãi cho một ảnh vốn đã không còn.
     return { ok: true, already_gone: true };
   }
   try {
@@ -120,10 +134,9 @@ function handleDelete_(req) {
   }
 }
 
-/* ---------------- Đặt tên thư mục con & tên file theo Bài / Thí nghiệm / Lượt ---------------- */
 function sanitize_(s) {
   return String(s || "")
-    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "") // bỏ dấu tiếng Việt cho tên thư mục gọn
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
     .replace(/[\\/:*?"<>|]+/g, "-").trim().slice(0, 60) || "khong-ten";
 }
 

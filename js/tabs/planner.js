@@ -7,6 +7,7 @@ import { state, on } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
+import { registerMediaAsset, removeMediaAsset } from "../media.js";
 import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, statusCard, downloadFile, $$ } from "../utils.js";
 import { OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
 
@@ -30,6 +31,7 @@ export function init(el) {
   root.addEventListener("input", onInput);
   root.addEventListener("change", onChange);
   on("experiments", () => { if (view === "list") render(); });
+  on("media", () => { if (view === "editor") render(); });
   on("config", () => { if (view === "editor") render(); });
   on("status", render);
   window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
@@ -185,11 +187,17 @@ function fieldToggleRow(prefix, field, dflt) {
 
 function imagesHtml(s) {
   const uploading = uploadingImgs.has(s.id);
+  const known = new Set(s.images.map(image => image.file_id).filter(Boolean));
+  const shared = (state.mediaAssets || []).filter(asset =>
+    asset.context === "plan" && asset.status === "ready" && asset.step_id === s.id &&
+    asset.file_id && !known.has(asset.file_id)
+  );
   return `<div class="imgs">
     ${s.images.map((im, i) => `<div class="img-item">
       <div class="img"><img src="${esc(im.file_id ? driveImageUrl(im.file_id) : im.url)}" alt="" loading="lazy"><button class="x" data-act="del-img" data-i="${i}" aria-label="Xóa ảnh">✕</button></div>
       ${im.file_id ? `<a class="img-link" href="${esc(driveFileUrl(im.file_id))}" target="_blank" rel="noopener noreferrer">Mở ảnh trên Drive ↗</a>` : ""}
     </div>`).join("")}
+    ${shared.map(im => `<div class="img-item"><div class="img"><img src="${esc(im.url || driveImageUrl(im.file_id))}" alt="" loading="lazy"></div><a class="img-link" href="${esc(driveFileUrl(im.file_id))}" target="_blank" rel="noopener noreferrer">Mở ảnh trên Drive ↗</a><span class="muted small">Ảnh vừa tải lên từ thiết bị khác</span></div>`).join("")}
     ${uploading ? `<div class="img uploading"><img src="" alt=""><div class="spin"><div class="spin-ring dark"></div></div></div>` : ""}
   </div>`;
 }
@@ -364,7 +372,16 @@ async function addImages(stepId, files) {
     for (const [index, file] of files.entries()) {
       try {
         toast(`Đang tải ảnh lên Drive… (${index + 1}/${files.length})`);
-        const img = await driveUpload(file, "plan", meta);
+        const img = await driveUpload(file, "plan", { ...meta, originalName: file.name });
+        try {
+          await registerMediaAsset({ ...img, mime_type: file.type, size_bytes: file.size }, {
+            context: "plan", experiment_id: expId || null, run_id: null,
+            section_id: found.sec.id, step_id: stepId
+          });
+        } catch (registryError) {
+          await driveDelete(img.file_id).catch(() => {});
+          throw new Error("Ảnh đã lên Drive nhưng metadata Firestore chưa đồng bộ: " + registryError.message);
+        }
         found.step.images.push(img);
         if (img.file_id) newlyUploadedDriveFiles.add(img.file_id);
         markDirty();
@@ -497,7 +514,7 @@ async function save() {
         continue;
       }
       try {
-        await driveDelete(fileId);
+        await removeMediaAsset(fileId, driveDelete);
         failedDriveDeletes.delete(fileId);
         newlyUploadedDriveFiles.delete(fileId);
       } catch (err) {
