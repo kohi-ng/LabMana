@@ -7,6 +7,7 @@ import { state, on } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
+import { registerMediaAsset, removeMediaAsset } from "../media.js";
 import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, statusCard, downloadFile, $$ } from "../utils.js";
 import { OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
 
