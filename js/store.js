@@ -10,7 +10,6 @@ const LS_RUN = "labmana.activeRun";
 export const state = {
   ready: false, error: null,
   team: [],
-  teamProfiles: [],
   experiments: [], experimentsLoaded: false,
   runs: [], runsLoaded: false,
   activeRunId: (() => { try { return localStorage.getItem(LS_RUN) || null; } catch { return null; } })(),
@@ -69,17 +68,7 @@ export async function startStore() {
   state.ready = true; state.error = null; emit("status");
 
   onSnapshot(doc(db, "config", "lab"), snap => {
-    const data = snap.data() || {};
-    const rawProfiles = Array.isArray(data.team_profiles) ? data.team_profiles : [];
-    const profiles = rawProfiles.map(item => ({
-      name: String(item?.name || "").trim(),
-      mssv: String(item?.mssv || "").trim(),
-      honorific: String(item?.honorific || "").trim()
-    })).filter(item => item.name);
-    state.teamProfiles = profiles.length
-      ? profiles
-      : (data.team_members || []).map(name => ({ name: String(name).trim(), mssv: "", honorific: "" })).filter(item => item.name);
-    state.team = state.teamProfiles.map(item => item.name);
+    state.team = (snap.data()?.team_members || []).map(String);
     emit("config");
   }, fail);
 

@@ -1,21 +1,18 @@
 // ============ Tab Cài đặt (thành viên + xuất báo cáo) ============
 import { state, on } from "../store.js";
 import { auth, db } from "../firebase.js";
-import { doc, collection, query, where, getDocs, setDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { esc, richHtml, toast, confirmBox, statusCard, renderMath } from "../utils.js";
+import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { esc, richHtml, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
 import { driveCreateReport, driveDelete, driveCheck, driveImageUrl, driveFileUrl, driveDownloadUrl, isDriveConfigured } from "../drive.js";
 import { normalizeExperiment, flatten } from "../plan-logic.js";
 
 let root;
 const CFG = () => doc(db, "config", "lab");
 const reportForm = {
-  peopleText: "", peopleEdited: false,
-  lessonTitle: "", lessonTitleEdited: false,
-  group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
+  peopleText: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
   actionTemplate: "{title}\n{text}",
   includeMeasurement: true, includeObservation: true, includeExplanation: true, includePhotos: true
 };
-const memberDraft = { name: "", mssv: "", honorific: "", originalName: "" };
 let reportBusy = false, lastReport = null;
 let gallery = { experimentId: "", status: "idle", items: [], error: "", busyId: "" };
 
@@ -25,9 +22,7 @@ export function init(el) {
   root.addEventListener("click", onClick);
   root.addEventListener("input", onReportInput);
   root.addEventListener("change", onReportInput);
-  root.addEventListener("keydown", e => {
-    if (e.key === "Enter" && e.target.dataset?.memberField) { e.preventDefault(); saveMember(); }
-  });
+  root.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "st-names") { e.preventDefault(); addNames(); } });
   render();
 }
 export function onShow() { render(); }
@@ -37,49 +32,22 @@ function localDate() {
   return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
 }
 
-function profiles() {
-  return (state.teamProfiles || []).map(item => ({
-    name: String(item.name || "").trim(),
-    mssv: String(item.mssv || "").trim(),
-    honorific: String(item.honorific || "").trim()
-  })).filter(item => item.name);
-}
-
-function defaultPeopleText() {
-  return profiles().map(item => item.mssv ? `${item.name} - ${item.mssv}` : item.name).join("\n");
-}
-
-function syncReportDefaults() {
-  if (!reportForm.experimentId && state.experiments.length) reportForm.experimentId = state.experiments[0].id;
-  const exp = state.experiments.find(item => item.id === reportForm.experimentId);
-  if (!reportForm.lessonTitleEdited) reportForm.lessonTitle = exp?.title || "";
-  if (!reportForm.peopleEdited) reportForm.peopleText = defaultPeopleText();
-}
-
 function render() {
   if (!state.ready) { root.innerHTML = statusCard(state); return; }
-  syncReportDefaults();
+  const keep = root.querySelector("#st-names")?.value || "";
+  const team = state.team;
+  if (!reportForm.experimentId && state.experiments.length) reportForm.experimentId = state.experiments[0].id;
   ensureGallery();
-  const people = profiles();
   root.innerHTML = `
     <div class="page-head"><h2>Cài đặt</h2></div>
     <div class="card"><h3>👥 Thành viên nhóm</h3>
-      <p class="muted small">Họ tên và MSSV được điền sẵn vào ô “Họ và tên - MSSV” của báo cáo. Danh xưng chỉ để ghi nhớ trong nhóm (ví dụ nhóm trưởng), không tự chèn vào dòng báo cáo.</p>
-      <div class="member-form">
-        <label class="lbl">Họ và tên
-          <input class="inp" data-member-field="name" value="${esc(memberDraft.name)}" autocomplete="name" placeholder="Nguyễn Văn A">
-        </label>
-        <label class="lbl">Mã số sinh viên
-          <input class="inp" data-member-field="mssv" value="${esc(memberDraft.mssv)}" autocomplete="off" placeholder="12345678">
-        </label>
-        <label class="lbl">Danh xưng
-          <input class="inp" data-member-field="honorific" value="${esc(memberDraft.honorific)}" autocomplete="off" placeholder="Nhóm trưởng">
-        </label>
-        <button class="btn primary" data-act="save-member">${memberDraft.originalName ? "Cập nhật" : "Thêm"}</button>
+      <div class="inline">
+        <input class="inp" id="st-names" placeholder="Nhập tên (nhiều tên: cách nhau bằng dấu phẩy)" autocomplete="off">
+        <button class="btn primary" data-act="add">Thêm</button>
       </div>
-      <ul class="members">${people.length ? people.map(item => `<li><span class="nm">${esc(item.name)}${item.mssv ? ` · ${esc(item.mssv)}` : ""}${item.honorific ? ` · ${esc(item.honorific)}` : ""}</span>
-        <button class="icon-btn" data-act="edit-member" data-name="${esc(item.name)}" title="Sửa">✎</button>
-        <button class="icon-btn danger" data-act="del" data-name="${esc(item.name)}" title="Xóa">🗑</button></li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
+      <ul class="members">${team.length ? team.map(n => `<li><span class="nm">${esc(n)}</span>
+        <button class="icon-btn" data-act="rename" data-name="${esc(n)}" title="Sửa">✎</button>
+        <button class="icon-btn danger" data-act="del" data-name="${esc(n)}" title="Xóa">🗑</button></li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
     </div>
 
     <div class="card"><h3>☁️ Lưu trữ</h3>
@@ -97,16 +65,9 @@ function render() {
             ${state.experiments.length ? state.experiments.map(exp => `<option value="${esc(exp.id)}" ${reportForm.experimentId === exp.id ? "selected" : ""}>${esc(exp.title || "(không tên)")}</option>`).join("") : '<option value="">Chưa có bài đã lên kế hoạch</option>'}
           </select>
         </label>
-        <label class="lbl">Tên bài (dòng “Bài số”)
-          <input class="inp" data-report-field="lessonTitle" value="${esc(reportForm.lessonTitle)}" placeholder="Mặc định là tên bài đã chọn">
-        </label>
-        <p class="muted small">Mặc định lấy tên bài đang chọn. Gõ tên khác nếu muốn dòng “Bài số” trên báo cáo dùng tên đó.
-          ${reportForm.lessonTitleEdited ? '<button type="button" class="btn sm" data-act="reset-lesson">Dùng lại tên bài</button>' : ""}</p>
         <label class="lbl report-people-label">Họ và tên - MSSV (mỗi người một dòng)
           <textarea class="inp" rows="4" data-report-field="peopleText" placeholder="Phan Văn A - 123&#10;Nguyễn Văn B - 456">${esc(reportForm.peopleText)}</textarea>
         </label>
-        <p class="muted small">${reportForm.peopleEdited ? "Đang dùng nội dung bạn đã sửa." : "Đang lấy từ danh sách thành viên."}
-          ${reportForm.peopleEdited ? '<button type="button" class="btn sm" data-act="reset-people">Lấy lại từ thành viên</button>' : ""}</p>
         <label class="lbl">Nhóm
           <input class="inp" data-report-field="group" value="${esc(reportForm.group)}" autocomplete="off" placeholder="Không bắt buộc">
         </label>
@@ -142,57 +103,30 @@ function render() {
     <div class="card"><h3>ℹ️ Về ứng dụng</h3>
       <p class="small muted">LabMana v2.0 · Đăng nhập ẩn danh (mã thiết bị: <code>${esc((auth?.currentUser?.uid || "").slice(0, 6))}</code>)<br>
       Thí nghiệm đang mở được lưu trên thiết bị; dữ liệu ghi nhận đồng bộ qua Firestore.</p></div>`;
+  root.querySelector("#st-names").value = keep;
 }
 
 function onReportInput(event) {
-  const memberField = event.target.dataset?.memberField;
-  if (memberField) {
-    memberDraft[memberField] = event.target.value;
-    return;
-  }
   const field = event.target.dataset?.reportField;
   if (!field) return;
   reportForm[field] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
-  if (field === "peopleText") reportForm.peopleEdited = true;
-  if (field === "lessonTitle") reportForm.lessonTitleEdited = true;
   if (field === "experimentId") {
-    reportForm.lessonTitleEdited = false;
     gallery.status = "idle";
     render();
   }
 }
 
-async function writeProfiles(next) {
-  const clean = next.map(item => ({
-    name: String(item.name || "").trim(),
-    mssv: String(item.mssv || "").trim(),
-    honorific: String(item.honorific || "").trim()
-  })).filter(item => item.name);
-  await setDoc(CFG(), {
-    team_profiles: clean,
-    team_members: clean.map(item => item.name)
-  }, { merge: true });
-}
-
-async function saveMember() {
-  const name = memberDraft.name.trim();
-  const mssv = memberDraft.mssv.trim();
-  const honorific = memberDraft.honorific.trim();
-  if (!name) return toast("Hãy nhập họ và tên.", "warn");
-  const next = profiles();
-  const original = memberDraft.originalName;
-  const dup = next.some(item => item.name.toLowerCase() === name.toLowerCase() && item.name !== original);
-  if (dup) return toast("Tên đã có trong danh sách", "warn");
-  if (original) {
-    const index = next.findIndex(item => item.name === original);
-    if (index < 0) return toast("Thành viên không còn trong danh sách", "warn");
-    next[index] = { name, mssv, honorific };
-  } else next.push({ name, mssv, honorific });
+async function addNames() {
+  const inp = root.querySelector("#st-names");
+  const names = [...new Set(inp.value.split(/[,;\n]/).map(s => s.trim()).filter(Boolean))];
+  if (!names.length) return;
+  const exist = new Set(state.team.map(n => n.toLowerCase()));
+  const fresh = names.filter(n => !exist.has(n.toLowerCase()));
+  if (!fresh.length) return toast("Tên đã có trong danh sách", "warn");
   try {
-    await writeProfiles(next);
-    memberDraft.name = memberDraft.mssv = memberDraft.honorific = memberDraft.originalName = "";
-    if (!reportForm.peopleEdited) reportForm.peopleText = "";
-    toast(original ? "Đã cập nhật thành viên" : "Đã thêm thành viên", "success");
+    await Promise.race([setDoc(CFG(), { team_members: arrayUnion(...fresh) }, { merge: true }), new Promise(r => setTimeout(r, 6000))]);
+    inp.value = "";
+    toast(`Đã thêm ${fresh.length} thành viên`, "success");
   } catch (err) { toast("Lỗi: " + (err.code || err.message), "error"); }
 }
 
@@ -200,41 +134,32 @@ async function onClick(e) {
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
   const name = btn.dataset.name;
-  if (btn.dataset.act === "save-member") return saveMember();
+  if (btn.dataset.act === "add") return addNames();
   if (btn.dataset.act === "export-report") return exportReport();
   if (btn.dataset.act === "preview-report") return previewReport();
   if (btn.dataset.act === "refresh-gallery") { gallery.status = "idle"; render(); return; }
   if (btn.dataset.act === "sync-gallery") return syncMissingImages();
   if (btn.dataset.act === "del-gallery") return deleteGalleryItem(btn.dataset.key);
-  if (btn.dataset.act === "reset-people") {
-    reportForm.peopleEdited = false;
-    reportForm.peopleText = defaultPeopleText();
-    render();
-    return;
-  }
-  if (btn.dataset.act === "reset-lesson") {
-    reportForm.lessonTitleEdited = false;
-    render();
-    return;
-  }
-  if (btn.dataset.act === "edit-member") {
-    const item = profiles().find(entry => entry.name === name);
-    if (!item) return;
-    memberDraft.name = item.name;
-    memberDraft.mssv = item.mssv;
-    memberDraft.honorific = item.honorific;
-    memberDraft.originalName = item.name;
-    render();
-    return;
-  }
   if (btn.dataset.act === "del") {
     if (!(await confirmBox(`Xóa "${name}" khỏi danh sách?`, "Xóa"))) return;
-    try {
-      await writeProfiles(profiles().filter(item => item.name !== name));
-      if (memberDraft.originalName === name) memberDraft.name = memberDraft.mssv = memberDraft.honorific = memberDraft.originalName = "";
-      toast("Đã xóa", "success");
-    }
+    try { await setDoc(CFG(), { team_members: arrayRemove(name) }, { merge: true }); toast("Đã xóa", "success"); }
     catch (err) { toast("Lỗi: " + (err.code || err.message), "error"); }
+  }
+  if (btn.dataset.act === "rename") {
+    const nn = await promptBox({ title: "Sửa tên", label: "Tên mới", value: name });
+    if (!nn || nn === name) return;
+    try {
+      await runTransaction(db, async tx => {
+        const s = await tx.get(CFG());
+        const arr = (s.data()?.team_members || []).slice();
+        const i = arr.indexOf(name);
+        if (i < 0) throw new Error("Tên này không còn trong danh sách");
+        if (arr.some((n, j) => j !== i && n.toLowerCase() === nn.toLowerCase())) throw new Error("Tên bị trùng");
+        arr[i] = nn;
+        tx.set(CFG(), { team_members: arr }, { merge: true });
+      });
+      toast("Đã đổi tên", "success");
+    } catch (err) { toast("Lỗi: " + (err.message || err.code), "error"); }
   }
 }
 
@@ -553,7 +478,7 @@ async function collectReportData() {
     }, 0)
     : 0;
   return {
-    experimentTitle: (reportForm.lessonTitle || "").trim() || experiment.title || "Bài thí nghiệm",
+    experimentTitle: experiment.title || "Bài thí nghiệm",
     runName: run.name || run.id,
     people,
     group: reportForm.group.trim(),
