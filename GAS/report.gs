@@ -96,25 +96,25 @@ function handleCreateReport_(report) {
     headerCell.setBackgroundColor("#dce6f1");
     setReportTextStyle_(headerCell.editAsText(), true);
   }
-  table.setColumnWidth(0, 60);
-  table.setColumnWidth(1, 225);
-  table.setColumnWidth(2, 245);
-  table.setColumnWidth(3, 245);
+  table.setColumnWidth(0, 160);
+  table.setColumnWidth(1, 200);
+  table.setColumnWidth(2, 209);
+  table.setColumnWidth(3, 209);
 
   preparedSteps.forEach(step => {
     const row = table.appendTableRow();
-    const sectionNumber = String(step.label).split(".")[0];
-    const sectionCell = row.appendTableCell(`TN${sectionNumber}`);
+    const sectionCell = row.appendTableCell(step.section || "Thí nghiệm");
     const actionCell = row.appendTableCell("");
     const observationText = [
       step.measurement ? `Số liệu: ${step.measurement}` : "",
       step.observation
     ].filter(Boolean).join("\n");
     const observationCell = row.appendTableCell("");
-    const explanationCell = row.appendTableCell(step.explanation || "Chưa ghi nhận giải thích.");
+    const explanationCell = row.appendTableCell("");
     setReportTextStyle_(sectionCell.editAsText(), false);
     appendActionCell_(actionCell, step.label, step.action);
-    setReportTextStyle_(explanationCell.editAsText(), false);
+    if (String(step.explanation || "").trim()) appendRichBlocks_(explanationCell, step.explanation);
+    else setReportTextStyle_(explanationCell.appendParagraph("Chưa ghi nhận giải thích.").editAsText(), false);
 
     const photosByCode = {};
     step.photos.forEach(photo => { if (photo.code) photosByCode[photo.code] = photo; });
@@ -123,13 +123,12 @@ function handleCreateReport_(report) {
     markers.forEach(code => {
       const markerAt = observationText.indexOf(code, cursor);
       if (markerAt < 0) return;
-      appendReportText_(observationCell, observationText.slice(cursor, markerAt));
-      const photo = photosByCode[code];
-      appendReportPhoto_(observationCell, photo, () => { imagesSkipped++; });
+      appendRichBlocks_(observationCell, observationText.slice(cursor, markerAt));
+      appendReportPhoto_(observationCell, photosByCode[code], () => { imagesSkipped++; });
       cursor = markerAt + code.length;
     });
-    appendReportText_(observationCell, observationText.slice(cursor));
-    if (!observationText && !step.photos.length) {
+    appendRichBlocks_(observationCell, observationText.slice(cursor));
+    if (!observationText.trim() && !step.photos.length) {
       const placeholder = observationCell.appendParagraph("Chưa ghi nhận hiện tượng.");
       setReportTextStyle_(placeholder.editAsText(), false);
     }
@@ -156,9 +155,16 @@ function setReportTextStyle_(text, bold, fontSize) {
 }
 
 function appendReportText_(cell, text) {
-  if (!text) return;
-  String(text).split(/\r?\n/).forEach(line => {
-    setReportTextStyle_(cell.appendParagraph(line).editAsText(), false);
+  appendRichBlocks_(cell, text);
+}
+
+/** Đoạn văn thường hoặc bảng Markdown, cùng cách richHtml() tách khối trên web. */
+function appendRichBlocks_(cell, text) {
+  const value = String(text ?? "");
+  if (!value) return;
+  parseMarkdownBlocks_(value).forEach(block => {
+    if (block.type === "table") appendActionTable_(cell, block);
+    else block.lines.forEach(line => setReportTextStyle_(cell.appendParagraph(line).editAsText(), false));
   });
 }
 
@@ -176,14 +182,7 @@ function appendActionCell_(cell, label, action) {
     setReportTextStyle_(cell.appendParagraph("Chưa có nội dung thao tác.").editAsText(), false);
     return;
   }
-  const blocks = parseMarkdownBlocks_(trimmedAction);
-  blocks.forEach(block => {
-    if (block.type === "table") {
-      appendActionTable_(cell, block);
-    } else {
-      block.lines.forEach(line => setReportTextStyle_(cell.appendParagraph(line).editAsText(), false));
-    }
-  });
+  appendRichBlocks_(cell, trimmedAction);
 }
 
 function appendActionTable_(cell, block) {

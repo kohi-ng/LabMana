@@ -94,19 +94,38 @@ function compileFormulas_(text) {
 }
 
 function compileOneFormula_(inner) {
-  const trimmed = String(inner).trim();
-  const ceMatch = trimmed.match(/^\\ce\{([\s\S]*)\}$/);
-  if (ceMatch) return renderChem_(ceMatch[1]);
-  return renderMathPlain_(trimmed);
+  // \ce{...} có thể đứng một mình hoặc nằm trong công thức toán ($x = \ce{H2O} + 1$).
+  // Phải rút mhchem ra trước renderMathPlain_, vì bước đó xóa mọi lệnh \unknown.
+  return renderMathPlain_(extractCe_(String(inner).trim()));
+}
+
+/** Thay mọi khối \ce{...} (kể cả ngoặc lồng) bằng Unicode từ renderChem_. */
+function extractCe_(src) {
+  const s = String(src);
+  let out = "";
+  let i = 0;
+  while (i < s.length) {
+    const idx = s.indexOf("\\ce{", i);
+    if (idx < 0) { out += s.slice(i); break; }
+    out += s.slice(i, idx);
+    let depth = 1;
+    let j = idx + 4;
+    while (j < s.length && depth > 0) {
+      if (s[j] === "{") depth++;
+      else if (s[j] === "}") depth--;
+      j++;
+    }
+    if (depth !== 0) { out += s.slice(idx); break; }
+    out += renderChem_(s.slice(idx + 4, j - 1));
+    i = j;
+  }
+  return out;
 }
 
 /**
- * Nhận diện bảng Markdown kiểu Planner (cùng cú pháp với richHtml() trong utils.js:
- * mỗi dòng bảng bắt đầu/kết thúc bằng "|", ô cách nhau bởi "|"; dòng phân cách
- * "| --- | --- |" ngay sau tiêu đề bị bỏ qua). Tách văn bản thành các khối xen kẽ
- * đoạn văn thường / bảng, để report.gs chèn đúng loại nội dung (appendParagraph
- * hay appendTable lồng trong ô) thay vì in nguyên ký tự "|" như chữ thường.
- * Mỗi ô/đoạn văn trả về đã được compileFormulas_() để công thức hiện đúng Unicode.
+ * Nhận diện bảng Markdown cùng quy tắc với richHtml() trong js/utils.js:
+ * dòng bắt đầu và kết thúc bằng "|", có ít nhất 2 ô. Một dòng "| a | b |" cũng là bảng
+ * (web xem trước làm vậy). Dòng "| --- | --- |" ngay sau tiêu đề bị bỏ.
  */
 function parseMarkdownBlocks_(text) {
   const lines = String(text ?? "").split(/\r?\n/);
@@ -134,7 +153,6 @@ function parseMarkdownBlocks_(text) {
       rawRows.push(row);
       j++;
     }
-    if (rawRows.length < 2) { textBuffer.push(lines[i]); i++; continue; } // chỉ 1 dòng "|...|" đơn lẻ: không phải bảng
     flushText();
     const body = rawRows.slice(1);
     const header = rawRows[0];

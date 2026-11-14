@@ -51,7 +51,7 @@ function render() {
     <div class="card"><h3>☁️ Lưu trữ</h3>
       <div class="kv"><span>Dữ liệu chữ/số/trạng thái</span><b>Firestore</b></div>
       <div class="kv"><span>Ảnh minh họa & ảnh chụp</span><b>${isDriveConfigured ? "Google Drive ✔" : "⚠️ Chưa cấu hình"}</b></div>
-      ${!isDriveConfigured ? `<p class="muted small" style="margin-top:8px">Mở <code>js/drive.js</code> và dán URL Web App; xem hướng dẫn triển khai ở đầu file <code>code.gs</code>.</p>` : ""}
+      ${!isDriveConfigured ? `<p class="muted small" style="margin-top:8px">Mở <code>js/drive.js</code> và dán URL Web App; xem hướng dẫn triển khai ở đầu file <code>GAS/code.gs</code>.</p>` : ""}
     </div>
 
     <div class="card report-card"><h3>📄 Xuất báo cáo</h3>
@@ -78,7 +78,7 @@ function render() {
       </div>
       <details class="report-content-settings" open>
         <summary>Nội dung ghép vào báo cáo</summary>
-        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Mỗi ảnh tự sinh mã theo tên file và được gắn vào hiện tượng của đúng bước; khi xuất, mã được thay bằng ảnh. Ảnh lớn hơn 2 MB hoặc không phải JPEG/PNG/GIF sẽ có link Drive thay vì ảnh nhúng.</p>
+        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Số bước luôn in đậm ở đầu ô, không cần chèn lại trong mẫu. Mỗi ảnh tự sinh mã theo tên file và được gắn vào hiện tượng của đúng bước. Ảnh mới được thu về JPEG/PNG/GIF dưới 2 MB để Docs nhúng được; ảnh cũ không đúng định dạng đó chỉ còn link Drive.</p>
         <div class="report-options">
           <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu đã nhập</label>
           <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng quan sát</label>
@@ -221,11 +221,12 @@ async function collectReportData() {
       section: `${item.si + 1}. ${item.sec.section_name || "Thí nghiệm"}`,
       label: item.label,
       action: reportForm.actionTemplate
-        .replaceAll("{label}", item.label)
+        .replaceAll("{label}", "")
         .replaceAll("{title}", item.step.title || "")
         .replaceAll("{text}", item.step.text || "")
         .replaceAll("{value}", reportForm.includeMeasurement && log.input_data != null ? String(log.input_data) : "")
         .replaceAll("{unit}", reportForm.includeMeasurement ? log.input_unit || "" : "")
+        .replace(/\n{3,}/g, "\n\n")
         .trim(),
       measurement: reportForm.includeMeasurement && log.input_data != null ? `${log.input_data}${log.input_unit ? ` ${log.input_unit}` : ""}` : "",
       observation: [observation, ...photoMarkers].filter(Boolean).join("\n"),
@@ -275,7 +276,10 @@ async function previewReport() {
       // Dùng chung bộ chuyển Markdown/LaTeX với SOP: hỗ trợ bảng viết bằng |...|.
       let observationHtml = richHtml(observed);
       for (const [code, html] of photosByCode) observationHtml = observationHtml.split(esc(code)).join(html);
-      return `<tr><td>${esc(step.section)}</td><td>${esc(step.label)}<br>${richHtml(step.action)}</td><td>${observationHtml}</td><td>${richHtml(step.explanation)}</td></tr>`;
+      if (!observed.trim() && !step.photos.length) observationHtml = "Chưa ghi nhận hiện tượng.";
+      const actionHtml = richHtml(step.action) || "Chưa có nội dung thao tác.";
+      const explanationHtml = String(step.explanation || "").trim() ? richHtml(step.explanation) : "Chưa ghi nhận giải thích.";
+      return `<tr><td>${esc(step.section)}</td><td><strong>${esc(step.label)}</strong><br>${actionHtml}</td><td>${observationHtml}</td><td>${explanationHtml}</td></tr>`;
     }).join("");
     const peopleHtml = report.people.map(person => `<div>${esc(person.name)} - ${esc(person.studentId)}</div>`).join("");
     const values = {

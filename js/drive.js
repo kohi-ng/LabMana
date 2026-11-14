@@ -4,7 +4,63 @@ import { blobToBase64, blobToDataUrl } from "./utils.js";
 export const GAS_URL = "https://script.google.com/macros/s/AKfycbyMxFpoicWLq3dg5YNyfePuaSUKO55xoQNx-8EY5MroyMQir-PHiRYUpl5YOXdb8mjcIw/exec";
 export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
 
-const UPLOAD_TIMEOUT_MS = 90000; // tạo report có ảnh có thể mất hơn 60s với nhiều ảnh
+const DOCS_EMBED_MAX_BYTES = 2 * 1024 * 1024;
+
+function canvasToBlob(canvas, type, quality) {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(blob => blob ? resolve(blob) : reject(new Error("Không xuất được ảnh JPEG")), type, quality);
+  });
+}
+
+/**
+ * Google Docs chỉ nhúng JPEG/PNG/GIF ≤ 2 MB. Web thì hiện mọi ảnh qua thumbnail Drive,
+ * nên ảnh HEIC/WebP/BMP hoặc file quá nặng nhìn được trên app nhưng biến mất trong báo cáo.
+ * Chuyển những ảnh đó sang JPEG vừa cỡ trước khi upload. Ảnh đã nhúng được thì giữ nguyên.
+ */
+async function prepareImageBlob(blob) {
+  const type = String(blob?.type || "").toLowerCase();
+  const embeddable = type === "image/jpeg" || type === "image/png" || type === "image/gif";
+  if (embeddable && blob.size <= DOCS_EMBED_MAX_BYTES) return blob;
+  if (typeof createImageBitmap !== "function") return blob;
+  let bitmap;
+  try { bitmap = await createImageBitmap(blob); }
+  catch { return blob; }
+  try {
+    let width = bitmap.width || 1;
+    let height = bitmap.height || 1;
+    const fit = Math.min(1, 1600 / Math.max(width, height));
+    width = Math.max(1, Math.round(width * fit));
+    height = Math.max(1, Math.round(height * fit));
+    let quality = 0.86;
+    let out = null;
+    for (let attempt = 0; attempt < 8; attempt++) {
+      const canvas = document.createElement("canvas");
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext("2d");
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, width, height);
+      ctx.drawImage(bitmap, 0, 0, width, height);
+      out = await canvasToBlob(canvas, "image/jpeg", quality);
+      if (out.size <= DOCS_EMBED_MAX_BYTES) return out;
+      if (quality > 0.5) quality = Math.round((quality - 0.12) * 100) / 100;
+      else {
+        width = Math.max(1, Math.round(width * 0.72));
+        height = Math.max(1, Math.round(height * 0.72));
+        if (width < 480 && height < 480) break;
+      }
+    }
+    return out && out.size <= DOCS_EMBED_MAX_BYTES ? out : blob;
+  } finally {
+    bitmap.close?.();
+  }
+}
+
+function withJpegExtension(name) {
+  const value = String(name || "").trim();
+  if (!value) return "";
+  return value.replace(/\.[a-z0-9]{1,8}$/i, "") + ".jpg";
+}
 
 /**
  * Gọi thẳng Apps Script Web App bằng fetch() và đọc JSON trả về.
@@ -13,7 +69,7 @@ const UPLOAD_TIMEOUT_MS = 90000; // tạo report có ảnh có thể mất hơn 
  * phải lúc nào cũng tới được cửa sổ chính (phụ thuộc trình duyệt / iframe lồng nhau
  * của Apps Script). fetch() đọc thẳng response của doPost/doGet nên không bị vậy.
  */
-async function driveRequest(payload, { timeoutMs = UPLOAD_TIMEOUT_MS } = {}) {
+async function driveRequest(payload, { timeoutMs = 90000 } = {}) {
   if (!isDriveConfigured) throw new Error("NOT_CONFIGURED_DRIVE");
 
   const controller = new AbortController();
@@ -48,16 +104,18 @@ async function driveRequest(payload, { timeoutMs = UPLOAD_TIMEOUT_MS } = {}) {
 }
 
 export async function driveUpload(blob, kind, meta = {}) {
+  const prepared = await prepareImageBlob(blob);
+  const converted = prepared !== blob && prepared.type === "image/jpeg";
   const { fileName, originalName, ...driveMeta } = meta;
   try {
     const result = await driveRequest({
       action: "upload",
       kind,
-      base64: await blobToBase64(blob),
-      mime: blob.type || "image/jpeg",
+      base64: await blobToBase64(prepared),
+      mime: prepared.type || "image/jpeg",
       meta: driveMeta,
-      file_name: fileName || "",
-      original_name: originalName || ""
+      file_name: converted ? withJpegExtension(fileName) : (fileName || ""),
+      original_name: converted ? (withJpegExtension(originalName) || "anh.jpg") : (originalName || "")
     });
     if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
     return {

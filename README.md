@@ -20,13 +20,14 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   gửi được xác nhận về trình duyệt, ảnh chụp vẫn được giữ kèm nhật ký để không chặn bước (trường
   hợp dự phòng có thể làm ảnh lưu trong Firestore lớn hơn). Tên ảnh gồm tên bài, thí nghiệm/bước,
   tên tùy chọn (nếu nhập) và thời gian; link Drive hiển thị dưới ảnh kèm nút sao chép.
-  `code.gs` nhận/xóa ảnh; sau khi đổi mã cần triển khai phiên bản mới của Apps Script Web App.
+  `GAS/code.gs` nhận/xóa ảnh; sau khi đổi mã cần triển khai phiên bản mới của Apps Script Web App.
 - **Xuất báo cáo** trong Cài đặt: nhập danh sách thành viên (mỗi dòng `Họ tên - MSSV`), nhóm,
   ngày và học kỳ/năm học; chọn bài để xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
   Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích, ảnh và sửa
-  mẫu ghép cột thao tác bằng `{label}`, `{title}`, `{text}`, `{value}`, `{unit}`. Ảnh của mỗi bước
+  mẫu ghép cột thao tác bằng `{title}`, `{text}`, `{value}`, `{unit}`. Số bước luôn đứng ở đầu ô,
+  nên không đưa `{label}` vào mẫu (sẽ bị bỏ để khỏi in hai lần). Ảnh của mỗi bước
   được gắn mã từ tên file, chèn đúng ô hiện tượng; sau khi tạo có nút mở Google Docs.
-  Apps Script project cần có cả `code.gs` và `report.gs`; triển khai phiên bản mới sau khi thêm helper này.
+  Apps Script project cần đủ `GAS/code.gs`, `GAS/report.gs` và `GAS/math-render.gs`; triển khai phiên bản mới sau khi sửa.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi dùng các nút tròn dưới tên bài để
   chuyển thí nghiệm và các nút bước để chuyển thao tác. Màn hình chỉ hiện thao tác đang chọn, không
@@ -49,9 +50,10 @@ js/plan-logic.js       logic thuần: validate, flatten, rẽ nhánh, computeFlo
 js/tabs/planner.js    Tab 1 — Kế hoạch (Thí nghiệm → Thao tác, ảnh qua Drive)
 js/tabs/sop.js        Tab 2 — Quy trình (một thao tác mỗi màn hình + data logger)
 js/tabs/calc.js       Bartender (chạy trong FAB sheet)
-js/tabs/settings.js   Tab 3 — Cài đặt (thành viên)
-code.gs               Backend Google Apps Script — nhận/xóa ảnh trên Drive
-report.gs             Helper Apps Script — tạo Google Docs từ nhật ký thí nghiệm
+js/tabs/settings.js   Tab 3 — Cài đặt (thành viên, xuất báo cáo)
+GAS/code.gs           Apps Script — nhận/xóa ảnh, gọi xuất báo cáo
+GAS/report.gs         Apps Script — tạo Google Docs từ nhật ký
+GAS/math-render.gs    Apps Script — công thức → Unicode và bảng Markdown trong Docs
 firestore.rules       quy tắc bảo mật Firestore
 examples/*.json        bài mẫu trích từ giáo trình (dùng nút "Nhập JSON")
 SCHEMA.md             thiết kế dữ liệu
@@ -67,8 +69,8 @@ SCHEMA.md             thiết kế dữ liệu
 
 ### B. Google Drive (ảnh)
 1. Tạo 1 thư mục Drive, copy ID thư mục.
-2. Tạo Apps Script Web App từ `code.gs`, chọn chạy với quyền của bạn và cho phép người dùng truy cập.
-3. Dán ID thư mục vào `code.gs`, URL Web App vào `js/drive.js`; sau mỗi lần sửa `code.gs`, triển khai phiên bản mới.
+2. Tạo Apps Script Web App và dán đủ ba file `GAS/code.gs`, `GAS/report.gs`, `GAS/math-render.gs`. Chạy với quyền của bạn, cho phép mọi người truy cập.
+3. Dán ID thư mục vào `GAS/code.gs`, URL Web App vào `js/drive.js`. Sau mỗi lần sửa file trong `GAS/`, vào Manage deployments → New version — Save trong editor không cập nhật URL đang chạy.
 
 Không làm bước B thì app vẫn chạy bình thường — chỉ phần ảnh minh họa/ảnh chụp sẽ báo
 "Chưa cấu hình Google Drive" và tạm không dùng được, mọi thứ khác (soạn bài, thực hiện quy

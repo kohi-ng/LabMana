@@ -11,8 +11,8 @@
  * CÀI ĐẶT (làm 1 lần):
  * 1. Tạo 1 thư mục trên Google Drive, ví dụ "LabMana - Ảnh thí nghiệm".
  *    Mở thư mục đó, copy ID trong URL: drive.google.com/drive/folders/<ID NÀY>
- * 2. Vào https://script.google.com → New project → dán code.gs và thêm file report.gs
- *    (file helper xuất báo cáo) vào cùng dự án.
+ * 2. Vào https://script.google.com → New project → dán CẢ BA file trong thư mục GAS/:
+ *    code.gs, report.gs và math-render.gs (cùng một project, không cần import).
  * 3. Dán ID thư mục vào ROOT_FOLDER_ID bên dưới.
  * 4. Chạy hàm authorizeDrive() một lần trong editor và chấp thuận quyền Google Drive.
  * 5. Deploy → New deployment → chọn loại "Web app".
@@ -21,8 +21,8 @@
  *    Bấm Deploy, copy "Web app URL".
  * 6. Dán URL đó vào js/drive.js (biến GAS_URL).
  *
- * Mỗi lần sửa code.gs hoặc report.gs: phải Deploy → Manage deployments → ✎ → New version → Deploy lại,
- * nếu không URL cũ vẫn chạy code cũ.
+ * Mỗi lần sửa code.gs, report.gs hoặc math-render.gs: phải Deploy → Manage deployments
+ * → ✎ → New version → Deploy lại, nếu không URL cũ vẫn chạy code cũ.
  */
 
 const ROOT_FOLDER_ID = "163F-EZ36tJ7qc9J9NTvIipvQWxOWEtJi";

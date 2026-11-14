@@ -49,7 +49,7 @@
           "title": "Tạo kết tủa với $\\ce{Na2SO4}$",
           "text": "Lấy 3 ống nghiệm... Nhỏ từ từ vào mỗi ống 5 giọt dung dịch $\\ce{Na2SO4}$ 0,1 M.",
           "images": [
-            { "file_id": "1AbCDeFGhiJK...", "url": "https://script.google.com/macros/s/AKfycb.../exec?id=1AbCDeFGhiJK...", "name": "ThiNghiem1_20251113_143022.jpg" }
+            { "file_id": "1AbCDeFGhiJK...", "url": "https://drive.google.com/thumbnail?id=1AbCDeFGhiJK...&sz=w1600", "name": "ThiNghiem1_20251113_143022.jpg" }
           ],
           "assigned_role": "Người lấy hóa chất",
           "observation": { "enabled": true,  "label": "Hiện tượng quan sát thực tế" },
@@ -140,22 +140,15 @@ transaction.
 
 Ảnh **không** còn lưu trên Firebase Cloud Storage (tránh yêu cầu nâng gói Blaze). Thay vào đó:
 
-- Client (`js/drive.js`) gửi ảnh nguyên bản dạng base64 trong form ẩn tới một **Google Apps
-  Script Web App** (`code.gs`) do người deploy tự host trên tài khoản Google Drive của họ. Tên file
-  tùy chọn được gửi cùng ảnh; để trống thì máy chủ tự tạo tên theo bước và thời gian. Iframe
-  trả xác nhận qua `postMessage` để tránh lỗi CORS khi Apps Script chuyển hướng.
-- Khi cập nhật `code.gs`, triển khai một phiên bản Web App mới để tên file tùy chỉnh được áp dụng.
-- Script lưu file vào thư mục con đặt tên theo Bài / Thí nghiệm / Lượt, set quyền
-  "Anyone with the link — Viewer", và trả về
-  `{file_id, url, name}`. Ảnh dùng đường dẫn thumbnail Drive; `code.gs` chỉ xử lý upload/xóa và
-  tương thích đường dẫn ảnh cũ.
-- Bình thường Firestore lưu `photo_file_id` và URL. Nếu upload ảnh thực hiện bước nhưng trình
-  duyệt không nhận được xác nhận từ Apps Script, client giữ ảnh gốc dưới dạng data URL trong
-  `photo_url` để không mất kết quả; ảnh này không được xác nhận đã lưu trên Drive.
-- Xóa ảnh trong app gọi `action: "delete"` → Apps Script chuyển file vào Thùng rác Drive của
-  người deploy.
+- Client (`js/drive.js`) gửi ảnh dạng base64 bằng `fetch()` (POST JSON, `Content-Type: text/plain`) tới **Google Apps Script Web App**. Ba file `GAS/code.gs`, `GAS/report.gs`, `GAS/math-render.gs` phải cùng một project. `doPost` trả JSON qua `ContentService` — không còn iframe/`postMessage`.
+- Ảnh JPEG/PNG/GIF ≤ 2 MB được giữ nguyên. Ảnh khác hoặc nặng hơn được trình duyệt vẽ lại thành JPEG ≤ 2 MB trước khi upload, vì Google Docs chỉ nhúng ba định dạng đó. HEIC mà trình duyệt không giải mã được vẫn lưu nguyên bản và trong Docs chỉ còn link.
+- Tên file tùy chọn được gửi cùng ảnh; để trống thì máy chủ tự tạo tên theo bước và thời gian. Sau khi sửa bất kỳ file `.gs` nào, phải triển khai **New version** thì URL Web App mới chạy code mới.
+- Script lưu file vào thư mục con, set quyền "Anyone with the link — Viewer", và trả về `{file_id, url, name}`. `url` là thumbnail Drive (`https://drive.google.com/thumbnail?id=...&sz=w1600`).
+- Bình thường Firestore lưu `photo_file_id` và URL. Nếu upload ảnh thực hiện bước nhưng trình duyệt không nhận được xác nhận từ Apps Script, client giữ ảnh gốc dưới dạng data URL trong `photo_url` để không mất kết quả; ảnh này không có `file_id` nên báo cáo không nhúng được.
+- Xóa ảnh trong app gọi `action: "delete"` → Apps Script chuyển file vào Thùng rác Drive của người deploy.
+- Xuất báo cáo gọi `action: "create_report"`. Cột “Thí nghiệm” ghi đúng `section` mà web xem trước đang hiện (`1. Tên thí nghiệm`), không rút thành `TN1`. Bảng Markdown (`|...|`) được vẽ trong cả ba cột nội dung, cùng quy tắc với `richHtml()` — kể cả bảng một dòng. Công thức `$...$` / `\ce{...}` được đổi sang Unicode vì Docs không chạy KaTeX.
 
 ```
-plan_images (Drive)   KeHoach/<Tên bài>/<Tên thí nghiệm>_<timestamp>.jpg
-lab_photos  (Drive)   ThucHien/<Tên bài>/<Tên lượt>/<Nhãn bước>_<Tên thí nghiệm>_<timestamp>.jpg
+KeHoach/<Tên bài>/<Tên bài>_<Tên thí nghiệm>_<tên tùy chọn>_<yyyyMMdd_HHmmss>.<ext>
+ThucHien/<Tên bài>/<Tên lượt>/<Tên bài>_<Tên thí nghiệm>_<Nhãn bước>_<tên tùy chọn>_<yyyyMMdd_HHmmss>.<ext>
 ```
