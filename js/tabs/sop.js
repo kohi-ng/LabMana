@@ -4,7 +4,7 @@ import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
-import { esc, richHtml, renderMath, toast, openModal, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
+import { esc, richHtml, renderMath, toast, openModal, confirmBox, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null, selectedStepId = null;
