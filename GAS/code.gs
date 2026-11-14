@@ -24,15 +24,19 @@ function authorizeDrive() {
 /* ---------------- Nhận ảnh / xóa ảnh / tạo báo cáo ---------------- */
 function doPost(e) {
   const requestId = e && e.parameter && e.parameter.request_id || "";
+  console.log("[LabMana] doPost received; request_id=" + requestId);
   try {
     const req = parseRequest_(e);
+    console.log("[LabMana] payload parsed; action=" + req.action);
     let result;
     if (req.action === "upload") result = handleUpload_(req);
     else if (req.action === "delete") result = handleDelete_(req);
     else if (req.action === "create_report") result = handleCreateReport_(req.report);
     else result = { ok: false, error: "Hành động không hợp lệ" };
+    console.log("[LabMana] action complete; ok=" + !!result.ok);
     return htmlResponse_(result, requestId);
   } catch (err) {
+    console.error("[LabMana] doPost failed: " + (err && err.stack || err));
     return htmlResponse_({ ok: false, error: String(err) }, requestId);
   }
 }
@@ -78,12 +82,16 @@ function doGet(e) {
 
 function handleUpload_(req) {
   const meta = req.meta || {};
+  console.log("[LabMana] upload: creating/finding folder");
   const folder = getOrCreateSubFolder_(buildFolderPath_(req.kind, meta));
+  console.log("[LabMana] upload: folder ready; decoding " + String(req.base64 || "").length + " base64 chars");
   const bytes = Utilities.base64Decode(req.base64);
   const mime = req.mime || "image/jpeg";
   const blob = Utilities.newBlob(bytes, mime, buildFileName_(req.kind, meta, req.file_name, req.original_name, mime));
+  console.log("[LabMana] upload: blob ready; bytes=" + bytes.length + "; creating file");
   const file = folder.createFile(blob);
   const id = file.getId();
+  console.log("[LabMana] upload: file created; id=" + id + "; setting link permission");
   try {
     file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
     if (file.getSharingAccess() !== DriveApp.Access.ANYONE_WITH_LINK) {
@@ -93,6 +101,7 @@ function handleUpload_(req) {
     try { file.setTrashed(true); } catch (cleanupErr) { console.error("Không dọn được file upload lỗi " + id + ": " + cleanupErr); }
     throw new Error("Không thể cấp quyền xem ảnh bằng link. Kiểm tra chính sách chia sẻ Google Workspace: " + String(err));
   }
+  console.log("[LabMana] upload: link permission verified; id=" + id);
   return {
     ok: true,
     file_id: id,
