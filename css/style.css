@@ -606,3 +606,23 @@ textarea.inp{ resize:vertical; min-height:88px; font-family:inherit; }
   .bt-chem{ grid-template-columns:minmax(54px,auto) 1fr; }
   .bt-chem .bt-tag{ display:none; }
 }
+
+
+/* Nút bước tròn (1.1, 1.2, 2.1…): bấm vào nền xanh lam, không viền; hoàn thành vẫn xanh lá trừ khi đang chọn */
+.toc-pip.active,
+.toc-pip.current{
+  outline:none;
+  box-shadow:none;
+  border-color:var(--accent);
+  background:var(--accent);
+  color:#fff;
+}
+.toc-pip.done:not(.active){
+  outline:none;
+  box-shadow:none;
+  border-color:var(--ok);
+  background:var(--ok);
+  color:#fff;
+}
+.toc-pip:focus,
+.toc-pip:focus-visible{ outline:none; box-shadow:none; }
