@@ -214,6 +214,12 @@ async function collectReportData() {
   if (!run) throw new Error("Bài này chưa có lượt thực hiện hoặc nhật ký nào.");
 
   const logsSnapshot = await getDocs(query(collection(db, "execution_logs"), where("run_id", "==", run.id)));
+  const mediaSnapshot = await getDocs(query(collection(db, "media_assets"), where("run_id", "==", run.id)));
+  const mediaByStep = {};
+  mediaSnapshot.forEach(item => {
+    const asset = item.data();
+    if (asset.status === "ready" && asset.file_id && asset.context === "execution") (mediaByStep[asset.step_id] ||= []).push(asset);
+  });
   const logs = {};
   logsSnapshot.forEach(item => {
     const log = item.data();
@@ -224,9 +230,11 @@ async function collectReportData() {
   const experiment = normalizeExperiment(raw);
   const steps = flatten(experiment).map(item => {
     const log = logs[item.step.id] || {};
-    const photos = Array.isArray(log.photos) && log.photos.length
+    const legacyPhotos = Array.isArray(log.photos) && log.photos.length
       ? log.photos
       : (log.photo_file_id || log.photo_url ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }] : []);
+    // Registry mới là nguồn metadata ưu tiên; nhật ký cũ vẫn là fallback không cần migrate.
+    const photos = mediaByStep[item.step.id]?.length ? mediaByStep[item.step.id] : legacyPhotos;
     const reportPhotos = reportForm.includePhotos ? photos.map((photo, index) => {
       const fileId = photo?.file_id || driveIdFromUrl(photo?.url);
       if (!fileId) return null;
