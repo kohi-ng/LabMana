@@ -38,7 +38,7 @@ export async function removeMediaAsset(fileId, driveDelete) {
     await driveDelete(fileId);
     await deleteDoc(ref).catch(() => {});
   } catch (error) {
-    await setDoc(ref, { file_id: fileId, asset_id: fileId, status: "delete_failed", updated_at_ms: Date.now() }, { merge: true }).catch(() => {});
+    await updateDoc(ref, { status: "delete_failed", updated_at_ms: Date.now() }).catch(() => {});
     throw error;
   }
 }
