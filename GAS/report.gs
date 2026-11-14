@@ -5,9 +5,12 @@
  * công thức $...$ / \ce{...} sang Unicode — Apps Script dùng chung scope giữa
  * các file .gs trong cùng project nên không cần import gì thêm).
  */
+<<<<<<< HEAD
 // Đổi chuỗi này mỗi lần sửa; client hiển thị lại để biết web app đang chạy bản nào.
 var REPORT_BUILD_ = "2026-11-14-inline-v3";
 
+=======
+>>>>>>> d5105d7728da4cedac4cdd6a3ddd772b5f96ac93
 function handleCreateReport_(report) {
   if (!report || typeof report !== "object") throw new Error("Thiếu dữ liệu báo cáo.");
   const experimentTitle = reportText_(report.experimentTitle, 240);
@@ -19,10 +22,7 @@ function handleCreateReport_(report) {
     studentId: reportText_(person.studentId, 80)
   })).filter(person => person.name && person.studentId) : [];
   const steps = Array.isArray(report.steps) ? report.steps : [];
-  const imagesSkippedClient = Number(report.imagesSkipped) || 0; // ảnh chưa lên Drive (lưu dự phòng trong Firestore)
-  let imagesSkippedServer = 0;
-  const skipReasons = [];
-  const onPhotoSkipped = reason => { imagesSkippedServer++; skipReasons.push(String(reason || "").slice(0, 200)); };
+  let imagesSkipped = Number(report.imagesSkipped) || 0;
   if (!people.length || !experimentTitle || !reportDate) {
     throw new Error("Báo cáo cần có ít nhất một người (họ tên và MSSV), bài thí nghiệm và ngày báo cáo.");
   }
@@ -144,7 +144,7 @@ function handleCreateReport_(report) {
       });
       if (!next) break;
       appendRichBlocks_(observationCell, observationText.slice(cursor, next.at));
-      appendReportPhoto_(observationCell, photosByCode[next.code], onPhotoSkipped);
+      appendReportPhoto_(observationCell, photosByCode[next.code], () => { imagesSkipped++; });
       cursor = next.at + next.code.length;
       pending.splice(pending.indexOf(next.code), 1);
     }
@@ -155,7 +155,7 @@ function handleCreateReport_(report) {
     }
     step.photos.forEach((photo, index) => {
       if (photo.code && observationText.includes(photo.code)) return;
-      appendReportPhoto_(observationCell, photo, onPhotoSkipped, index);
+      appendReportPhoto_(observationCell, photo, () => { imagesSkipped++; }, index);
     });
   });
 
@@ -167,13 +167,7 @@ function handleCreateReport_(report) {
     document_id: document.getId(),
     name: document.getName(),
     url: document.getUrl(),
-    images_skipped: imagesSkippedClient + imagesSkippedServer,
-    images_skipped_client: imagesSkippedClient,
-    images_skipped_server: imagesSkippedServer,
-    photos_received: photoCount,
-    photos_embedded: photoCount - imagesSkippedServer,
-    skip_reasons: skipReasons,
-    build: REPORT_BUILD_
+    images_skipped: imagesSkipped
   };
 }
 
@@ -232,6 +226,7 @@ function appendActionTable_(cell, block) {
 function appendReportPhoto_(cell, photo, onSkipped, index) {
   const caption = cell.appendParagraph(photo.name ? `Ảnh: ${photo.name}` : `Ảnh ${Number(index || 0) + 1}`);
   setReportTextStyle_(caption.editAsText(), false, 9);
+<<<<<<< HEAD
   // Ảnh gốc nhúng được thì dùng luôn; quá lớn / HEIC / WebP thì lấy bản thumbnail JPEG từ Drive.
   const blob = photo.problem ? null : embeddableImageBlob_(photo.blob, photo.fileId);
   if (blob) {
@@ -257,7 +252,17 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
     const warning = cell.appendParagraph(photo.problem
       ? "Không nhúng được ảnh: " + photo.problem + "."
       : "Ảnh quá lớn hoặc định dạng không hỗ trợ nhúng; dùng link Drive bên dưới.");
+=======
+  // Ảnh gốc nếu đã là JPEG/PNG/GIF vừa cỡ. Không được thì lấy bản JPEG nhỏ từ Drive
+  // (ảnh HEIC/WebP hoặc nặng hơn 2 MB — Docs từ chối nhúng những file đó).
+  let embedded = tryAppendImage_(cell, embeddableImageBlob_(photo.blob));
+  if (!embedded) embedded = appendDriveThumbnail_(cell, photo.fileId);
+  if (!embedded) {
+    onSkipped();
+    const warning = cell.appendParagraph("Không nhúng được ảnh; dùng link Drive bên dưới.");
+>>>>>>> d5105d7728da4cedac4cdd6a3ddd772b5f96ac93
     setReportTextStyle_(warning.editAsText(), false, 9);
+    console.warn(`Không chèn được ảnh ${photo.fileId}`);
   }
   if (photo.fileId && !photo.problem) {
     const link = cell.appendParagraph("Mở ảnh trên Google Drive");
@@ -278,70 +283,116 @@ function blobFromDataUrl_(dataUrl, name) {
   }
 }
 
-var EMBED_MAX_BYTES_ = 2 * 1024 * 1024;
-
-function describeBlob_(blob) {
+function tryAppendImage_(cell, blob) {
+  if (!blob) return false;
   try {
-    const bytes = blob.getBytes();
-    return Math.round(bytes.length / 1024) + " KB, khai báo " + blob.getContentType() + ", thực tế " + (sniffImageMime_(bytes) || "không phải JPEG/PNG/GIF");
-  } catch (err) { return "không đọc được blob (" + err + ")"; }
+    fitReportImage_(cell.appendImage(blob));
+    return true;
+  } catch (err) {
+    console.warn("appendImage: " + err);
+  }
+  try {
+    const holder = cell.appendParagraph("");
+    fitReportImage_(holder.appendInlineImage(blob));
+    return true;
+  } catch (err) {
+    console.warn("appendInlineImage: " + err);
+    return false;
+  }
 }
 
-/**
- * Ảnh để nhúng vào Docs: ưu tiên file gốc nếu là JPEG/PNG/GIF ≤ 2 MB;
- * nếu không (quá nặng, HEIC, WebP, BMP…) thì lấy bản thu nhỏ JPEG do Drive tự tạo.
- */
-function embeddableImageBlob_(blob, fileId) {
-  return directEmbeddableBlob_(blob) || thumbnailBlob_(fileId);
+function fitReportImage_(image) {
+  const width = image.getWidth();
+  if (width > 190) {
+    const ratio = 190 / width;
+    image.setWidth(190);
+    image.setHeight(Math.max(1, Math.round(image.getHeight() * ratio)));
+  }
 }
 
-/** JPEG/PNG/GIF thật, kể cả khi Drive báo image/jpg hoặc application/octet-stream. */
-function directEmbeddableBlob_(blob) {
+/** JPEG/PNG/GIF ≤ 2 MB. Ảnh khác trả về null để gọi bản thu nhỏ của Drive. */
+function embeddableImageBlob_(blob) {
   if (!blob) return null;
-  const bytes = blob.getBytes();
-  if (!bytes || bytes.length < 8 || bytes.length > EMBED_MAX_BYTES_) return null;
-  const sniffed = sniffImageMime_(bytes);
-  const declared = normalizeImageMime_(blob.getContentType());
-  const mime = sniffed || (["image/jpeg", "image/png", "image/gif"].includes(declared) ? declared : "");
+  let bytes;
+  try { bytes = blob.getBytes(); } catch (err) { return null; }
+  if (!bytes || bytes.length < 8 || bytes.length > 2 * 1024 * 1024) return null;
+  const mime = sniffImageMime_(bytes);
   if (!mime) return null;
-  return Utilities.newBlob(bytes, mime, "hien-tuong");
+  const ext = mime === "image/png" ? "png" : mime === "image/gif" ? "gif" : "jpg";
+  try {
+    const copy = blob.copyBlob();
+    copy.setContentType(mime);
+    copy.setName("hien-tuong." + ext);
+    return copy;
+  } catch (err) {
+    return Utilities.newBlob(bytes, mime, "hien-tuong." + ext);
+  }
 }
 
-/**
- * Thumbnail do Drive tạo (JPEG/PNG đã resize) — hoạt động cả với ảnh HEIC/WebP/ảnh rất nặng.
- * Cần scope script.external_request (UrlFetchApp): chạy authorizeDrive() một lần rồi deploy phiên bản mới.
- */
-function thumbnailBlob_(fileId) {
-  if (!fileId) return null;
-  const token = ScriptApp.getOAuthToken();
-  const sizes = [1600, 1200, 800];
-  for (let i = 0; i < sizes.length; i++) {
+function appendDriveThumbnail_(cell, fileId) {
+  if (!fileId) return false;
+  let token = "";
+  try { token = ScriptApp.getOAuthToken(); } catch (err) { console.warn(err); }
+  const urls = thumbnailUrls_(fileId, token);
+  for (let i = 0; i < urls.length; i++) {
+    const blob = downloadImageBlob_(urls[i], token);
+    if (blob && tryAppendImage_(cell, blob)) return true;
+  }
+  return false;
+}
+
+function thumbnailUrls_(fileId, token) {
+  const urls = [];
+  if (token) {
     try {
-      const resp = UrlFetchApp.fetch(
-        "https://drive.google.com/thumbnail?id=" + encodeURIComponent(fileId) + "&sz=w" + sizes[i],
-        { headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true, followRedirects: true }
+      const meta = UrlFetchApp.fetch(
+        "https://www.googleapis.com/drive/v3/files/" + encodeURIComponent(fileId) + "?fields=thumbnailLink&supportsAllDrives=true",
+        { headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true }
       );
-      if (resp.getResponseCode() !== 200) {
-        console.warn("Thumbnail w" + sizes[i] + " HTTP " + resp.getResponseCode() + " cho " + fileId);
-        continue;
-      }
-      const bytes = resp.getContent();
-      const mime = sniffImageMime_(bytes);
-      if (mime && bytes.length >= 8 && bytes.length <= EMBED_MAX_BYTES_) {
-        return Utilities.newBlob(bytes, mime, "hien-tuong");
+      if (meta.getResponseCode() === 200) {
+        const data = JSON.parse(meta.getContentText() || "{}");
+        ["s1400", "s800", "s400"].forEach(size => {
+          if (data.thumbnailLink) urls.push(withThumbSize_(data.thumbnailLink, size));
+        });
       }
     } catch (err) {
-      console.warn("Thumbnail w" + sizes[i] + " lỗi cho " + fileId + ": " + err);
+      console.warn(err);
+    }
+  }
+  ["w1400", "w800", "w400"].forEach(size => {
+    urls.push("https://drive.google.com/thumbnail?id=" + encodeURIComponent(fileId) + "&sz=" + size);
+    urls.push("https://lh3.googleusercontent.com/d/" + encodeURIComponent(fileId) + "=s" + size.slice(1));
+  });
+  return urls;
+}
+
+function withThumbSize_(url, size) {
+  const value = String(url || "");
+  if (/=s\d+/.test(value)) return value.replace(/=s\d+/, "=" + size);
+  return value;
+}
+
+function downloadImageBlob_(url, token) {
+  const headersList = token ? [{ Authorization: "Bearer " + token }, {}] : [{}];
+  for (let i = 0; i < headersList.length; i++) {
+    try {
+      const response = UrlFetchApp.fetch(url, {
+        headers: headersList[i],
+        muteHttpExceptions: true,
+        followRedirects: true
+      });
+      if (response.getResponseCode() !== 200) continue;
+      const bytes = response.getBlob().getBytes();
+      if (!bytes || bytes.length < 8 || bytes.length > 2 * 1024 * 1024) continue;
+      const mime = sniffImageMime_(bytes);
+      if (!mime) continue;
+      const ext = mime === "image/png" ? "png" : mime === "image/gif" ? "gif" : "jpg";
+      return Utilities.newBlob(bytes, mime, "hien-tuong." + ext);
+    } catch (err) {
+      console.warn(err);
     }
   }
   return null;
-}
-
-function normalizeImageMime_(mime) {
-  const value = String(mime || "").toLowerCase().split(";")[0].trim();
-  if (value === "image/jpg" || value === "image/pjpeg" || value === "image/jpe") return "image/jpeg";
-  if (value === "image/x-png") return "image/png";
-  return value;
 }
 
 function sniffImageMime_(bytes) {

@@ -10,6 +10,7 @@ let root;
 const CFG = () => doc(db, "config", "lab");
 const reportForm = {
   peopleText: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
+  experimentLabel: "", experimentLabelEdited: false,
   actionTemplate: "{title}\n{text}",
   includeMeasurement: true, includeObservation: true, includeExplanation: true, includePhotos: true
 };
@@ -36,6 +37,7 @@ function render() {
   const keep = root.querySelector("#st-names")?.value || "";
   const team = state.team;
   if (!reportForm.experimentId && state.experiments.length) reportForm.experimentId = state.experiments[0].id;
+  if (!reportForm.experimentLabelEdited) reportForm.experimentLabel = selectedExperimentTitle();
   root.innerHTML = `
     <div class="page-head"><h2>Cài đặt</h2></div>
     <div class="card"><h3>👥 Thành viên nhóm</h3>
@@ -63,6 +65,10 @@ function render() {
             ${state.experiments.length ? state.experiments.map(exp => `<option value="${esc(exp.id)}" ${reportForm.experimentId === exp.id ? "selected" : ""}>${esc(exp.title || "(không tên)")}</option>`).join("") : '<option value="">Chưa có bài đã lên kế hoạch</option>'}
           </select>
         </label>
+        <label class="lbl">Bài số
+          <input class="inp" data-report-field="experimentLabel" value="${esc(reportForm.experimentLabel)}" placeholder="Tên in sau BÀI SỐ:">
+        </label>
+        <p class="muted small">Trong file Docs vẫn in dòng “BÀI SỐ:” rồi đến tên ở ô này. Bấm vào ô để sửa; đổi bài ở trên thì tên tự về tên bài đó.</p>
         <label class="lbl report-people-label">Họ và tên - MSSV (mỗi người một dòng)
           <textarea class="inp" rows="4" data-report-field="peopleText" placeholder="Phan Văn A - 123&#10;Nguyễn Văn B - 456">${esc(reportForm.peopleText)}</textarea>
         </label>
@@ -78,7 +84,7 @@ function render() {
       </div>
       <details class="report-content-settings" open>
         <summary>Nội dung ghép vào báo cáo</summary>
-        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Số bước luôn in đậm ở đầu ô, không cần chèn lại trong mẫu. Ảnh nằm trong ô hiện tượng của đúng bước. Khi số ảnh bằng số dòng hiện tượng, hoặc bằng số đoạn cách nhau bởi một dòng trống, mỗi ảnh được gắn ngay dưới hiện tượng tương ứng. Ảnh mới được thu về JPEG/PNG/GIF dưới 2 MB để Docs nhúng được; ảnh cũ không đúng định dạng đó chỉ còn link Drive.</p>
+        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Số bước luôn in đậm ở đầu ô, không cần chèn lại trong mẫu. Ảnh nằm trong ô hiện tượng của đúng bước. Khi số ảnh bằng số dòng hiện tượng, hoặc bằng số đoạn cách nhau bởi một dòng trống, mỗi ảnh được gắn ngay dưới hiện tượng tương ứng. Ảnh HEIC, WebP hoặc file nặng được nhúng bằng bản JPEG nhỏ.</p>
         <div class="report-options">
           <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu đã nhập</label>
           <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng quan sát</label>
@@ -107,6 +113,19 @@ function onReportInput(event) {
   const field = event.target.dataset?.reportField;
   if (!field) return;
   reportForm[field] = event.target.type === "checkbox" ? event.target.checked : event.target.value;
+  if (field === "experimentId") {
+    reportForm.experimentLabelEdited = false;
+    reportForm.experimentLabel = selectedExperimentTitle();
+    const input = root.querySelector('[data-report-field="experimentLabel"]');
+    if (input) input.value = reportForm.experimentLabel;
+  } else if (field === "experimentLabel") {
+    reportForm.experimentLabelEdited = true;
+  }
+}
+
+function selectedExperimentTitle() {
+  const exp = state.experiments.find(item => item.id === reportForm.experimentId);
+  return exp?.title || "";
 }
 
 async function addNames() {
@@ -166,23 +185,13 @@ async function exportReport() {
     const report = await collectReportData();
     const result = await driveCreateReport(report);
     lastReport = { url: result.url, name: result.name };
-    console.info("[LabMana] kết quả tạo báo cáo:", result, "| dữ liệu gửi đi:", report);
     const imageCount = report.steps.reduce((total, step) => total + step.photos.length, 0);
-    const outdated = result.build ? "" : " ⚠ Apps Script đang chạy bản CŨ (chưa có report.gs mới) — hãy Deploy → Manage deployments → New version.";
-    const detail = result.build
-      ? ` Lượt: ${report.runName}. Gửi ${result.photos_received} ảnh, nhúng ${result.photos_embedded}.`
-      : "";
-    const reasons = result.skip_reasons?.length ? ` Lý do: ${result.skip_reasons[0]}` : "";
-    const notOnDrive = result.images_skipped_client
-      ? ` ${result.images_skipped_client} ảnh CHƯA nằm trên Drive (chỉ lưu dự phòng trong nhật ký) nên không vào báo cáo.`
-      : "";
-    const embedFailed = result.images_skipped_server ? ` ${result.images_skipped_server} ảnh không nhúng được (link Drive vẫn có trong tài liệu).` : "";
-    const noPhotos = reportForm.includePhotos && !imageCount && !result.images_skipped_client;
-    const message = noPhotos
-      ? `Đã tạo Google Docs nhưng lượt "${report.runName}" chưa có ảnh Drive để chèn.${outdated}`
-      : `Đã tạo báo cáo.${detail}${notOnDrive}${embedFailed}${reasons}${outdated}`;
-    const warn = noPhotos || result.images_skipped || !result.build;
-    toast(message, warn ? "warn" : "success", warn ? 15000 : 6000);
+    toast(result.images_skipped
+      ? `Đã tạo báo cáo; ${result.images_skipped} ảnh không thể nhúng, link ảnh vẫn nằm trong tài liệu.`
+      : reportForm.includePhotos && !imageCount
+        ? "Đã tạo Google Docs nhưng nhật ký bài này chưa có ảnh Drive để chèn."
+        : "Đã tạo Google Docs ✔",
+    result.images_skipped || (reportForm.includePhotos && !imageCount) ? "warn" : "success", 6000);
   } catch (err) {
     console.error(err);
     toast("Không xuất được báo cáo: " + (err.code || err.message), "error", 6000);
@@ -256,8 +265,7 @@ async function collectReportData() {
     }, 0)
     : 0;
   return {
-    experimentTitle: experiment.title || "Bài thí nghiệm",
-    runName: run.name || run.id,
+    experimentTitle: reportForm.experimentLabel.trim() || experiment.title || "Bài thí nghiệm",
     people,
     group: reportForm.group.trim(),
     date: reportForm.date || localDate(),
