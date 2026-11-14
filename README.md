@@ -21,10 +21,11 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   hợp dự phòng có thể làm ảnh lưu trong Firestore lớn hơn). Tên ảnh gồm tên bài, thí nghiệm/bước,
   tên tùy chọn (nếu nhập) và thời gian; link Drive hiển thị dưới ảnh kèm nút sao chép.
   `code.gs` nhận/xóa ảnh; sau khi đổi mã cần triển khai phiên bản mới của Apps Script Web App.
-- **Xuất báo cáo** trong Cài đặt: nhập họ tên, MSSV, nhóm, ngày và học kỳ/năm học; chọn bài để
-  xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
+- **Xuất báo cáo** trong Cài đặt: nhập danh sách thành viên (mỗi dòng `Họ tên - MSSV`), nhóm,
+  ngày và học kỳ/năm học; chọn bài để xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
   Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích, ảnh và sửa
-  mẫu ghép cột thao tác bằng `{label}`, `{title}`, `{text}`, `{value}`, `{unit}`.
+  mẫu ghép cột thao tác bằng `{label}`, `{title}`, `{text}`, `{value}`, `{unit}`. Ảnh của mỗi bước
+  được gắn mã từ tên file, chèn đúng ô hiện tượng; sau khi tạo có nút mở Google Docs.
   Apps Script project cần có cả `code.gs` và `report.gs`; triển khai phiên bản mới sau khi thêm helper này.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi dùng các nút tròn dưới tên bài để

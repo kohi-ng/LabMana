@@ -9,7 +9,7 @@ import { normalizeExperiment, flatten } from "../plan-logic.js";
 let root;
 const CFG = () => doc(db, "config", "lab");
 const reportForm = {
-  name: "", studentId: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
+  peopleText: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
   actionTemplate: "{title}\n{text}",
   includeMeasurement: true, includeObservation: true, includeExplanation: true, includePhotos: true
 };
@@ -63,11 +63,8 @@ function render() {
             ${state.experiments.length ? state.experiments.map(exp => `<option value="${esc(exp.id)}" ${reportForm.experimentId === exp.id ? "selected" : ""}>${esc(exp.title || "(không tên)")}</option>`).join("") : '<option value="">Chưa có bài đã lên kế hoạch</option>'}
           </select>
         </label>
-        <label class="lbl">Họ và tên
-          <input class="inp" data-report-field="name" value="${esc(reportForm.name)}" autocomplete="name" placeholder="Nhập họ và tên">
-        </label>
-        <label class="lbl">MSSV
-          <input class="inp" data-report-field="studentId" value="${esc(reportForm.studentId)}" autocomplete="off" placeholder="Nhập mã số sinh viên">
+        <label class="lbl report-people-label">Họ và tên - MSSV (mỗi người một dòng)
+          <textarea class="inp" rows="4" data-report-field="peopleText" placeholder="Phan Văn A - 123&#10;Nguyễn Văn B - 456">${esc(reportForm.peopleText)}</textarea>
         </label>
         <label class="lbl">Nhóm
           <input class="inp" data-report-field="group" value="${esc(reportForm.group)}" autocomplete="off" placeholder="Không bắt buộc">
@@ -81,7 +78,7 @@ function render() {
       </div>
       <details class="report-content-settings" open>
         <summary>Nội dung ghép vào báo cáo</summary>
-        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Ảnh lớn hơn 2 MB hoặc không phải JPEG/PNG/GIF sẽ có link Drive thay vì ảnh nhúng.</p>
+        <p class="muted small">Chọn dữ liệu cần xuất. Có thể tự ghép cột “Các bước tiến hành” bằng các biến bên dưới. Mỗi ảnh tự sinh mã theo tên file và được gắn vào hiện tượng của đúng bước; khi xuất, mã được thay bằng ảnh. Ảnh lớn hơn 2 MB hoặc không phải JPEG/PNG/GIF sẽ có link Drive thay vì ảnh nhúng.</p>
         <div class="report-options">
           <label><input type="checkbox" data-report-field="includeMeasurement" ${reportForm.includeMeasurement ? "checked" : ""}> Số liệu đã nhập</label>
           <label><input type="checkbox" data-report-field="includeObservation" ${reportForm.includeObservation ? "checked" : ""}> Hiện tượng quan sát</label>
@@ -97,7 +94,7 @@ function render() {
         ${reportBusy ? "Đang tạo tài liệu…" : "Tạo Google Docs"}
       </button>
       <button type="button" class="btn report-preview" data-act="preview-report" ${reportBusy || !state.experiments.length ? "disabled" : ""}>Xem trước biểu mẫu</button>
-      ${lastReport ? `<p class="report-result"><a href="${esc(lastReport.url)}" target="_blank" rel="noopener noreferrer">Mở báo cáo: ${esc(lastReport.name)} ↗</a></p>` : ""}
+      ${lastReport ? `<p class="report-result"><span>Đã tạo: ${esc(lastReport.name)}</span><a class="btn primary" href="${esc(lastReport.url)}" target="_blank" rel="noopener noreferrer">Xem báo cáo ↗</a></p>` : ""}
     </div>
 
     <div class="card"><h3>ℹ️ Về ứng dụng</h3>
@@ -158,8 +155,7 @@ async function onClick(e) {
 
 async function exportReport() {
   if (reportBusy) return;
-  if (!reportForm.name.trim()) return toast("Hãy nhập họ và tên.", "warn");
-  if (!reportForm.studentId.trim()) return toast("Hãy nhập MSSV.", "warn");
+  if (!parseReportPeople(reportForm.peopleText).length) return toast("Hãy nhập ít nhất một dòng theo dạng Họ tên - MSSV.", "warn");
   const raw = state.experiments.find(exp => exp.id === reportForm.experimentId);
   if (!raw) return toast("Hãy chọn bài thí nghiệm.", "warn");
 
@@ -189,8 +185,8 @@ async function exportReport() {
 async function collectReportData() {
   const raw = state.experiments.find(exp => exp.id === reportForm.experimentId);
   if (!raw) throw new Error("Hãy chọn bài thí nghiệm.");
-  if (!reportForm.name.trim()) throw new Error("Hãy nhập họ và tên.");
-  if (!reportForm.studentId.trim()) throw new Error("Hãy nhập MSSV.");
+  const people = parseReportPeople(reportForm.peopleText);
+  if (!people.length) throw new Error("Hãy nhập ít nhất một dòng theo dạng Họ tên - MSSV.");
 
   const runsSnapshot = await getDocs(query(collection(db, "runs"), where("exp_id", "==", raw.id)));
   const runs = runsSnapshot.docs.map(item => ({ id: item.id, ...item.data() }))
@@ -212,6 +208,15 @@ async function collectReportData() {
     const photos = Array.isArray(log.photos) && log.photos.length
       ? log.photos
       : (log.photo_file_id || log.photo_url ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }] : []);
+    const reportPhotos = reportForm.includePhotos ? photos.map((photo, index) => {
+      const fileId = photo?.file_id || driveIdFromUrl(photo?.url);
+      if (!fileId) return null;
+      const name = photo?.name || `TN${item.si + 1}_${item.label}_Anh${index + 1}`;
+      const code = photoCode(name, item.label, index);
+      return { file_id: fileId, name, code };
+    }).filter(Boolean) : [];
+    const photoMarkers = reportPhotos.map(photo => photo.code);
+    const observation = reportForm.includeObservation ? log.observation_text || "" : "";
     return {
       section: `${item.si + 1}. ${item.sec.section_name || "Thí nghiệm"}`,
       label: item.label,
@@ -223,12 +228,9 @@ async function collectReportData() {
         .replaceAll("{unit}", reportForm.includeMeasurement ? log.input_unit || "" : "")
         .trim(),
       measurement: reportForm.includeMeasurement && log.input_data != null ? `${log.input_data}${log.input_unit ? ` ${log.input_unit}` : ""}` : "",
-      observation: reportForm.includeObservation ? log.observation_text || "" : "",
+      observation: [observation, ...photoMarkers].filter(Boolean).join("\n"),
       explanation: reportForm.includeExplanation ? log.explanation_text || "" : "",
-      photos: reportForm.includePhotos ? photos.map(photo => ({
-        file_id: photo?.file_id || driveIdFromUrl(photo?.url),
-        name: photo?.name || ""
-      })).filter(photo => photo.file_id) : []
+      photos: reportPhotos
     };
   });
   const imagesSkipped = reportForm.includePhotos
@@ -245,8 +247,7 @@ async function collectReportData() {
     : 0;
   return {
     experimentTitle: experiment.title || "Bài thí nghiệm",
-    studentName: reportForm.name.trim(),
-    studentId: reportForm.studentId.trim(),
+    people,
     group: reportForm.group.trim(),
     date: reportForm.date || localDate(),
     semester: reportForm.semester.trim(),
@@ -264,17 +265,20 @@ async function previewReport() {
     if (!response.ok) throw new Error("Không tải được mẫu formbaocao.html.");
     let template = await response.text();
     const rows = report.steps.map(step => {
-      const photos = step.photos.map(photo => {
+      const photosByCode = new Map(step.photos.map(photo => {
         const url = `https://drive.google.com/thumbnail?id=${encodeURIComponent(photo.file_id)}&sz=w800`;
         const link = `https://drive.google.com/file/d/${encodeURIComponent(photo.file_id)}/view`;
-        return `<div class="report-photo"><a href="${link}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${esc(photo.name || "Ảnh hiện tượng")}"></a><a href="${link}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a></div>`;
-      }).join("");
+        const html = `<div class="report-photo"><a href="${link}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${esc(photo.name || "Ảnh hiện tượng")}"></a><a href="${link}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a></div>`;
+        return [photo.code, html];
+      }));
       const observed = [step.measurement ? `Số liệu: ${step.measurement}` : "", step.observation].filter(Boolean).join("\n");
-      return `<tr><td>${esc(step.section)}</td><td><strong>${esc(step.label)}</strong><br>${esc(step.action).replace(/\n/g, "<br>")}</td><td>${esc(observed).replace(/\n/g, "<br>")}${photos}</td><td>${esc(step.explanation).replace(/\n/g, "<br>")}</td></tr>`;
+      let observationHtml = esc(observed).replace(/\n/g, "<br>");
+      for (const [code, html] of photosByCode) observationHtml = observationHtml.split(esc(code)).join(html);
+      return `<tr><td>${esc(step.section)}</td><td>${esc(step.label)}<br>${esc(step.action).replace(/\n/g, "<br>")}</td><td>${observationHtml}</td><td>${esc(step.explanation).replace(/\n/g, "<br>")}</td></tr>`;
     }).join("");
+    const peopleHtml = report.people.map(person => `<div>${esc(person.name)} - ${esc(person.studentId)}</div>`).join("");
     const values = {
-      "{{STUDENT_NAME}}": esc(report.studentName),
-      "{{STUDENT_ID}}": esc(report.studentId),
+      "{{PEOPLE}}": peopleHtml,
       "{{GROUP}}": esc(report.group || "________________"),
       "{{EXPERIMENT}}": esc(report.experimentTitle),
       "{{REPORT_DATE}}": esc(formatReportDate(report.date)),
@@ -299,4 +303,18 @@ function formatReportDate(value) {
 function driveIdFromUrl(value) {
   const url = String(value || "");
   return url.match(/[?&]id=([^&]+)/)?.[1] || url.match(/\/file\/d\/([^/]+)/)?.[1] || "";
+}
+
+function parseReportPeople(value) {
+  return String(value || "").split(/\r?\n/).map(line => {
+    const match = line.trim().match(/^(.+?)\s*[-–—]\s*(.+)$/);
+    return match ? { name: match[1].trim(), studentId: match[2].trim() } : null;
+  }).filter(person => person?.name && person?.studentId);
+}
+
+function photoCode(name, stepLabel, index) {
+  const base = String(name || "").replace(/\.[^.]+$/, "")
+    .normalize("NFKD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/gi, "_").replace(/^_+|_+$/g, "").toUpperCase();
+  return `[[IMG_${base || `STEP_${stepLabel.replace(".", "_")}`}_${index + 1}]]`;
 }

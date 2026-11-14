@@ -285,6 +285,8 @@ textarea.inp{ resize:vertical; min-height:88px; font-family:inherit; }
 .report-form{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px 12px;margin:12px 0;}
 .report-form .lbl{min-width:0;margin:0;}
 .report-form .inp{width:100%;min-width:0;}
+.report-people-label{grid-column:1/-1;}
+.report-people-label textarea{resize:vertical;min-height:100px;}
 .report-content-settings{margin:10px 0 14px;padding:12px;border:1px solid var(--hairline);border-radius:var(--r);background:var(--surface-2);}
 .report-content-settings summary{font-weight:700;cursor:pointer;min-height:32px;display:flex;align-items:center;}
 .report-content-settings>p{margin:6px 0 10px;}
@@ -295,8 +297,9 @@ textarea.inp{ resize:vertical; min-height:88px; font-family:inherit; }
 .report-content-settings textarea{resize:vertical;min-height:72px;}
 .report-submit{width:100%;min-height:48px;}
 .report-preview{width:100%;min-height:44px;margin-top:8px;}
-.report-result{margin:12px 0 0!important;padding:10px 12px;border-radius:var(--r-sm);background:var(--ok-soft);}
-.report-result a{color:var(--ok);font-weight:650;overflow-wrap:anywhere;}
+.report-result{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:10px;margin:12px 0 0!important;padding:10px 12px;border-radius:var(--r-sm);background:var(--ok-soft);}
+.report-result>span{font-size:.84rem;overflow-wrap:anywhere;}
+.report-result a{display:inline-flex;align-items:center;min-height:40px;padding:0 14px;text-decoration:none;}
 @media(max-width:420px){.report-form{grid-template-columns:minmax(0,1fr);}.report-options{grid-template-columns:minmax(0,1fr);}}
 .step-submit-row{display:flex;gap:10px;margin:12px 0;}
 .step-submit-row>.btn{flex:1;min-width:0;min-height:50px;padding:0 10px;}
