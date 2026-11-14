@@ -34,14 +34,14 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi dùng các nút tròn dưới tên bài để
   chuyển thí nghiệm và các nút bước để chuyển thao tác. Màn hình chỉ hiện thao tác đang chọn, không
   phải cuộn qua danh sách nhiều bước. Menu **Tiến trình** cũng mở thẳng tới thí nghiệm/thao tác.
-- **Bartender dạng nút nổi có thể kéo thả** ở góc màn hình, bấm vào mở cửa sổ tra cứu/tính toán
+- **Pha chế** (tính pha dung dịch + quy đổi đơn vị) là một tab riêng ở thanh dưới; **AI** là tab chat Gemini (cấu hình đọc từ Firestore `config/gemini`)
   nhanh mà không rời khỏi tab đang làm — mở rộng danh mục hóa chất theo đúng các chất dùng
   xuyên suốt giáo trình (KMnO₄, K₂Cr₂O₇, Na₂S₂O₃·5H₂O, phèn nhôm-kali, muối Mohr…).
 
 ## Cấu trúc
 
 ```
-index.html            khung + Bottom Nav 3 tab + FAB Bartender
+index.html            khung + topbar (logo = Tiến trình, Kế hoạch, Cài đặt) + Bottom Nav 3 tab (Quy trình, Pha chế, AI)
 css/style.css         giao diện Apple-style sáng, mobile-first
 js/app.js             điều hướng tab, trạng thái kết nối, FAB sheet
 js/firebase.js        ⚙️ DÁN firebaseConfig Ở ĐÂY; đăng nhập ẩn danh; cache ngoại tuyến
@@ -51,7 +51,8 @@ js/utils.js           modal, toast, chuyển ảnh sang base64, chọn tên, KaT
 js/plan-logic.js       logic thuần: validate, flatten, rẽ nhánh, computeFlow
 js/tabs/planner.js    Tab 1 — Kế hoạch (Thí nghiệm → Thao tác, ảnh qua Drive)
 js/tabs/sop.js        Tab 2 — Quy trình (một thao tác mỗi màn hình + data logger)
-js/tabs/calc.js       Bartender (chạy trong FAB sheet)
+js/tabs/calc.js       Tab Pha chế
+js/tabs/ai.js         Tab AI (chat Gemini)
 js/tabs/settings.js   Tab 3 — Cài đặt (thành viên, xuất báo cáo)
 GAS/code.gs           Apps Script — nhận/xóa ảnh, gọi xuất báo cáo
 GAS/report.gs         Apps Script — tạo Google Docs từ nhật ký

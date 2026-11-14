@@ -8,6 +8,7 @@ import { esc, richHtml, renderMath, toast, openModal, confirmBox, pickName, stat
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null, selectedStepId = null;
+let expOpen = false, sectionOpen = false;   // ẩn/hiện: danh sách TN dưới tiêu đề bài; danh sách bước dưới tiêu đề thí nghiệm
 let curExp = null, curFlow = null, curFlat = [];
 const drafts = {};              // stepId → {value, blob, preview}
 const editing = new Set(), saving = new Set(), uploadingPhoto = new Set();
@@ -21,12 +22,7 @@ export function init(el) {
   root.addEventListener("change", onChange);
   render();
 }
-export function onShow() {
-  selectedByUser = false;
-  selectedSectionId = null;
-  selectedStepId = null;
-  schedule();
-}
+export function onShow() { schedule(); }   // giữ nguyên bài/bước đang làm khi chuyển qua lại giữa các tab
 function schedule() { cancelAnimationFrame(raf); raf = requestAnimationFrame(render); }
 
 /* ---------- API cho menu Tiến trình ---------- */
@@ -77,13 +73,15 @@ function render() {
   const sectionDone = sectionFlat.filter(f => isProgressDone(f.step.id)).length;
   const pct = sectionFlat.length ? Math.round(sectionDone / sectionFlat.length * 100) : 0;
   let html = `<div class="sop-head"><button type="button" class="link-btn" data-act="sop-home">Danh sách bài</button></div>
-    <h1 class="sop-title">${esc(curExp.title || "Bài thí nghiệm")}</h1>
-    ${sectionTabs()}
+    <h1 class="sop-title"><button type="button" class="acc-btn" data-act="toggle-exp" aria-expanded="${expOpen}">
+      <span>${esc(curExp.title || "Bài thí nghiệm")}</span><span class="chev ${expOpen ? "open" : ""}" aria-hidden="true"></span></button></h1>
+    ${expOpen ? sectionTabs() : ""}
     <div class="section-run-head">
-      <h2>${richHtml(selectedSection.section_name) || `Thí nghiệm ${sectionIndex + 1}`}</h2>
+      <h2><button type="button" class="acc-btn" data-act="toggle-section" aria-expanded="${sectionOpen}">
+        <span>${richHtml(selectedSection.section_name) || `Thí nghiệm ${sectionIndex + 1}`}</span><span class="chev ${sectionOpen ? "open" : ""}" aria-hidden="true"></span></button></h2>
       <p class="muted small">${sectionDone}/${sectionFlat.length} bước</p>
       <div class="bar"><span style="width:${pct}%"></span></div>
-      ${tocStrip(sectionFlat)}
+      ${sectionOpen ? tocStrip(sectionFlat) : ""}
     </div>`;
   if (sectionFlat.length && sectionFlat.every(f => state.logs[f.step.id])) html += `<p class="done-line">Đã hoàn thành thí nghiệm này</p>`;
   if (selectedStep) html += stepView(selectedStep);
@@ -94,7 +92,7 @@ function render() {
 }
 
 function sectionTabs() {
-  if (curExp.sections.length < 2) return "";
+  if (!curExp.sections.length) return "";
   return `<nav class="tabs" aria-label="Chọn thí nghiệm">
     ${curExp.sections.map((section, index) => {
       const steps = curFlat.filter(item => item.sec.id === section.id);
@@ -385,6 +383,8 @@ async function onClick(e) {
     }
     case "cancel-edit": return cancelEdit(id);
     case "select-section": return goToProgress(btn.dataset.section);
+    case "toggle-exp": expOpen = !expOpen; render(); break;
+    case "toggle-section": sectionOpen = !sectionOpen; render(); break;
     case "remove-saved-photo": {
       if (!(await confirmBox("Ảnh sẽ bị gỡ khỏi bản ghi và xóa khỏi Google Drive khi bạn lưu. Tiếp tục?", "Xóa ảnh"))) return;
       const draft = (drafts[id] ||= {});

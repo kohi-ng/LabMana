@@ -1,0 +1,358 @@
+// ============ Tab AI — cửa sổ chat Gemini (kiểu Gemini), đọc cấu hình từ Firestore config/gemini ============
+import { state } from "../store.js";
+import { db, ready, isConfigured } from "../firebase.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { esc, snippet, renderMath } from "../utils.js";
+import { normalizeExperiment } from "../plan-logic.js";
+import * as sop from "./sop.js";
+import * as calc from "./calc.js";
+
+const LS_CFG = "labmana_gemini_config";
+const LS_MODEL = "labmana_ai_model";
+const LS_CTX = "labmana_ai_ctx";
+const MAX_HISTORY = 6;          // 3 lượt hội thoại = 6 phần tử user/model
+const MAX_OUTPUT_TOKENS = 650;
+const CTX_CHAR_LIMIT = 6000;
+
+const SYSTEM_BASE = "Bạn là trợ lý thực hành hóa học tại bàn thí nghiệm (LabMana). Trả lời ngắn gọn, thực chiến, gạch đầu dòng rõ ràng để đọc lướt trên điện thoại. Luôn đặt CẢNH BÁO AN TOÀN lên dòng đầu tiên nếu liên quan axit/kiềm đặc, chất oxy hóa mạnh hoặc phản ứng tỏa nhiệt.";
+
+let root, el = {};
+let config = null, configPromise = null;
+let selectedModel = lsGet(LS_MODEL) || null;
+let ctxOn = lsGet(LS_CTX) !== "0";
+let ctxSel = null;              // null = tự động (bước đang xem + thông số Pha chế); Set = người dùng tự chọn
+let popOpen = false, busy = false;
+const messages = [];            // {role: "user"|"model", text, error?, failed?}
+
+function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
+function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* ignore */ } }
+
+/* ------------------------------ Cấu hình Gemini ------------------------------ */
+function readCache() {
+  try {
+    const c = JSON.parse(lsGet(LS_CFG) || "null");
+    return c && c.apiKey ? c : null;
+  } catch { return null; }
+}
+
+/** Đọc config/gemini: ưu tiên cache localStorage, chỉ hỏi Firestore khi chưa có cache (hoặc force). */
+async function loadConfig(force = false) {
+  if (!force) {
+    const cached = readCache();
+    if (cached) { config = cached; return config; }
+  }
+  if (configPromise) return configPromise;
+  configPromise = (async () => {
+    if (!isConfigured) throw new Error("Chưa cấu hình Firebase.");
+    await ready;
+    const snap = await getDoc(doc(db, "config", "gemini"));
+    if (!snap.exists()) throw new Error("Chưa có tài liệu config/gemini trên Firestore.");
+    const d = snap.data() || {};
+    if (!d.apiKey) throw new Error("config/gemini chưa có apiKey.");
+    const models = Array.isArray(d.models) && d.models.length ? d.models.map(String) : [d.activeModel || "gemini-3.8-flash"];
+    config = {
+      apiKey: String(d.apiKey),
+      activeModel: String(d.activeModel || models[0]),
+      models,
+      temperature: Number.isFinite(Number(d.temperature)) ? Number(d.temperature) : 0.25
+    };
+    lsSet(LS_CFG, JSON.stringify(config));
+    return config;
+  })();
+  try { return await configPromise; } finally { configPromise = null; }
+}
+
+function currentModel() {
+  if (!config) return selectedModel || "";
+  if (!selectedModel || !config.models.includes(selectedModel)) selectedModel = config.activeModel;
+  return selectedModel;
+}
+
+/** "gemini-3.8-flash" → "3.8 Flash"; "gemini-3.5-flash-lite" → "3.5 Lite". */
+function shortName(id) {
+  const parts = String(id || "").replace(/^gemini-/, "").split("-");
+  const ver = parts.shift() || "";
+  const rest = parts.map(w => w ? w[0].toUpperCase() + w.slice(1) : w);
+  if (rest.length === 2 && rest[0] === "Flash" && rest[1] === "Lite") return `${ver} Lite`;
+  return [ver, ...rest].filter(Boolean).join(" ");
+}
+
+/* ------------------------------ Ngữ cảnh ------------------------------ */
+const plain = t => String(t ?? "").replace(/\s+/g, " ").trim();
+
+function ctxOptions() {
+  const opts = [];
+  const bt = calc.getContextText();
+  if (bt) opts.push({ id: "bartender", group: "Pha chế", label: "Thông số hóa chất đang pha", text: `[Tab Pha chế]\n${bt}` });
+
+  const raw = state.experiments.find(e => e.id === state.activeRun?.exp_id);
+  if (raw) {
+    const exp = normalizeExperiment(raw);
+    exp.sections.forEach((sec, si) => {
+      const secName = plain(sec.section_name) || `Thí nghiệm ${si + 1}`;
+      sec.steps.forEach((step, ti) => {
+        const label = `${si + 1}.${ti + 1}`;
+        const log = state.logs[step.id];
+        const lines = [`[Bài: ${plain(exp.title)} · TN ${si + 1}: ${secName} · Bước ${label}]`];
+        if (step.title) lines.push(`Tiêu đề: ${plain(step.title)}`);
+        if (step.text) lines.push(`Nội dung: ${String(step.text).trim()}`);
+        if (log) {
+          if (log.input_data != null && log.input_data !== "") lines.push(`Số liệu đã ghi: ${log.input_data} ${log.input_unit || ""}`.trim());
+          if (log.observation_text) lines.push(`Hiện tượng đã ghi: ${log.observation_text}`);
+        }
+        opts.push({
+          id: "step:" + step.id,
+          group: `TN ${si + 1} · ${secName}`,
+          label: `${label} ${step.title ? plain(step.title) : snippet(step.text, 50)}`,
+          text: lines.join("\n"),
+          stepId: step.id
+        });
+      });
+    });
+  }
+  return opts;
+}
+
+function effectiveSelection(opts) {
+  if (ctxSel) return new Set([...ctxSel].filter(id => opts.some(o => o.id === id)));
+  const auto = new Set();
+  if (opts.some(o => o.id === "bartender")) auto.add("bartender");
+  const cur = sop.isExperimentOpen() ? sop.getSelection().stepId : null;
+  if (cur && opts.some(o => o.id === "step:" + cur)) auto.add("step:" + cur);
+  return auto;
+}
+
+function buildSystemInstruction() {
+  if (!ctxOn) return SYSTEM_BASE;
+  const opts = ctxOptions();
+  const sel = effectiveSelection(opts);
+  let blocks = opts.filter(o => sel.has(o.id)).map(o => o.text);
+  if (!blocks.length) return SYSTEM_BASE;
+  let joined = blocks.join("\n\n");
+  if (joined.length > CTX_CHAR_LIMIT) joined = joined.slice(0, CTX_CHAR_LIMIT) + "…";
+  return `${SYSTEM_BASE}\n\nNGỮ CẢNH ĐANG LÀM TRÊN LABMANA (dùng để trả lời sát thực tế):\n${joined}`;
+}
+
+/* ------------------------------ Gọi Gemini ------------------------------ */
+function buildContents() {
+  const ok = messages.filter(m => !m.error && !m.failed);
+  let tail = ok.slice(-MAX_HISTORY);
+  while (tail.length && tail[0].role !== "user") tail = tail.slice(1);
+  return tail.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
+}
+
+async function callGemini(retry = true) {
+  const cfg = config || await loadConfig();
+  const model = currentModel();
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      system_instruction: { parts: [{ text: buildSystemInstruction() }] },
+      contents: buildContents(),
+      generationConfig: { temperature: cfg.temperature, maxOutputTokens: MAX_OUTPUT_TOKENS }
+    })
+  });
+  if (!res.ok) {
+    // Khóa/mô hình trong cache có thể đã đổi: tải lại cấu hình từ Firestore đúng 1 lần rồi thử lại.
+    if (retry && [400, 401, 403, 404].includes(res.status)) {
+      const before = JSON.stringify(cfg);
+      try {
+        await loadConfig(true);
+        if (JSON.stringify(config) !== before) return callGemini(false);
+      } catch { /* dùng lỗi gốc bên dưới */ }
+    }
+    let detail = "";
+    try { detail = (await res.json())?.error?.message || ""; } catch { /* ignore */ }
+    throw new Error(`Lỗi ${res.status}${detail ? ": " + detail : ""}`);
+  }
+  const data = await res.json();
+  const cand = data.candidates?.[0];
+  const text = (cand?.content?.parts || []).map(p => p.text || "").join("").trim();
+  if (!text) {
+    if (data.promptFeedback?.blockReason) throw new Error("Câu hỏi bị chặn bởi bộ lọc an toàn của Gemini.");
+    throw new Error("AI không trả về nội dung. Thử hỏi lại ngắn gọn hơn.");
+  }
+  return cand.finishReason === "MAX_TOKENS" ? text + " …" : text;
+}
+
+/* ------------------------------ Hiển thị tin nhắn ------------------------------ */
+const inline = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
+
+/** Markdown gọn: **đậm**, `code`, gạch đầu dòng, danh sách số, tiêu đề → chữ đậm. */
+function mdToHtml(text) {
+  const out = [];
+  let list = null;
+  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
+  for (const line of String(text).split("\n")) {
+    const b = line.match(/^\s*(?:[-*•])\s+(.*)$/);
+    const n = line.match(/^\s*\d+[.)]\s+(.*)$/);
+    const h = line.match(/^\s*#{1,6}\s+(.*)$/);
+    if (b) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(b[1])}</li>`); }
+    else if (n) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(n[1])}</li>`); }
+    else if (!line.trim()) close();
+    else { close(); out.push(h ? `<p><b>${inline(h[1])}</b></p>` : `<p>${inline(line)}</p>`); }
+  }
+  close();
+  return out.join("");
+}
+
+function renderMessages() {
+  const nearBottom = el.scroll.scrollHeight - el.scroll.scrollTop - el.scroll.clientHeight < 120;
+  if (!messages.length && !busy) {
+    el.list.innerHTML = `<div class="ai-empty"><b>Hỏi AI</b><span>Trợ lý hóa học tại bàn thí nghiệm. Bật “Chèn ngữ cảnh” để AI biết bạn đang làm bước nào.</span></div>`;
+    return;
+  }
+  el.list.innerHTML = messages.map(m => {
+    if (m.role === "user") return `<div class="ai-msg user"><div class="ai-bubble">${esc(m.text).replace(/\n/g, "<br>")}</div></div>`;
+    if (m.error) return `<div class="ai-msg model error"><div class="ai-text">${esc(m.text)}</div></div>`;
+    return `<div class="ai-msg model"><div class="ai-text">${mdToHtml(m.text)}</div></div>`;
+  }).join("") + (busy ? `<div class="ai-msg model"><div class="ai-typing" aria-label="Đang trả lời"><i></i><i></i><i></i></div></div>` : "");
+  renderMath(el.list);
+  if (nearBottom || busy || messages.at(-1)?.role === "user") el.scroll.scrollTop = el.scroll.scrollHeight;
+}
+
+/* ------------------------------ Thanh nhập & popover ------------------------------ */
+function updateBar() {
+  const model = currentModel();
+  el.model.innerHTML = `<span class="ai-dot ${ctxOn ? "on" : ""}" title="${ctxOn ? "Đang chèn ngữ cảnh" : "Không chèn ngữ cảnh"}"></span><span>${esc(model ? shortName(model) : "AI")}</span><span class="chev" aria-hidden="true"></span>`;
+  el.model.setAttribute("aria-expanded", String(popOpen));
+  el.send.disabled = busy || !el.input.value.trim();
+}
+
+function renderPop() {
+  el.pop.hidden = !popOpen;
+  el.backdrop.hidden = !popOpen;
+  if (!popOpen) return;
+  const keep = el.pop.querySelector(".ai-ctx-list")?.scrollTop || 0;
+  const models = config?.models || (selectedModel ? [selectedModel] : []);
+  const cur = currentModel();
+  let html = `<div class="ai-pop-h">Mô hình</div>${models.length ? models.map(m =>
+    `<button type="button" class="ai-opt ${m === cur ? "on" : ""}" data-act="model" data-val="${esc(m)}" role="menuitemradio" aria-checked="${m === cur}"><span>${esc(shortName(m))}</span><i>${m === cur ? "✓" : ""}</i></button>`
+  ).join("") : `<div class="ai-pop-note">Chưa tải được danh sách mô hình.</div>`}
+    <div class="ai-pop-sep"></div>
+    <div class="ai-switch-row"><span>Chèn ngữ cảnh</span>
+      <button type="button" class="ai-switch ${ctxOn ? "on" : ""}" role="switch" aria-checked="${ctxOn}" data-act="ctx-toggle" aria-label="Chèn ngữ cảnh"><i></i></button></div>`;
+  if (ctxOn) {
+    const opts = ctxOptions();
+    const sel = effectiveSelection(opts);
+    if (!opts.length) {
+      html += `<div class="ai-pop-note">Chưa có gì để đính kèm. Mở một bài ở tab Quy trình hoặc nhập thông số ở tab Pha chế.</div>`;
+    } else {
+      let group = null;
+      html += `<div class="ai-pop-h">Chọn mục gửi kèm <small>${sel.size}/${opts.length}</small></div><div class="ai-ctx-list">`;
+      for (const o of opts) {
+        if (o.group !== group) { group = o.group; html += `<div class="ai-ctx-group">${esc(group)}</div>`; }
+        html += `<label class="ai-ctx-item"><input type="checkbox" data-act="ctx-item" data-id="${esc(o.id)}" ${sel.has(o.id) ? "checked" : ""}><span>${esc(o.label)}</span></label>`;
+      }
+      html += `</div><div class="ai-pop-foot"><button type="button" class="link-btn" data-act="ctx-auto">Tự động (bước đang xem)</button><button type="button" class="link-btn muted" data-act="ctx-none">Bỏ chọn hết</button></div>`;
+    }
+  } else {
+    html += `<div class="ai-pop-note">Đang tắt: AI chỉ trả lời như trợ lý hóa học chung, không biết bạn đang làm bước nào.</div>`;
+  }
+  el.pop.innerHTML = html;
+  const list = el.pop.querySelector(".ai-ctx-list");
+  if (list) list.scrollTop = keep;
+}
+
+function setPop(open) {
+  popOpen = open;
+  renderPop(); updateBar();
+}
+
+function autoGrow() {
+  el.input.style.height = "auto";
+  el.input.style.height = Math.min(el.input.scrollHeight, 140) + "px";
+}
+
+async function send() {
+  const text = el.input.value.trim();
+  if (!text || busy) return;
+  messages.push({ role: "user", text });
+  el.input.value = ""; autoGrow();
+  busy = true; popOpen = false;
+  renderPop(); updateBar(); renderMessages();
+  const asked = messages.at(-1);
+  try {
+    if (!config) await loadConfig();
+    updateBar();
+    const reply = await callGemini();
+    messages.push({ role: "model", text: reply });
+  } catch (err) {
+    console.error(err);
+    asked.failed = true;   // không đưa câu hỏi lỗi vào lịch sử gửi đi
+    messages.push({ role: "model", error: true, text: err.message || "Không gọi được AI." });
+  } finally {
+    busy = false;
+    updateBar(); renderMessages();
+  }
+}
+
+/* ------------------------------ Khởi tạo ------------------------------ */
+export function init(host) {
+  root = host;
+  root.innerHTML = `<div class="ai-chat">
+    <div class="ai-scroll" id="ai-scroll"><div class="ai-list" id="ai-list"></div></div>
+    <div class="ai-dock">
+      <div class="ai-backdrop" id="ai-backdrop" hidden></div>
+      <div class="ai-pop" id="ai-pop" role="menu" hidden></div>
+      <div class="ai-bar">
+        <textarea id="ai-input" rows="1" placeholder="Hỏi AI..." autocomplete="off" enterkeyhint="send"></textarea>
+        <div class="ai-bar-row">
+          <button type="button" class="ai-model" id="ai-model" data-act="pop" aria-haspopup="menu" aria-expanded="false"></button>
+          <button type="button" class="ai-send" id="ai-send" data-act="send" aria-label="Gửi" disabled>➤</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+  el = {
+    scroll: root.querySelector("#ai-scroll"), list: root.querySelector("#ai-list"),
+    pop: root.querySelector("#ai-pop"), backdrop: root.querySelector("#ai-backdrop"),
+    input: root.querySelector("#ai-input"), model: root.querySelector("#ai-model"), send: root.querySelector("#ai-send")
+  };
+
+  el.input.addEventListener("input", () => { autoGrow(); updateBar(); });
+  el.input.addEventListener("keydown", e => {
+    if (e.key === "Enter" && !e.shiftKey && !e.isComposing && !matchMedia("(pointer: coarse)").matches) { e.preventDefault(); send(); }
+  });
+  el.backdrop.addEventListener("click", () => setPop(false));
+  document.addEventListener("keydown", e => { if (e.key === "Escape" && popOpen) setPop(false); });
+
+  root.addEventListener("click", e => {
+    const t = e.target.closest("[data-act]");
+    if (!t || t.tagName === "INPUT") return;
+    switch (t.dataset.act) {
+      case "send": return send();
+      case "pop": return setPop(!popOpen);
+      case "model":
+        selectedModel = t.dataset.val; lsSet(LS_MODEL, selectedModel);
+        renderPop(); updateBar(); break;
+      case "ctx-toggle":
+        ctxOn = !ctxOn; lsSet(LS_CTX, ctxOn ? "1" : "0");
+        renderPop(); updateBar(); break;
+      case "ctx-auto": ctxSel = null; renderPop(); break;
+      case "ctx-none": ctxSel = new Set(); renderPop(); break;
+    }
+  });
+  root.addEventListener("change", e => {
+    const t = e.target;
+    if (t.dataset?.act !== "ctx-item") return;
+    const sel = new Set(effectiveSelection(ctxOptions()));
+    t.checked ? sel.add(t.dataset.id) : sel.delete(t.dataset.id);
+    ctxSel = sel;
+    renderPop();
+  });
+
+  updateBar(); renderMessages();
+  // Tải cấu hình ngầm (dùng cache nếu có) để tên mô hình hiện ngay
+  loadConfig().then(() => { updateBar(); if (popOpen) renderPop(); }).catch(err => {
+    console.warn("Không đọc được config/gemini:", err);
+  });
+}
+
+export function onShow() {
+  if (popOpen) renderPop();
+  if (el.scroll) el.scroll.scrollTop = el.scroll.scrollHeight;
+  if (!config) loadConfig().then(() => { updateBar(); }).catch(() => {});
+}

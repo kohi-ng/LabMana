@@ -1,4 +1,4 @@
-// ============ LabMana Bartender v2 — trình hướng dẫn pha chế từng bước + quy đổi đơn vị ============
+// ============ Tab Pha chế — trình hướng dẫn pha chế từng bước + quy đổi đơn vị ============
 import { esc, renderMath, toast } from "../utils.js";
 import {
   CHEMS, KIND_LABEL, EQ_HINTS, UNITS, UNIT_ORDER, MASS_UNITS,
@@ -64,6 +64,29 @@ export function init(el) {
   render({ top: true });
 }
 export function onShow() {}
+
+/** Tóm tắt thông số đang nhập trong tab Pha chế (để tab AI đính kèm làm ngữ cảnh). Trả về "" nếu chưa chọn hóa chất. */
+export function getContextText() {
+  const x = CHEMS[S.chem];
+  if (!x) return "";
+  const lines = [`Hóa chất: ${x.formula || ""} ${x.name}`.trim()];
+  if (S.method) lines.push(S.method === "solid" ? "Cách pha: cân chất rắn rồi hòa tan" : "Cách pha: pha loãng từ dung dịch gốc");
+  const v = S.v || {};
+  if (S.method === "dilute" && v.stock) lines.push(`Nồng độ gốc: ${v.stock} (${UNITS[S.stockUnit]?.unit || S.stockUnit})${v.density ? `, d = ${v.density} g/mL` : ""}`);
+  if (S.method === "solid" && v.purity) lines.push(`Độ tinh khiết: ${v.purity}%`);
+  if (v.target) lines.push(`Nồng độ cần pha: ${v.target} (${UNITS[S.targetUnit]?.unit || S.targetUnit})`);
+  if (v.amount) lines.push(`Lượng dung dịch cuối: ${v.amount} ${MASS_UNITS.has(S.targetUnit) ? S.scale.mass : S.scale.vol}`);
+  if (v.mw) lines.push(`M = ${v.mw} g/mol`);
+  if (v.n) lines.push(`n = ${v.n} eq/mol`);
+  try {
+    const r = S.method ? computeMix(mixInput()) : null;
+    if (r?.status === "ok") {
+      lines.push(`Kết quả tính: ${r.hero.label} = ${r.hero.value} (${r.hero.sub})`);
+      (r.warns || []).forEach(w => lines.push(`Cảnh báo: ${w}`));
+    }
+  } catch { /* bỏ qua nếu chưa đủ dữ liệu */ }
+  return lines.join("\n");
+}
 
 /* ------------------------------ Hành động ------------------------------ */
 function act(a, val) {
@@ -135,6 +158,7 @@ function render({ top = false } = {}) {
   const st = root.scrollTop;
   root.innerHTML = `<div class="bt">${modesHtml()}${S.mode === "mix" ? mixHtml() : convHtml()}</div>`;
   root.scrollTop = top ? 0 : st;
+  if (top) window.scrollTo(0, 0);
   if (S.mode === "mix" && S.step === 3) refreshLive();
   if (S.mode === "conv") refreshConv();
   renderMath(root);

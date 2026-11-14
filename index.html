@@ -20,10 +20,13 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand">LABMANA</div>
-    <div class="topbar-actions">
-      <button id="progress-menu-toggle" class="link-btn progress-menu-toggle" type="button" aria-expanded="false" aria-controls="progress-menu">Tiến trình</button>
-    </div>
+    <button id="progress-menu-toggle" class="brand brand-btn" type="button" aria-expanded="false" aria-controls="progress-menu" aria-label="LABMANA — mở tiến trình">
+      <span>LABMANA</span><span class="chev" aria-hidden="true"></span>
+    </button>
+    <nav class="topbar-actions" aria-label="Kế hoạch và cài đặt">
+      <button type="button" class="top-tab" data-tab="planner">Kế hoạch</button>
+      <button type="button" class="top-tab" data-tab="settings">Cài đặt</button>
+    </nav>
   </header>
 
   <aside id="progress-menu" class="progress-menu" aria-label="Tiến trình" hidden></aside>
@@ -33,25 +36,16 @@
   <main id="app">
     <section id="tab-planner" class="tab" hidden></section>
     <section id="tab-sop" class="tab" hidden></section>
+    <section id="tab-calc" class="tab" hidden></section>
+    <section id="tab-ai" class="tab" hidden></section>
     <section id="tab-settings" class="tab" hidden></section>
   </main>
 
   <nav class="bottom-nav" aria-label="Điều hướng chính">
-    <button data-tab="planner">Kế hoạch</button>
     <button data-tab="sop">Quy trình</button>
-    <button data-tab="settings">Cài đặt</button>
+    <button data-tab="calc">Pha chế</button>
+    <button data-tab="ai">AI</button>
   </nav>
-
-  <!-- Bartender: nút nổi, mở bảng tra cứu nhanh ở mọi tab -->
-  <button id="calc-fab" class="calc-fab" aria-label="Mở Bartender">Pha chế</button>
-  <div id="calc-sheet-backdrop" class="calc-sheet-backdrop"></div>
-  <div id="calc-sheet" class="calc-sheet" role="dialog" aria-modal="true" aria-label="Bartender">
-    <div class="calc-sheet-head">
-      <h3>Bartender</h3>
-      <button class="link-btn" id="calc-sheet-close" type="button">Đóng</button>
-    </div>
-    <div class="calc-sheet-body" id="calc-sheet-body"></div>
-  </div>
 
   <div id="modal-root"></div>
   <div id="toast-root"></div>
