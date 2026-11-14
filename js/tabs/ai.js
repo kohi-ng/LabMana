@@ -10,8 +10,21 @@ import * as calc from "./calc.js";
 const LS_CFG = "labmana_gemini_config";
 const LS_MODEL = "labmana_ai_model";
 const LS_CTX = "labmana_ai_ctx";
-const MAX_HISTORY = 6;          // 3 lượt hội thoại = 6 phần tử user/model
-const MAX_OUTPUT_TOKENS = 650;
+const LS_TUNE = "labmana_ai_tuning";   // { [modelId]: { turns, temperature, maxOutputTokens, thinkingBudget } } — chỉ lưu phần người dùng đã chỉnh
+const DEFAULT_TURNS = 3;        // 1 lượt = 1 câu hỏi + 1 câu trả lời → 3 lượt = 6 phần tử user/model
+// Thứ tự ưu tiên từ cao xuống thấp — cũng là thứ tự hạ cấp khi quá tải
+const CASCADE = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3-flash", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"];
+const MODEL_DEFAULTS = {
+  "gemini-3.8-flash":      { temperature: 0.25, maxOutputTokens: 2500, thinkingBudget: 512 },
+  "gemini-3.6-flash":      { temperature: 0.25, maxOutputTokens: 2048, thinkingBudget: 256 },
+  "gemini-3-flash":        { temperature: 0.3,  maxOutputTokens: 2048, thinkingBudget: 256 },
+  "gemini-3.1-flash-lite": { temperature: 0.3,  maxOutputTokens: 1536, thinkingBudget: 128 },
+  "gemini-3.5-flash-lite": { temperature: 0.3,  maxOutputTokens: 1536, thinkingBudget: 0 }
+};
+const FALLBACK_STATUS = new Set([429, 500, 503]);
+const TURN_CHOICES = [1, 3, 5, 10];
+const TOKEN_CHOICES = [1024, 2048, 3072, 4096];
+const THINK_CHOICES = [[0, "Tắt (0)"], [128, "Nhẹ (128)"], [256, "Vừa (256)"], [512, "Sâu (512)"]];
 const CTX_CHAR_LIMIT = 6000;
 
 const SYSTEM_BASE = "Bạn là trợ lý thực hành hóa học tại bàn thí nghiệm (LabMana). Trả lời ngắn gọn, thực chiến, gạch đầu dòng rõ ràng để đọc lướt trên điện thoại. Luôn đặt CẢNH BÁO AN TOÀN lên dòng đầu tiên nếu liên quan axit/kiềm đặc, chất oxy hóa mạnh hoặc phản ứng tỏa nhiệt.";
@@ -21,11 +34,52 @@ let config = null, configPromise = null;
 let selectedModel = lsGet(LS_MODEL) || null;
 let ctxOn = lsGet(LS_CTX) !== "0";
 let ctxSel = null;              // null = tự động (bước đang xem + thông số Pha chế); Set = người dùng tự chọn
-let popOpen = false, busy = false;
+let popOpen = false, advOpen = false, busy = false;
+let tuning = loadTuning();
 const messages = [];            // {role: "user"|"model", text, error?, failed?}
 
 function lsGet(k) { try { return localStorage.getItem(k); } catch { return null; } }
 function lsSet(k, v) { try { localStorage.setItem(k, v); } catch { /* ignore */ } }
+/** Ép kiểu số (Firestore có thể lưu "2048" dạng chuỗi); rỗng/không hợp lệ → mặc định. */
+function num(v, d) {
+  if (v === "" || v == null) return d;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : d;
+}
+const clamp = (n, lo, hi) => Math.min(hi, Math.max(lo, n));
+
+function loadTuning() {
+  try {
+    const t = JSON.parse(lsGet(LS_TUNE) || "{}");
+    return t && typeof t === "object" && !Array.isArray(t) ? t : {};
+  } catch { return {}; }
+}
+const saveTuning = () => lsSet(LS_TUNE, JSON.stringify(tuning));
+
+/** Thông số chuẩn của mô hình (chưa tính tùy chỉnh cá nhân). Model lạ → dùng giá trị chung từ config/gemini. */
+function baseParams(model) {
+  const d = MODEL_DEFAULTS[model];
+  return {
+    turns: DEFAULT_TURNS,
+    temperature: d ? d.temperature : num(config?.temperature, 0.3),
+    maxOutputTokens: d ? d.maxOutputTokens : num(config?.maxOutputTokens, 2048),
+    thinkingBudget: d ? d.thinkingBudget : (config?.thinkingBudget ?? null)
+  };
+}
+/** Thông số hiệu lực = chuẩn của model + phần người dùng đã chỉnh riêng cho model đó. */
+function paramsFor(model) {
+  const o = tuning[model] || {};
+  const p = baseParams(model);
+  if (Number.isFinite(o.turns)) p.turns = clamp(Math.round(o.turns), 1, 10);
+  if (Number.isFinite(o.temperature)) p.temperature = clamp(o.temperature, 0, 1);
+  if (Number.isFinite(o.maxOutputTokens)) p.maxOutputTokens = clamp(Math.round(o.maxOutputTokens), 64, 32768);
+  if (Number.isFinite(o.thinkingBudget)) p.thinkingBudget = clamp(Math.round(o.thinkingBudget), 0, 24576);
+  return p;
+}
+function setTuning(model, key, value) {
+  tuning[model] = { ...(tuning[model] || {}), [key]: value };
+  saveTuning();
+}
 
 /* ------------------------------ Cấu hình Gemini ------------------------------ */
 function readCache() {
@@ -49,12 +103,14 @@ async function loadConfig(force = false) {
     if (!snap.exists()) throw new Error("Chưa có tài liệu config/gemini trên Firestore.");
     const d = snap.data() || {};
     if (!d.apiKey) throw new Error("config/gemini chưa có apiKey.");
-    const models = Array.isArray(d.models) && d.models.length ? d.models.map(String) : [d.activeModel || "gemini-3.8-flash"];
+    const models = Array.isArray(d.models) && d.models.length ? d.models.map(String) : [d.activeModel || CASCADE[0]];
     config = {
       apiKey: String(d.apiKey),
       activeModel: String(d.activeModel || models[0]),
       models,
-      temperature: Number.isFinite(Number(d.temperature)) ? Number(d.temperature) : 0.25
+      temperature: num(d.temperature, 0.25),
+      maxOutputTokens: num(d.maxOutputTokens, 2048),
+      thinkingBudget: d.thinkingBudget == null || d.thinkingBudget === "" ? null : num(d.thinkingBudget, null)
     };
     lsSet(LS_CFG, JSON.stringify(config));
     return config;
@@ -62,9 +118,16 @@ async function loadConfig(force = false) {
   try { return await configPromise; } finally { configPromise = null; }
 }
 
+/** 5 mô hình chuẩn theo thứ tự ưu tiên, cộng thêm mô hình lạ nếu config/gemini có khai báo. */
+function modelList() {
+  const extra = (config?.models || []).filter(m => !CASCADE.includes(m));
+  return [...CASCADE, ...extra];
+}
 function currentModel() {
-  if (!config) return selectedModel || "";
-  if (!selectedModel || !config.models.includes(selectedModel)) selectedModel = config.activeModel;
+  const list = modelList();
+  if (!selectedModel || !list.includes(selectedModel)) {
+    selectedModel = config && list.includes(config.activeModel) ? config.activeModel : CASCADE[1];
+  }
   return selectedModel;
 }
 
@@ -134,47 +197,81 @@ function buildSystemInstruction() {
 }
 
 /* ------------------------------ Gọi Gemini ------------------------------ */
-function buildContents() {
+function buildContents(turns) {
   const ok = messages.filter(m => !m.error && !m.failed);
-  let tail = ok.slice(-MAX_HISTORY);
+  let tail = ok.slice(-turns * 2);
   while (tail.length && tail[0].role !== "user") tail = tail.slice(1);
   return tail.map(m => ({ role: m.role, parts: [{ text: m.text }] }));
 }
 
-async function callGemini(retry = true) {
-  const cfg = config || await loadConfig();
-  const model = currentModel();
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(cfg.apiKey)}`;
+/** Một lần gọi tới đúng một mô hình, với bộ thông số của mô hình đó. */
+async function requestOnce(model) {
+  const p = paramsFor(model);
+  const generationConfig = { temperature: p.temperature, maxOutputTokens: p.maxOutputTokens };
+  if (p.thinkingBudget != null) generationConfig.thinkingConfig = { thinkingBudget: p.thinkingBudget };
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
   const res = await fetch(url, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       system_instruction: { parts: [{ text: buildSystemInstruction() }] },
-      contents: buildContents(),
-      generationConfig: { temperature: cfg.temperature, maxOutputTokens: MAX_OUTPUT_TOKENS }
+      contents: buildContents(p.turns),
+      generationConfig
     })
   });
   if (!res.ok) {
-    // Khóa/mô hình trong cache có thể đã đổi: tải lại cấu hình từ Firestore đúng 1 lần rồi thử lại.
-    if (retry && [400, 401, 403, 404].includes(res.status)) {
-      const before = JSON.stringify(cfg);
-      try {
-        await loadConfig(true);
-        if (JSON.stringify(config) !== before) return callGemini(false);
-      } catch { /* dùng lỗi gốc bên dưới */ }
-    }
     let detail = "";
     try { detail = (await res.json())?.error?.message || ""; } catch { /* ignore */ }
-    throw new Error(`Lỗi ${res.status}${detail ? ": " + detail : ""}`);
+    const err = new Error(`Lỗi ${res.status}${detail ? ": " + detail : ""}`);
+    err.status = res.status;
+    throw err;
   }
   const data = await res.json();
   const cand = data.candidates?.[0];
-  const text = (cand?.content?.parts || []).map(p => p.text || "").join("").trim();
+  const text = (cand?.content?.parts || []).map(part => part.text || "").join("").trim();
   if (!text) {
     if (data.promptFeedback?.blockReason) throw new Error("Câu hỏi bị chặn bởi bộ lọc an toàn của Gemini.");
     throw new Error("AI không trả về nội dung. Thử hỏi lại ngắn gọn hơn.");
   }
   return cand.finishReason === "MAX_TOKENS" ? text + " …" : text;
+}
+
+/** Danh sách thử lần lượt: mô hình đang chọn rồi các mô hình thấp hơn trong CASCADE. */
+function cascadeFrom(start) {
+  const i = CASCADE.indexOf(start);
+  return i < 0 ? [start, ...CASCADE] : CASCADE.slice(i);
+}
+
+/** Gọi Gemini; gặp 503/429/500 thì trượt xuống mô hình thấp hơn kế tiếp cho tới khi thành công. */
+async function callGemini() {
+  if (!config) await loadConfig();
+  const order = cascadeFrom(currentModel());
+  let firstFail = null, refreshed = false;
+  for (let i = 0; i < order.length; i++) {
+    const model = order[i];
+    try {
+      const text = await requestOnce(model);
+      const note = firstFail
+        ? `${shortName(firstFail.model)} ${firstFail.status === 429 ? "đã hết lượt gọi" : "đang quá tải"}, chuyển sang trả lời bởi ${shortName(model)}`
+        : "";
+      return { text, note };
+    } catch (err) {
+      // Khóa/mô hình trong cache có thể đã đổi: tải lại cấu hình từ Firestore đúng 1 lần rồi thử lại cùng mô hình.
+      if (!refreshed && [400, 401, 403, 404].includes(err.status)) {
+        refreshed = true;
+        const before = JSON.stringify(config);
+        try {
+          await loadConfig(true);
+          if (JSON.stringify(config) !== before) { i--; continue; }
+        } catch { /* dùng lỗi gốc */ }
+      }
+      if (FALLBACK_STATUS.has(err.status) && i < order.length - 1) {
+        firstFail = firstFail || { model, status: err.status };
+        continue;
+      }
+      throw err;
+    }
+  }
 }
 
 /* ------------------------------ Hiển thị tin nhắn ------------------------------ */
@@ -207,7 +304,7 @@ function renderMessages() {
   el.list.innerHTML = messages.map(m => {
     if (m.role === "user") return `<div class="ai-msg user"><div class="ai-bubble">${esc(m.text).replace(/\n/g, "<br>")}</div></div>`;
     if (m.error) return `<div class="ai-msg model error"><div class="ai-text">${esc(m.text)}</div></div>`;
-    return `<div class="ai-msg model"><div class="ai-text">${mdToHtml(m.text)}</div></div>`;
+    return `<div class="ai-msg model"><div class="ai-text">${mdToHtml(m.text)}${m.note ? `<div class="ai-note">${esc(m.note)}</div>` : ""}</div></div>`;
   }).join("") + (busy ? `<div class="ai-msg model"><div class="ai-typing" aria-label="Đang trả lời"><i></i><i></i><i></i></div></div>` : "");
   renderMath(el.list);
   if (nearBottom || busy || messages.at(-1)?.role === "user") el.scroll.scrollTop = el.scroll.scrollHeight;
@@ -221,16 +318,37 @@ function updateBar() {
   el.send.disabled = busy || !el.input.value.trim();
 }
 
+const chip = (key, val, label, on) =>
+  `<button type="button" class="ai-chip ${on ? "on" : ""}" data-act="set" data-key="${key}" data-val="${val}" aria-pressed="${on}">${esc(label)}</button>`;
+
+function advancedHtml(model) {
+  const p = paramsFor(model);
+  return `<div class="ai-adv">
+    <div class="ai-adv-title">Tinh chỉnh cho <b>${esc(shortName(model))}</b></div>
+    <div class="ai-field"><div class="ai-field-h"><span>Lượt hội thoại</span><em>${p.turns} lượt · ${p.turns * 2} tin</em></div>
+      <div class="ai-chips">${TURN_CHOICES.map(n => chip("turns", n, String(n), p.turns === n)).join("")}</div></div>
+    <div class="ai-field"><div class="ai-field-h"><span>maxOutputTokens</span>
+      <input type="number" class="ai-num" data-act="tokens" min="64" max="32768" step="128" value="${p.maxOutputTokens}" aria-label="maxOutputTokens"></div>
+      <div class="ai-chips">${TOKEN_CHOICES.map(n => chip("maxOutputTokens", n, String(n), p.maxOutputTokens === n)).join("")}</div></div>
+    <div class="ai-field"><div class="ai-field-h"><span>Suy luận ngầm (thinkingBudget)</span><em>${p.thinkingBudget ?? "mặc định"}</em></div>
+      <div class="ai-chips">${THINK_CHOICES.map(([n, l]) => chip("thinkingBudget", n, l, p.thinkingBudget === n)).join("")}</div></div>
+    <div class="ai-field"><div class="ai-field-h"><span>Sáng tạo (temperature)</span><em class="ai-temp-val">${p.temperature.toFixed(2)}</em></div>
+      <input type="range" class="ai-range" data-act="temp" min="0" max="1" step="0.05" value="${p.temperature}" aria-label="temperature"></div>
+    <div class="ai-pop-foot"><button type="button" class="link-btn" data-act="reset">Mặc định</button><span class="ai-pop-note">Đưa mọi mô hình về thông số chuẩn</span></div>
+  </div>`;
+}
+
 function renderPop() {
   el.pop.hidden = !popOpen;
   el.backdrop.hidden = !popOpen;
   if (!popOpen) return;
+  const keepPop = el.pop.scrollTop;
   const keep = el.pop.querySelector(".ai-ctx-list")?.scrollTop || 0;
-  const models = config?.models || (selectedModel ? [selectedModel] : []);
+  const models = modelList();
   const cur = currentModel();
-  let html = `<div class="ai-pop-h">Mô hình</div>${models.length ? models.map(m =>
+  let html = `<div class="ai-pop-h">Mô hình</div>${models.map(m =>
     `<button type="button" class="ai-opt ${m === cur ? "on" : ""}" data-act="model" data-val="${esc(m)}" role="menuitemradio" aria-checked="${m === cur}"><span>${esc(shortName(m))}</span><i>${m === cur ? "✓" : ""}</i></button>`
-  ).join("") : `<div class="ai-pop-note">Chưa tải được danh sách mô hình.</div>`}
+  ).join("")}
     <div class="ai-pop-sep"></div>
     <div class="ai-switch-row"><span>Chèn ngữ cảnh</span>
       <button type="button" class="ai-switch ${ctxOn ? "on" : ""}" role="switch" aria-checked="${ctxOn}" data-act="ctx-toggle" aria-label="Chèn ngữ cảnh"><i></i></button></div>`;
@@ -251,9 +369,13 @@ function renderPop() {
   } else {
     html += `<div class="ai-pop-note">Đang tắt: AI chỉ trả lời như trợ lý hóa học chung, không biết bạn đang làm bước nào.</div>`;
   }
+  html += `<div class="ai-pop-sep"></div>
+    <button type="button" class="ai-adv-btn" data-act="adv" aria-expanded="${advOpen}"><span>Tinh chỉnh sâu</span><span class="chev" aria-hidden="true"></span></button>
+    ${advOpen ? advancedHtml(cur) : ""}`;
   el.pop.innerHTML = html;
   const list = el.pop.querySelector(".ai-ctx-list");
   if (list) list.scrollTop = keep;
+  el.pop.scrollTop = keepPop;
 }
 
 function setPop(open) {
@@ -278,7 +400,7 @@ async function send() {
     if (!config) await loadConfig();
     updateBar();
     const reply = await callGemini();
-    messages.push({ role: "model", text: reply });
+    messages.push({ role: "model", text: reply.text, note: reply.note });
   } catch (err) {
     console.error(err);
     asked.failed = true;   // không đưa câu hỏi lỗi vào lịch sử gửi đi
@@ -331,12 +453,28 @@ export function init(host) {
       case "ctx-toggle":
         ctxOn = !ctxOn; lsSet(LS_CTX, ctxOn ? "1" : "0");
         renderPop(); updateBar(); break;
+      case "adv": advOpen = !advOpen; renderPop(); break;
+      case "set": setTuning(currentModel(), t.dataset.key, Number(t.dataset.val)); renderPop(); break;
+      case "reset":
+        tuning = {}; saveTuning(); renderPop(); break;
       case "ctx-auto": ctxSel = null; renderPop(); break;
       case "ctx-none": ctxSel = new Set(); renderPop(); break;
     }
   });
+  root.addEventListener("input", e => {
+    const t = e.target;
+    if (t.dataset?.act !== "temp") return;
+    const v = clamp(num(t.value, 0.3), 0, 1);
+    setTuning(currentModel(), "temperature", v);
+    const out = el.pop.querySelector(".ai-temp-val");
+    if (out) out.textContent = v.toFixed(2);
+  });
   root.addEventListener("change", e => {
     const t = e.target;
+    if (t.dataset?.act === "tokens") {
+      setTuning(currentModel(), "maxOutputTokens", clamp(Math.round(num(t.value, baseParams(currentModel()).maxOutputTokens)), 64, 32768));
+      return renderPop();
+    }
     if (t.dataset?.act !== "ctx-item") return;
     const sel = new Set(effectiveSelection(ctxOptions()));
     t.checked ? sel.add(t.dataset.id) : sel.delete(t.dataset.id);
