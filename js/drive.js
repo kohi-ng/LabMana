@@ -118,6 +118,7 @@ export async function driveUpload(blob, kind, meta = {}) {
       original_name: converted ? (withJpegExtension(originalName) || "anh.jpg") : (originalName || "")
     });
     if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
+    if (result.share_error) console.warn("Ảnh đã lưu nhưng không đặt được quyền xem bằng link:", result.share_error);
     return {
       file_id: result.file_id,
       url: result.url || driveImageUrl(result.file_id),
@@ -128,9 +129,11 @@ export async function driveUpload(blob, kind, meta = {}) {
     console.warn("Drive chưa xác nhận upload ảnh; giữ ảnh trong nhật ký để không chặn bước:", err);
     return {
       file_id: "",
-      url: await blobToDataUrl(blob),
+      // Dùng bản đã nén (prepared) thay vì ảnh gốc để nhẹ hơn cho Firestore (giới hạn 1 MiB/tài liệu).
+      url: await blobToDataUrl(prepared),
       name: "Ảnh lưu kèm nhật ký",
-      storage_fallback: true
+      storage_fallback: true,
+      error: String(err?.message || err)
     };
   }
 }

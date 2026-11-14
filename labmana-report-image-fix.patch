@@ -1,0 +1,528 @@
+From 477eebc1c0e1c5787e012457a68ac2be92ec9371 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 06:18:50 +0000
+Subject: [PATCH 1/3] Report: fall back to Drive thumbnail when photo is
+ >2MB/HEIC; show real embed error
+
+---
+ GAS/code.gs   |  4 +++-
+ GAS/report.gs | 49 +++++++++++++++++++++++++++++++++++++++++++++----
+ 2 files changed, 48 insertions(+), 5 deletions(-)
+
+diff --git a/GAS/code.gs b/GAS/code.gs
+index 0f2c361..3dd5ba8 100644
+--- a/GAS/code.gs
++++ b/GAS/code.gs
+@@ -14,7 +14,9 @@
+  * 2. Vào https://script.google.com → New project → dán CẢ BA file trong thư mục GAS/:
+  *    code.gs, report.gs và math-render.gs (cùng một project, không cần import).
+  * 3. Dán ID thư mục vào ROOT_FOLDER_ID bên dưới.
+- * 4. Chạy hàm authorizeDrive() một lần trong editor và chấp thuận quyền Google Drive.
++ * 4. Chạy hàm authorizeDrive() một lần trong editor và chấp thuận quyền Google Drive
++ *    (và quyền "kết nối dịch vụ bên ngoài" — report.gs dùng UrlFetchApp để lấy thumbnail
++ *    khi ảnh quá nặng/HEIC). Mỗi khi thêm quyền mới phải chạy lại rồi Deploy phiên bản mới.
+  * 5. Deploy → New deployment → chọn loại "Web app".
+  *      - Execute as: Me
+  *      - Who has access: Anyone
+diff --git a/GAS/report.gs b/GAS/report.gs
+index c153d54..2d35cf1 100644
+--- a/GAS/report.gs
++++ b/GAS/report.gs
+@@ -213,7 +213,8 @@ function appendActionTable_(cell, block) {
+ function appendReportPhoto_(cell, photo, onSkipped, index) {
+   const caption = cell.appendParagraph(photo.name ? `Ảnh: ${photo.name}` : `Ảnh ${Number(index || 0) + 1}`);
+   setReportTextStyle_(caption.editAsText(), false, 9);
+-  const blob = embeddableImageBlob_(photo.blob);
++  // Ảnh gốc nhúng được thì dùng luôn; quá lớn / HEIC / WebP thì lấy bản thumbnail JPEG từ Drive.
++  const blob = embeddableImageBlob_(photo.blob, photo.fileId);
+   if (blob) {
+     try {
+       // appendImage() của ô bảng hay đẩy ảnh lên đầu ô hoặc ra ngoài bảng.
+@@ -228,7 +229,7 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
+       }
+     } catch (err) {
+       onSkipped();
+-      const warning = cell.appendParagraph("Không nhúng được ảnh; dùng link Drive bên dưới.");
++      const warning = cell.appendParagraph("Không nhúng được ảnh (" + String(err).slice(0, 140) + "); dùng link Drive bên dưới.");
+       setReportTextStyle_(warning.editAsText(), false, 9);
+       console.warn(`Không chèn được ảnh ${photo.fileId}: ${err}`);
+     }
+@@ -243,11 +244,21 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
+   linkText.setLinkUrl(0, linkText.getText().length - 1, `https://drive.google.com/file/d/${encodeURIComponent(photo.fileId)}/view`);
+ }
+ 
++var EMBED_MAX_BYTES_ = 2 * 1024 * 1024;
++
++/**
++ * Ảnh để nhúng vào Docs: ưu tiên file gốc nếu là JPEG/PNG/GIF ≤ 2 MB;
++ * nếu không (quá nặng, HEIC, WebP, BMP…) thì lấy bản thu nhỏ JPEG do Drive tự tạo.
++ */
++function embeddableImageBlob_(blob, fileId) {
++  return directEmbeddableBlob_(blob) || thumbnailBlob_(fileId);
++}
++
+ /** JPEG/PNG/GIF thật, kể cả khi Drive báo image/jpg hoặc application/octet-stream. */
+-function embeddableImageBlob_(blob) {
++function directEmbeddableBlob_(blob) {
+   if (!blob) return null;
+   const bytes = blob.getBytes();
+-  if (!bytes || bytes.length < 8 || bytes.length > 2 * 1024 * 1024) return null;
++  if (!bytes || bytes.length < 8 || bytes.length > EMBED_MAX_BYTES_) return null;
+   const sniffed = sniffImageMime_(bytes);
+   const declared = normalizeImageMime_(blob.getContentType());
+   const mime = sniffed || (["image/jpeg", "image/png", "image/gif"].includes(declared) ? declared : "");
+@@ -255,6 +266,36 @@ function embeddableImageBlob_(blob) {
+   return Utilities.newBlob(bytes, mime, "hien-tuong");
+ }
+ 
++/**
++ * Thumbnail do Drive tạo (JPEG/PNG đã resize) — hoạt động cả với ảnh HEIC/WebP/ảnh rất nặng.
++ * Cần scope script.external_request (UrlFetchApp): chạy authorizeDrive() một lần rồi deploy phiên bản mới.
++ */
++function thumbnailBlob_(fileId) {
++  if (!fileId) return null;
++  const token = ScriptApp.getOAuthToken();
++  const sizes = [1600, 1200, 800];
++  for (let i = 0; i < sizes.length; i++) {
++    try {
++      const resp = UrlFetchApp.fetch(
++        "https://drive.google.com/thumbnail?id=" + encodeURIComponent(fileId) + "&sz=w" + sizes[i],
++        { headers: { Authorization: "Bearer " + token }, muteHttpExceptions: true, followRedirects: true }
++      );
++      if (resp.getResponseCode() !== 200) {
++        console.warn("Thumbnail w" + sizes[i] + " HTTP " + resp.getResponseCode() + " cho " + fileId);
++        continue;
++      }
++      const bytes = resp.getContent();
++      const mime = sniffImageMime_(bytes);
++      if (mime && bytes.length >= 8 && bytes.length <= EMBED_MAX_BYTES_) {
++        return Utilities.newBlob(bytes, mime, "hien-tuong");
++      }
++    } catch (err) {
++      console.warn("Thumbnail w" + sizes[i] + " lỗi cho " + fileId + ": " + err);
++    }
++  }
++  return null;
++}
++
+ function normalizeImageMime_(mime) {
+   const value = String(mime || "").toLowerCase().split(";")[0].trim();
+   if (value === "image/jpg" || value === "image/pjpeg" || value === "image/jpe") return "image/jpeg";
+-- 
+2.43.0
+
+
+From 46c5afed02813b3935dce68f5830e169b277d524 Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 07:10:40 +0000
+Subject: [PATCH 2/3] Export report: show how many photos were sent/embedded,
+ build version, and why photos were skipped
+
+---
+ GAS/report.gs       | 31 +++++++++++++++++++++++++------
+ js/tabs/settings.js | 23 +++++++++++++++++------
+ 2 files changed, 42 insertions(+), 12 deletions(-)
+
+diff --git a/GAS/report.gs b/GAS/report.gs
+index 2d35cf1..3ec4150 100644
+--- a/GAS/report.gs
++++ b/GAS/report.gs
+@@ -5,6 +5,9 @@
+  * công thức $...$ / \ce{...} sang Unicode — Apps Script dùng chung scope giữa
+  * các file .gs trong cùng project nên không cần import gì thêm).
+  */
++// Đổi chuỗi này mỗi lần sửa; client hiển thị lại để biết web app đang chạy bản nào.
++var REPORT_BUILD_ = "2026-11-14-thumb-v2";
++
+ function handleCreateReport_(report) {
+   if (!report || typeof report !== "object") throw new Error("Thiếu dữ liệu báo cáo.");
+   const experimentTitle = reportText_(report.experimentTitle, 240);
+@@ -16,7 +19,10 @@ function handleCreateReport_(report) {
+     studentId: reportText_(person.studentId, 80)
+   })).filter(person => person.name && person.studentId) : [];
+   const steps = Array.isArray(report.steps) ? report.steps : [];
+-  let imagesSkipped = Number(report.imagesSkipped) || 0;
++  const imagesSkippedClient = Number(report.imagesSkipped) || 0; // ảnh chưa lên Drive (lưu dự phòng trong Firestore)
++  let imagesSkippedServer = 0;
++  const skipReasons = [];
++  const onPhotoSkipped = reason => { imagesSkippedServer++; skipReasons.push(String(reason || "").slice(0, 200)); };
+   if (!people.length || !experimentTitle || !reportDate) {
+     throw new Error("Báo cáo cần có ít nhất một người (họ tên và MSSV), bài thí nghiệm và ngày báo cáo.");
+   }
+@@ -131,7 +137,7 @@ function handleCreateReport_(report) {
+       });
+       if (!next) break;
+       appendRichBlocks_(observationCell, observationText.slice(cursor, next.at));
+-      appendReportPhoto_(observationCell, photosByCode[next.code], () => { imagesSkipped++; });
++      appendReportPhoto_(observationCell, photosByCode[next.code], onPhotoSkipped);
+       cursor = next.at + next.code.length;
+       pending.splice(pending.indexOf(next.code), 1);
+     }
+@@ -142,7 +148,7 @@ function handleCreateReport_(report) {
+     }
+     step.photos.forEach((photo, index) => {
+       if (photo.code && observationText.includes(photo.code)) return;
+-      appendReportPhoto_(observationCell, photo, () => { imagesSkipped++; }, index);
++      appendReportPhoto_(observationCell, photo, onPhotoSkipped, index);
+     });
+   });
+ 
+@@ -154,7 +160,13 @@ function handleCreateReport_(report) {
+     document_id: document.getId(),
+     name: document.getName(),
+     url: document.getUrl(),
+-    images_skipped: imagesSkipped
++    images_skipped: imagesSkippedClient + imagesSkippedServer,
++    images_skipped_client: imagesSkippedClient,
++    images_skipped_server: imagesSkippedServer,
++    photos_received: photoCount,
++    photos_embedded: photoCount - imagesSkippedServer,
++    skip_reasons: skipReasons,
++    build: REPORT_BUILD_
+   };
+ }
+ 
+@@ -228,13 +240,13 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
+         image.setHeight(Math.max(1, Math.round(height * ratio)));
+       }
+     } catch (err) {
+-      onSkipped();
++      onSkipped("appendInlineImage: " + String(err));
+       const warning = cell.appendParagraph("Không nhúng được ảnh (" + String(err).slice(0, 140) + "); dùng link Drive bên dưới.");
+       setReportTextStyle_(warning.editAsText(), false, 9);
+       console.warn(`Không chèn được ảnh ${photo.fileId}: ${err}`);
+     }
+   } else {
+-    onSkipped();
++    onSkipped("không có blob nhúng được: " + describeBlob_(photo.blob) + "; thumbnail Drive cũng không dùng được");
+     const warning = cell.appendParagraph("Ảnh quá lớn hoặc định dạng không hỗ trợ nhúng; dùng link Drive bên dưới.");
+     setReportTextStyle_(warning.editAsText(), false, 9);
+   }
+@@ -246,6 +258,13 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
+ 
+ var EMBED_MAX_BYTES_ = 2 * 1024 * 1024;
+ 
++function describeBlob_(blob) {
++  try {
++    const bytes = blob.getBytes();
++    return Math.round(bytes.length / 1024) + " KB, khai báo " + blob.getContentType() + ", thực tế " + (sniffImageMime_(bytes) || "không phải JPEG/PNG/GIF");
++  } catch (err) { return "không đọc được blob (" + err + ")"; }
++}
++
+ /**
+  * Ảnh để nhúng vào Docs: ưu tiên file gốc nếu là JPEG/PNG/GIF ≤ 2 MB;
+  * nếu không (quá nặng, HEIC, WebP, BMP…) thì lấy bản thu nhỏ JPEG do Drive tự tạo.
+diff --git a/js/tabs/settings.js b/js/tabs/settings.js
+index da22a36..68beaba 100644
+--- a/js/tabs/settings.js
++++ b/js/tabs/settings.js
+@@ -166,13 +166,23 @@ async function exportReport() {
+     const report = await collectReportData();
+     const result = await driveCreateReport(report);
+     lastReport = { url: result.url, name: result.name };
++    console.info("[LabMana] kết quả tạo báo cáo:", result, "| dữ liệu gửi đi:", report);
+     const imageCount = report.steps.reduce((total, step) => total + step.photos.length, 0);
+-    toast(result.images_skipped
+-      ? `Đã tạo báo cáo; ${result.images_skipped} ảnh không thể nhúng, link ảnh vẫn nằm trong tài liệu.`
+-      : reportForm.includePhotos && !imageCount
+-        ? "Đã tạo Google Docs nhưng nhật ký bài này chưa có ảnh Drive để chèn."
+-        : "Đã tạo Google Docs ✔",
+-    result.images_skipped || (reportForm.includePhotos && !imageCount) ? "warn" : "success", 6000);
++    const outdated = result.build ? "" : " ⚠ Apps Script đang chạy bản CŨ (chưa có report.gs mới) — hãy Deploy → Manage deployments → New version.";
++    const detail = result.build
++      ? ` Lượt: ${report.runName}. Gửi ${result.photos_received} ảnh, nhúng ${result.photos_embedded}.`
++      : "";
++    const reasons = result.skip_reasons?.length ? ` Lý do: ${result.skip_reasons[0]}` : "";
++    const notOnDrive = result.images_skipped_client
++      ? ` ${result.images_skipped_client} ảnh CHƯA nằm trên Drive (chỉ lưu dự phòng trong nhật ký) nên không vào báo cáo.`
++      : "";
++    const embedFailed = result.images_skipped_server ? ` ${result.images_skipped_server} ảnh không nhúng được (link Drive vẫn có trong tài liệu).` : "";
++    const noPhotos = reportForm.includePhotos && !imageCount && !result.images_skipped_client;
++    const message = noPhotos
++      ? `Đã tạo Google Docs nhưng lượt "${report.runName}" chưa có ảnh Drive để chèn.${outdated}`
++      : `Đã tạo báo cáo.${detail}${notOnDrive}${embedFailed}${reasons}${outdated}`;
++    const warn = noPhotos || result.images_skipped || !result.build;
++    toast(message, warn ? "warn" : "success", warn ? 15000 : 6000);
+   } catch (err) {
+     console.error(err);
+     toast("Không xuất được báo cáo: " + (err.code || err.message), "error", 6000);
+@@ -247,6 +257,7 @@ async function collectReportData() {
+     : 0;
+   return {
+     experimentTitle: experiment.title || "Bài thí nghiệm",
++    runName: run.name || run.id,
+     people,
+     group: reportForm.group.trim(),
+     date: reportForm.date || localDate(),
+-- 
+2.43.0
+
+
+From 8311cac7e2850da5a16de94a3b1cd1f74aef934f Mon Sep 17 00:00:00 2001
+From: Claude <noreply@anthropic.com>
+Date: Sat, 14 Nov 2026 07:23:55 +0000
+Subject: [PATCH 3/3] Export: embed fallback photos inline, tolerate deleted
+ Drive files, surface upload errors, tolerate setSharing failure
+
+---
+ GAS/code.gs         | 13 +++++++++--
+ GAS/report.gs       | 56 +++++++++++++++++++++++++++++++--------------
+ js/drive.js         |  7 ++++--
+ js/tabs/settings.js | 37 ++++++++++++++++--------------
+ js/tabs/sop.js      |  4 ++--
+ 5 files changed, 77 insertions(+), 40 deletions(-)
+
+diff --git a/GAS/code.gs b/GAS/code.gs
+index 3dd5ba8..fd9857b 100644
+--- a/GAS/code.gs
++++ b/GAS/code.gs
+@@ -82,13 +82,22 @@ function handleUpload_(req) {
+   const mime = req.mime || "image/jpeg";
+   const blob = Utilities.newBlob(bytes, mime, buildFileName_(req.kind, meta, req.file_name, req.original_name, mime));
+   const file = folder.createFile(blob);
+-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
++  // Một số tài khoản Workspace chặn chia sẻ "Anyone with the link": nếu setSharing ném lỗi thì file vẫn
++  // đã nằm trong Drive, nên trả file_id kèm cảnh báo thay vì báo lỗi (tránh ảnh mồ côi + lưu dự phòng).
++  let shareError = "";
++  try {
++    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
++  } catch (err) {
++    shareError = String(err);
++    console.warn("setSharing lỗi cho " + file.getId() + ": " + shareError);
++  }
+   const id = file.getId();
+   return {
+     ok: true,
+     file_id: id,
+     name: file.getName(),
+-    url: driveImageUrl_(id)
++    url: driveImageUrl_(id),
++    share_error: shareError
+   };
+ }
+ 
+diff --git a/GAS/report.gs b/GAS/report.gs
+index 3ec4150..ab54cd9 100644
+--- a/GAS/report.gs
++++ b/GAS/report.gs
+@@ -6,7 +6,7 @@
+  * các file .gs trong cùng project nên không cần import gì thêm).
+  */
+ // Đổi chuỗi này mỗi lần sửa; client hiển thị lại để biết web app đang chạy bản nào.
+-var REPORT_BUILD_ = "2026-11-14-thumb-v2";
++var REPORT_BUILD_ = "2026-11-14-inline-v3";
+ 
+ function handleCreateReport_(report) {
+   if (!report || typeof report !== "object") throw new Error("Thiếu dữ liệu báo cáo.");
+@@ -46,15 +46,22 @@ function handleCreateReport_(report) {
+       explanation: compileFormulas_(reportText_(step.explanation, 10000)),
+       photos: photos.map(photo => {
+         const fileId = reportText_(photo.file_id, 200);
+-        if (!fileId) throw new Error("Báo cáo có ảnh thiếu mã Drive.");
+-        const file = DriveApp.getFileById(fileId);
+-        if (!isInRootFolder_(file)) throw new Error("Ảnh báo cáo không thuộc thư mục LabMana.");
+-        return {
+-          fileId: fileId,
+-          name: reportText_(photo.name, 240),
+-          code: reportText_(photo.code, 500),
+-          blob: file.getBlob()
+-        };
++        const name = reportText_(photo.name, 240);
++        const code = reportText_(photo.code, 500);
++        // Ảnh chưa lên được Drive (lưu dự phòng trong nhật ký): client gửi kèm nội dung ảnh (data URL).
++        if (!fileId) {
++          const inline = blobFromDataUrl_(photo.data_url, name);
++          return { fileId: "", name: name, code: code, blob: inline, problem: inline ? "" : "ảnh lưu dự phòng không đọc được" };
++        }
++        // Một ảnh hỏng/đã bị xóa trên Drive KHÔNG được làm hỏng cả báo cáo: bỏ qua ảnh đó và ghi lý do.
++        try {
++          const file = DriveApp.getFileById(fileId);
++          if (!isInRootFolder_(file)) return { fileId: fileId, name: name, code: code, blob: null, problem: "ảnh không thuộc thư mục LabMana" };
++          if (file.isTrashed()) return { fileId: fileId, name: name, code: code, blob: null, problem: "ảnh đã bị xóa khỏi Drive (nằm trong thùng rác)" };
++          return { fileId: fileId, name: name, code: code, blob: file.getBlob(), problem: "" };
++        } catch (err) {
++          return { fileId: fileId, name: name, code: code, blob: null, problem: "không đọc được file Drive, có thể đã bị xóa vĩnh viễn: " + String(err).slice(0, 100) };
++        }
+       })
+     };
+   });
+@@ -226,7 +233,7 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
+   const caption = cell.appendParagraph(photo.name ? `Ảnh: ${photo.name}` : `Ảnh ${Number(index || 0) + 1}`);
+   setReportTextStyle_(caption.editAsText(), false, 9);
+   // Ảnh gốc nhúng được thì dùng luôn; quá lớn / HEIC / WebP thì lấy bản thumbnail JPEG từ Drive.
+-  const blob = embeddableImageBlob_(photo.blob, photo.fileId);
++  const blob = photo.problem ? null : embeddableImageBlob_(photo.blob, photo.fileId);
+   if (blob) {
+     try {
+       // appendImage() của ô bảng hay đẩy ảnh lên đầu ô hoặc ra ngoài bảng.
+@@ -246,14 +253,29 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
+       console.warn(`Không chèn được ảnh ${photo.fileId}: ${err}`);
+     }
+   } else {
+-    onSkipped("không có blob nhúng được: " + describeBlob_(photo.blob) + "; thumbnail Drive cũng không dùng được");
+-    const warning = cell.appendParagraph("Ảnh quá lớn hoặc định dạng không hỗ trợ nhúng; dùng link Drive bên dưới.");
++    onSkipped(photo.problem || ("không có blob nhúng được: " + describeBlob_(photo.blob) + "; thumbnail Drive cũng không dùng được"));
++    const warning = cell.appendParagraph(photo.problem
++      ? "Không nhúng được ảnh: " + photo.problem + "."
++      : "Ảnh quá lớn hoặc định dạng không hỗ trợ nhúng; dùng link Drive bên dưới.");
+     setReportTextStyle_(warning.editAsText(), false, 9);
+   }
+-  const link = cell.appendParagraph("Mở ảnh trên Google Drive");
+-  const linkText = link.editAsText();
+-  setReportTextStyle_(linkText, false, 9);
+-  linkText.setLinkUrl(0, linkText.getText().length - 1, `https://drive.google.com/file/d/${encodeURIComponent(photo.fileId)}/view`);
++  if (photo.fileId && !photo.problem) {
++    const link = cell.appendParagraph("Mở ảnh trên Google Drive");
++    const linkText = link.editAsText();
++    setReportTextStyle_(linkText, false, 9);
++    linkText.setLinkUrl(0, linkText.getText().length - 1, `https://drive.google.com/file/d/${encodeURIComponent(photo.fileId)}/view`);
++  }
++}
++
++/** data:image/...;base64,... → Blob (ảnh dự phòng lưu trong Firestore). */
++function blobFromDataUrl_(dataUrl, name) {
++  const match = String(dataUrl || "").match(/^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+\/=]+)$/i);
++  if (!match) return null;
++  try {
++    return Utilities.newBlob(Utilities.base64Decode(match[2]), match[1].toLowerCase(), name || "anh");
++  } catch (err) {
++    return null;
++  }
+ }
+ 
+ var EMBED_MAX_BYTES_ = 2 * 1024 * 1024;
+diff --git a/js/drive.js b/js/drive.js
+index 4e5c154..8868361 100644
+--- a/js/drive.js
++++ b/js/drive.js
+@@ -118,6 +118,7 @@ export async function driveUpload(blob, kind, meta = {}) {
+       original_name: converted ? (withJpegExtension(originalName) || "anh.jpg") : (originalName || "")
+     });
+     if (!result.file_id) throw new Error("Google Drive phản hồi nhưng thiếu mã ảnh.");
++    if (result.share_error) console.warn("Ảnh đã lưu nhưng không đặt được quyền xem bằng link:", result.share_error);
+     return {
+       file_id: result.file_id,
+       url: result.url || driveImageUrl(result.file_id),
+@@ -128,9 +129,11 @@ export async function driveUpload(blob, kind, meta = {}) {
+     console.warn("Drive chưa xác nhận upload ảnh; giữ ảnh trong nhật ký để không chặn bước:", err);
+     return {
+       file_id: "",
+-      url: await blobToDataUrl(blob),
++      // Dùng bản đã nén (prepared) thay vì ảnh gốc để nhẹ hơn cho Firestore (giới hạn 1 MiB/tài liệu).
++      url: await blobToDataUrl(prepared),
+       name: "Ảnh lưu kèm nhật ký",
+-      storage_fallback: true
++      storage_fallback: true,
++      error: String(err?.message || err)
+     };
+   }
+ }
+diff --git a/js/tabs/settings.js b/js/tabs/settings.js
+index 68beaba..b97f1ce 100644
+--- a/js/tabs/settings.js
++++ b/js/tabs/settings.js
+@@ -8,6 +8,8 @@ import { normalizeExperiment, flatten } from "../plan-logic.js";
+ 
+ let root;
+ const CFG = () => doc(db, "config", "lab");
++// Ảnh dự phòng gửi kèm báo cáo: giới hạn ký tự của data URL (Firestore vốn giới hạn 1 MiB/tài liệu).
++const INLINE_PHOTO_MAX_CHARS = 4_000_000;
+ const reportForm = {
+   peopleText: "", group: "", date: localDate(), semester: "Học kỳ 1, năm học 2026-2027",
+   actionTemplate: "{title}\n{text}",
+@@ -173,9 +175,8 @@ async function exportReport() {
+       ? ` Lượt: ${report.runName}. Gửi ${result.photos_received} ảnh, nhúng ${result.photos_embedded}.`
+       : "";
+     const reasons = result.skip_reasons?.length ? ` Lý do: ${result.skip_reasons[0]}` : "";
+-    const notOnDrive = result.images_skipped_client
+-      ? ` ${result.images_skipped_client} ảnh CHƯA nằm trên Drive (chỉ lưu dự phòng trong nhật ký) nên không vào báo cáo.`
+-      : "";
++    const notOnDrive = (report.inlinePhotos ? ` ${report.inlinePhotos} ảnh chưa lên Drive nhưng được nhúng từ bản lưu trong nhật ký.` : "")
++      + (result.images_skipped_client ? ` ${result.images_skipped_client} ảnh quá lớn/không đọc được nên bị bỏ.` : "");
+     const embedFailed = result.images_skipped_server ? ` ${result.images_skipped_server} ảnh không nhúng được (link Drive vẫn có trong tài liệu).` : "";
+     const noPhotos = reportForm.includePhotos && !imageCount && !result.images_skipped_client;
+     const message = noPhotos
+@@ -213,6 +214,7 @@ async function collectReportData() {
+   if (!Object.keys(logs).length) throw new Error("Bài này chưa có nội dung báo cáo để xuất.");
+ 
+   const experiment = normalizeExperiment(raw);
++  let droppedPhotos = 0;
+   const steps = flatten(experiment).map(item => {
+     const log = logs[item.step.id] || {};
+     const photos = Array.isArray(log.photos) && log.photos.length
+@@ -220,10 +222,16 @@ async function collectReportData() {
+       : (log.photo_file_id || log.photo_url ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }] : []);
+     const reportPhotos = reportForm.includePhotos ? photos.map((photo, index) => {
+       const fileId = photo?.file_id || driveIdFromUrl(photo?.url);
+-      if (!fileId) return null;
++      const url = String(photo?.url || "");
+       const name = photo?.name || `TN${item.si + 1}_${item.label}_Anh${index + 1}`;
+       const code = photoCode(name, item.label, index);
+-      return { file_id: fileId, name, code };
++      if (fileId) return { file_id: fileId, name, code };
++      // Ảnh dự phòng (Drive chưa xác nhận lúc tải): gửi kèm nội dung để Apps Script vẫn nhúng được vào Docs.
++      if (url.startsWith("data:image/")) {
++        if (url.length <= INLINE_PHOTO_MAX_CHARS) return { file_id: "", name, code, data_url: url };
++        droppedPhotos++;
++      }
++      return null;
+     }).filter(Boolean) : [];
+     const observation = reportForm.includeObservation ? log.observation_text || "" : "";
+     return {
+@@ -243,18 +251,8 @@ async function collectReportData() {
+       photos: reportPhotos
+     };
+   });
+-  const imagesSkipped = reportForm.includePhotos
+-    ? flatten(experiment).reduce((count, item) => {
+-      const log = logs[item.step.id] || {};
+-      const photos = Array.isArray(log.photos) && log.photos.length
+-        ? log.photos
+-        : (log.photo_file_id || log.photo_url ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "" }] : []);
+-      return count + photos.filter(photo => {
+-        const url = String(photo?.url || "");
+-        return !photo?.file_id && !driveIdFromUrl(url) && url.startsWith("data:image/");
+-      }).length;
+-    }, 0)
+-    : 0;
++  const imagesSkipped = droppedPhotos;
++  const inlinePhotos = steps.reduce((total, step) => total + step.photos.filter(photo => photo.data_url).length, 0);
+   return {
+     experimentTitle: experiment.title || "Bài thí nghiệm",
+     runName: run.name || run.id,
+@@ -263,6 +261,7 @@ async function collectReportData() {
+     date: reportForm.date || localDate(),
+     semester: reportForm.semester.trim(),
+     imagesSkipped,
++    inlinePhotos,
+     steps
+   };
+ }
+@@ -277,6 +276,10 @@ async function previewReport() {
+     let template = await response.text();
+     const rows = report.steps.map(step => {
+       const photosByCode = new Map(step.photos.map(photo => {
++        if (!photo.file_id) {
++          // Ảnh lưu dự phòng trong nhật ký: hiển thị trực tiếp, chưa có link Drive.
++          return [photo.code, `<div class="report-photo"><img src="${photo.data_url}" alt="${esc(photo.name || "Ảnh hiện tượng")}"><span>${esc(photo.name || "Ảnh lưu kèm nhật ký")}</span></div>`];
++        }
+         const url = `https://drive.google.com/thumbnail?id=${encodeURIComponent(photo.file_id)}&sz=w800`;
+         const link = `https://drive.google.com/file/d/${encodeURIComponent(photo.file_id)}/view`;
+         const html = `<div class="report-photo"><a href="${link}" target="_blank" rel="noopener noreferrer"><img src="${url}" alt="${esc(photo.name || "Ảnh hiện tượng")}"></a><a href="${link}" target="_blank" rel="noopener noreferrer">${esc(photo.name || "Mở ảnh trên Drive")} ↗</a></div>`;
+diff --git a/js/tabs/sop.js b/js/tabs/sop.js
+index e83c890..a4f63b6 100644
+--- a/js/tabs/sop.js
++++ b/js/tabs/sop.js
+@@ -387,8 +387,8 @@ async function uploadPhoto(id, index) {
+     photo.file = null;
+     updateStepProgress(id);
+     toast(img.storage_fallback
+-      ? "Drive chưa xác nhận; ảnh đã được giữ trong nhật ký để có thể lưu bước."
+-      : `Đã tải ảnh ${img.name || "lên Drive"} ✔`, img.storage_fallback ? "warn" : "success", 5000);
++      ? `Drive chưa xác nhận (${img.error || "không rõ lỗi"}). Ảnh được giữ trong nhật ký để lưu bước.`
++      : `Đã tải ảnh ${img.name || "lên Drive"} ✔`, img.storage_fallback ? "warn" : "success", img.storage_fallback ? 12000 : 5000);
+   } catch (err) { console.error(err); toast("Tải ảnh lỗi: " + err.message, "error", 4500); }
+   finally { uploadingPhoto.delete(id); render(); }
+ }
+-- 
+2.43.0

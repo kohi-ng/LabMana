@@ -6,7 +6,7 @@
  * các file .gs trong cùng project nên không cần import gì thêm).
  */
 // Đổi chuỗi này mỗi lần sửa; client hiển thị lại để biết web app đang chạy bản nào.
-var REPORT_BUILD_ = "2026-11-14-thumb-v2";
+var REPORT_BUILD_ = "2026-11-14-inline-v3";
 
 function handleCreateReport_(report) {
   if (!report || typeof report !== "object") throw new Error("Thiếu dữ liệu báo cáo.");
@@ -46,15 +46,22 @@ function handleCreateReport_(report) {
       explanation: compileFormulas_(reportText_(step.explanation, 10000)),
       photos: photos.map(photo => {
         const fileId = reportText_(photo.file_id, 200);
-        if (!fileId) throw new Error("Báo cáo có ảnh thiếu mã Drive.");
-        const file = DriveApp.getFileById(fileId);
-        if (!isInRootFolder_(file)) throw new Error("Ảnh báo cáo không thuộc thư mục LabMana.");
-        return {
-          fileId: fileId,
-          name: reportText_(photo.name, 240),
-          code: reportText_(photo.code, 500),
-          blob: file.getBlob()
-        };
+        const name = reportText_(photo.name, 240);
+        const code = reportText_(photo.code, 500);
+        // Ảnh chưa lên được Drive (lưu dự phòng trong nhật ký): client gửi kèm nội dung ảnh (data URL).
+        if (!fileId) {
+          const inline = blobFromDataUrl_(photo.data_url, name);
+          return { fileId: "", name: name, code: code, blob: inline, problem: inline ? "" : "ảnh lưu dự phòng không đọc được" };
+        }
+        // Một ảnh hỏng/đã bị xóa trên Drive KHÔNG được làm hỏng cả báo cáo: bỏ qua ảnh đó và ghi lý do.
+        try {
+          const file = DriveApp.getFileById(fileId);
+          if (!isInRootFolder_(file)) return { fileId: fileId, name: name, code: code, blob: null, problem: "ảnh không thuộc thư mục LabMana" };
+          if (file.isTrashed()) return { fileId: fileId, name: name, code: code, blob: null, problem: "ảnh đã bị xóa khỏi Drive (nằm trong thùng rác)" };
+          return { fileId: fileId, name: name, code: code, blob: file.getBlob(), problem: "" };
+        } catch (err) {
+          return { fileId: fileId, name: name, code: code, blob: null, problem: "không đọc được file Drive, có thể đã bị xóa vĩnh viễn: " + String(err).slice(0, 100) };
+        }
       })
     };
   });
@@ -226,7 +233,7 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
   const caption = cell.appendParagraph(photo.name ? `Ảnh: ${photo.name}` : `Ảnh ${Number(index || 0) + 1}`);
   setReportTextStyle_(caption.editAsText(), false, 9);
   // Ảnh gốc nhúng được thì dùng luôn; quá lớn / HEIC / WebP thì lấy bản thumbnail JPEG từ Drive.
-  const blob = embeddableImageBlob_(photo.blob, photo.fileId);
+  const blob = photo.problem ? null : embeddableImageBlob_(photo.blob, photo.fileId);
   if (blob) {
     try {
       // appendImage() của ô bảng hay đẩy ảnh lên đầu ô hoặc ra ngoài bảng.
@@ -246,14 +253,29 @@ function appendReportPhoto_(cell, photo, onSkipped, index) {
       console.warn(`Không chèn được ảnh ${photo.fileId}: ${err}`);
     }
   } else {
-    onSkipped("không có blob nhúng được: " + describeBlob_(photo.blob) + "; thumbnail Drive cũng không dùng được");
-    const warning = cell.appendParagraph("Ảnh quá lớn hoặc định dạng không hỗ trợ nhúng; dùng link Drive bên dưới.");
+    onSkipped(photo.problem || ("không có blob nhúng được: " + describeBlob_(photo.blob) + "; thumbnail Drive cũng không dùng được"));
+    const warning = cell.appendParagraph(photo.problem
+      ? "Không nhúng được ảnh: " + photo.problem + "."
+      : "Ảnh quá lớn hoặc định dạng không hỗ trợ nhúng; dùng link Drive bên dưới.");
     setReportTextStyle_(warning.editAsText(), false, 9);
   }
-  const link = cell.appendParagraph("Mở ảnh trên Google Drive");
-  const linkText = link.editAsText();
-  setReportTextStyle_(linkText, false, 9);
-  linkText.setLinkUrl(0, linkText.getText().length - 1, `https://drive.google.com/file/d/${encodeURIComponent(photo.fileId)}/view`);
+  if (photo.fileId && !photo.problem) {
+    const link = cell.appendParagraph("Mở ảnh trên Google Drive");
+    const linkText = link.editAsText();
+    setReportTextStyle_(linkText, false, 9);
+    linkText.setLinkUrl(0, linkText.getText().length - 1, `https://drive.google.com/file/d/${encodeURIComponent(photo.fileId)}/view`);
+  }
+}
+
+/** data:image/...;base64,... → Blob (ảnh dự phòng lưu trong Firestore). */
+function blobFromDataUrl_(dataUrl, name) {
+  const match = String(dataUrl || "").match(/^data:(image\/[a-z0-9.+-]+);base64,([A-Za-z0-9+\/=]+)$/i);
+  if (!match) return null;
+  try {
+    return Utilities.newBlob(Utilities.base64Decode(match[2]), match[1].toLowerCase(), name || "anh");
+  } catch (err) {
+    return null;
+  }
 }
 
 var EMBED_MAX_BYTES_ = 2 * 1024 * 1024;
