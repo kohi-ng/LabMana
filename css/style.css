@@ -457,10 +457,3 @@ textarea.inp{ resize:vertical; min-height:88px; font-family:inherit; }
   .acc-role{font-size:.66rem;padding:3px 7px;}
   .progress-menu{right:7px;width:calc(100vw - 14px);padding:10px;}
 }
-.report-gallery{margin-top:14px;display:flex;flex-direction:column;gap:8px;}
-.report-gallery h4{margin:8px 0 0;}
-.report-gallery-actions{display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;}
-.report-gallery-item{display:grid;grid-template-columns:72px 1fr;gap:10px;align-items:center;border:1px solid rgba(0,0,0,.12);border-radius:10px;padding:8px;}
-.report-gallery-item img,.report-gallery-missing{width:72px;height:72px;object-fit:cover;border-radius:8px;background:#eee;}
-.report-gallery-missing{display:grid;place-items:center;font-size:.7rem;text-align:center;padding:4px;}
-.btn.danger{color:var(--err,#b42318);}

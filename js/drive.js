@@ -141,33 +141,9 @@ export async function driveCreateReport(report) {
   return driveRequest({ action: "create_report", report }, { timeoutMs: 240000 });
 }
 
-export function isMissingDriveFileError(err) {
-  const msg = String(err?.message || err || "");
-  return /not found|could not be found|no item with|file not found|không tìm thấy|does not exist|trashed/i.test(msg);
-}
-
-/** Xóa trên Drive. File đã mất (xóa tay) vẫn coi là thành công để gỡ id Firebase. */
 export async function driveDelete(fileId) {
-  if (!fileId) return { ok: true, skipped: true };
-  try {
-    return await driveRequest({ action: "delete", file_id: fileId });
-  } catch (err) {
-    if (isMissingDriveFileError(err)) return { ok: true, missing: true };
-    throw err;
-  }
-}
-
-/** Kiểm tra file còn trên Drive. Bản Apps Script cũ không có action check thì trả null. */
-export async function driveCheck(fileId) {
-  if (!fileId) return { ok: true, exists: false };
-  try {
-    const result = await driveRequest({ action: "check", file_id: fileId }, { timeoutMs: 30000 });
-    return result;
-  } catch (err) {
-    if (/Hành động không hợp lệ/i.test(String(err?.message || err))) return null;
-    if (isMissingDriveFileError(err)) return { ok: true, exists: false };
-    throw err;
-  }
+  if (!fileId) return;
+  return driveRequest({ action: "delete", file_id: fileId });
 }
 
 export function driveImageUrl(fileId) {
@@ -176,8 +152,4 @@ export function driveImageUrl(fileId) {
 
 export function driveFileUrl(fileId) {
   return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
-}
-
-export function driveDownloadUrl(fileId) {
-  return `https://drive.google.com/uc?export=download&id=${encodeURIComponent(fileId)}`;
 }
