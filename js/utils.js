@@ -14,6 +14,14 @@ export const snippet = (t, n = 48) => {
 };
 
 /** Văn bản người dùng → HTML an toàn; hỗ trợ *đậm*, danh sách gạch đầu dòng và bảng Markdown đơn giản. */
+/** Inline Markdown cho các vị trí ngữ nghĩa là tiêu đề (h1–h6, nhãn ngắn). */
+export function richInline(t) {
+  return esc(String(t??""))
+    .replace(/\x60([^\x60]+)\x60/g,"<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>")
+    .replace(/\*([^*\n]+)\*/g,"<strong>$1</strong>");
+}
+
 /** Markdown an toàn dùng chung cho Planner, AI Compose và Quy trình. Công thức để KaTeX auto-render xử lý sau khi dựng HTML. */
 export function richHtml(t) {
   const lines=String(t??"").replace(/\r\n?/g,"\n").split("\n");
