@@ -89,7 +89,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     if(e.target.matches("[data-grid-rows],[data-grid-cols]"))updateDims();
     if(e.target.matches("[data-chemical]")){
       const concentration=node.querySelector("[data-concentration]").value.trim();
-      insert((concentration?concentration+" ":"")+"$\\\\ce{"+e.target.value+"}$ ");
+      insert((concentration?concentration+" ":"")+"$\\ce{"+e.target.value+"}$ ");
     }
   });
   const previewNow=()=>{
