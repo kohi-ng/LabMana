@@ -60,10 +60,6 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
     <label class="lbl">Prompt
       <textarea class="inp ai-compose-prompt" data-role="prompt" rows="3" placeholder="VD: Soạn các bước thực hiện và bảng hóa chất cho lượt thử này"></textarea>
     </label>
-    <div class="ai-compose-row">
-      <label class="ai-compose-switch"><input type="checkbox" data-role="context" checked> + Chèn ngữ cảnh xung quanh</label>
-      <span class="muted small">Mặc định bật</span>
-    </div>
     <div class="lbl-t" style="margin-top:12px">Ràng buộc & công thức</div>
     <div class="ai-compose-chips">
       <button type="button" class="ai-compose-chip on" data-chip="markdown" aria-pressed="true">Markdown thô</button>
@@ -72,21 +68,29 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
       <button type="button" class="ai-compose-chip" data-chip="safety" aria-pressed="false">Cảnh báo an toàn</button>
       <button type="button" class="ai-compose-chip" data-chip="reaction" aria-pressed="false">Kèm PTPƯ</button>
     </div>
-    <details class="ai-compose-accordion">
-      <summary>Tinh chỉnh thông số AI</summary>
-      <div class="ai-compose-grid">
-        <label class="lbl">Model<select class="inp" data-role="model">${settings.models.map(m => `<option value="${esc(m)}" ${m===settings.model?"selected":""}>${esc(m.replace(/^gemini-/,""))}</option>`).join("")}</select></label>
-        <label class="lbl">maxOutputTokens<input class="inp" data-role="tokens" type="number" min="64" max="32768" step="128" value="2048"></label>
-        <label class="lbl">thinkingBudget<input class="inp" data-role="thinking" type="number" min="0" max="24576" step="128" value="256"></label>
-        <label class="lbl">temperature<input class="inp" data-role="temperature" type="number" min="0" max="1" step="0.05" value="0.25"></label>
-      </div>
-      <p class="muted small">Thông số mặc định của AI Compose: 2048 / 256 / 0.25. Khi gặp HTTP 429 hoặc 503, hệ thống tự chuyển xuống model thấp hơn.</p>
-    </details>
+    <div class="ai-compose-model-row">
+      <label class="lbl">Mô hình Gemini<select class="inp" data-role="model">${settings.models.map(m => `<option value="${esc(m)}" ${m===settings.model?"selected":""}>${esc(m.replace(/^gemini-/,""))}</option>`).join("")}</select></label>
+      <button type="button" class="ai-compose-tune-trigger" data-role="tuning-toggle" aria-expanded="false">Tinh chỉnh sâu <span class="chev">⌄</span></button>
+    </div>
+    <div class="ai-compose-tuning-pop" data-role="tuning-pop" hidden>
+      <div class="ai-adv-title">Tinh chỉnh cho <b data-role="model-name">${esc(settings.model.replace(/^gemini-/,""))}</b></div>
+      <div class="ai-field"><div class="ai-field-h"><span>maxOutputTokens</span><input type="number" class="ai-num" data-role="tokens" min="64" max="32768" step="128" value="${settings.maxOutputTokens}"></div>
+        <div class="ai-chips">${[1024,2048,3072,4096].map(n=>`<button type="button" class="ai-chip ${settings.maxOutputTokens===n?"on":""}" data-tune="maxOutputTokens" data-val="${n}">${n}</button>`).join("")}</div></div>
+      <div class="ai-field"><div class="ai-field-h"><span>Suy luận ngầm (thinkingBudget)</span><em data-role="thinking-label">${settings.thinkingBudget}</em></div>
+        <div class="ai-chips">${[[0,"Tắt (0)"],[128,"Nhẹ (128)"],[256,"Vừa (256)"],[512,"Sâu (512)"]].map(([n,l])=>`<button type="button" class="ai-chip ${settings.thinkingBudget===n?"on":""}" data-tune="thinkingBudget" data-val="${n}">${l}</button>`).join("")}</div></div>
+      <div class="ai-field"><div class="ai-field-h"><span>Sáng tạo (temperature)</span><em data-role="temperature-label">${Number(settings.temperature).toFixed(2)}</em></div>
+        <input type="range" class="ai-range" data-role="temperature" min="0" max="1" step="0.05" value="${settings.temperature}"></div>
+      <div class="ai-pop-foot"><button type="button" class="link-btn" data-role="tuning-reset">Mặc định</button><span class="ai-pop-note">Lưu riêng theo từng mô hình.</span></div>
+    </div>
     <button type="button" class="ai-compose-generate" data-role="generate">✦ Tạo nội dung</button>
     <div class="ai-compose-status" data-role="status">${esc(configError)}</div>
     <section class="ai-compose-preview" data-role="preview" ${draft ? "" : "hidden"}>
-      <div class="lbl-t">Xem trước kết quả</div>
-      <pre data-role="result"></pre>
+      <div class="ai-compose-preview-head"><div class="ai-compose-preview-tabs">
+        <button type="button" class="ai-compose-tab on" data-tab="rendered">Xem hiển thị</button>
+        <button type="button" class="ai-compose-tab" data-tab="source">Mã nguồn</button>
+      </div></div>
+      <div class="ai-compose-rendered" data-role="rendered"></div>
+      <textarea class="ai-compose-source" data-role="source" spellcheck="false" hidden></textarea>
       <div class="ai-compose-preview-actions">
         <button type="button" data-role="regenerate">Tạo lại</button>
         <button type="button" data-role="insert">Chèn vào con trỏ</button>
