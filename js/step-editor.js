@@ -31,7 +31,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
       <div class="se-toolgroup">
         <button type="button" class="se-tool" data-menu="chem">🧪 Hóa học <span>⌄</span></button>
         <div class="se-menu se-chem-menu" data-menu-panel="chem" hidden>
-          <div class="se-chem-quick">${CHEM.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${label==="$\\\\ce{...}$"?2:0}">${esc(label)}</button>`).join("")}</div>
+          <div class="se-chem-quick">${CHEM.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${label==="$\\ce{...}$"?2:label==="$ ... $"?2:0}">${esc(label)}</button>`).join("")}</div>
           <div class="se-chem-compose">
             <label>Nồng độ / hàm lượng<input type="text" data-concentration placeholder="VD: 0,1 M hoặc 5%"></label>
             <label>Hóa chất<select data-chemical>${CHEMICALS.map(([formula,name])=>`<option value="${esc(formula)}">${esc(formula)} — ${esc(name)}</option>`).join("")}</select></label>
@@ -67,13 +67,19 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     const pos=start+text.length-back;
     target.focus();target.setSelectionRange(pos,pos);lastStart=lastEnd=pos;
   };
+  let gridData=[];
   const drawGrid=()=>{
     const wrap=node.querySelector("[data-grid-wrap]");
     wrap.style.setProperty("--se-cols",cols);
-    wrap.innerHTML=Array.from({length:rows},(_,r)=>`<div class="se-grid-row">${Array.from({length:cols},(_,c)=>`<input data-grid-cell data-r="${r}" data-c="${c}" aria-label="Hàng ${r+1}, cột ${c+1}" placeholder="${r===0?"Tiêu đề":""}">`).join("")}</div>`).join("");
-    wrap.querySelectorAll("[data-grid-cell]").forEach(el=>{el.addEventListener("focus",()=>remember(el));el.addEventListener("click",()=>remember(el));el.addEventListener("keyup",()=>remember(el));});
+    wrap.innerHTML=Array.from({length:rows},(_,r)=>`<div class="se-grid-row">${Array.from({length:cols},(_,c)=>`<input data-grid-cell data-r="${r}" data-c="${c}" aria-label="Hàng ${r+1}, cột ${c+1}" placeholder="${r===0?"Tiêu đề":""}" value="${esc(gridData[r]?.[c]||"")}">`).join("")}</div>`).join("");
+    wrap.querySelectorAll("[data-grid-cell]").forEach(el=>{el.addEventListener("focus",()=>remember(el));el.addEventListener("click",()=>remember(el));el.addEventListener("keyup",()=>remember(el));el.addEventListener("input",()=>remember(el));});
+  };
+  const captureGrid=()=>{
+    const cells=[...node.querySelectorAll("[data-grid-cell]")];
+    gridData=Array.from({length:rows},(_,r)=>Array.from({length:cols},(_,c)=>cells.find(x=>+x.dataset.r===r&&+x.dataset.c===c)?.value||""));
   };
   const updateDims=()=>{
+    captureGrid();
     rows=Math.max(1,Math.min(20,Number(node.querySelector("[data-grid-rows]").value)||1));
     cols=Math.max(1,Math.min(10,Number(node.querySelector("[data-grid-cols]").value)||1));
     node.querySelector("[data-grid-rows]").value=rows;node.querySelector("[data-grid-cols]").value=cols;drawGrid();
@@ -110,13 +116,13 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     }
     if(b.dataset.grid){
       const action=b.dataset.grid;
+      captureGrid();
       if(action==="add-row")rows=Math.min(20,rows+1);
       if(action==="del-row")rows=Math.max(1,rows-1);
       if(action==="add-col")cols=Math.min(10,cols+1);
       if(action==="del-col")cols=Math.max(1,cols-1);
       if(action==="insert"){
-        const cells=[...node.querySelectorAll("[data-grid-cell]")];
-        const matrix=Array.from({length:rows},(_,r)=>Array.from({length:cols},(_,c)=>cells.find(x=>+x.dataset.r===r&&+x.dataset.c===c)?.value||""));
+        const matrix=gridData;
         const lines=matrix.map(row=>"| "+row.map(v=>v.replace(/\|/g,"\\|").replace(/\n/g," ")).join(" | ")+" |");
         lines.splice(1,0,"| "+Array(cols).fill("---").join(" | ")+" |");
         if(rows===1)lines.push("| "+Array(cols).fill("").join(" | ")+" |");
