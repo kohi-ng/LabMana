@@ -805,20 +805,30 @@ button.row:active{ background: var(--surface-2); }
 @keyframes lab3dPulse{ 0%{ box-shadow:0 2px 8px rgba(220,38,38,.35), 0 0 0 0 rgba(220,38,38,.45); } 70%,100%{ box-shadow:0 2px 8px rgba(220,38,38,.35), 0 0 0 12px rgba(220,38,38,0); } }
 .lab3d-wrap{ overflow:hidden; margin:0 0 12px; }
 .lab3d{ border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; background:#F8FAFC; }
-.lab3d-view{ position:relative; width:100%; aspect-ratio:16/10; background:#C3CCD8; }
+.lab3d-view{ position:relative; width:100%; aspect-ratio:16/10; background:#0e1520; }
 .lab3d-view canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
 .lab3d-view canvas:active{ cursor:grabbing; }
-.lab3d-hud{ position:absolute; left:8px; top:8px; max-width:calc(100% - 16px); padding:3px 9px; border-radius:999px; background:rgba(255,255,255,.88); border:1px solid var(--line);
-  font-size:.75rem; font-weight:600; color:var(--ink); pointer-events:none; font-variant-numeric:tabular-nums; }
+.lab3d-hud{ position:absolute; left:8px; top:8px; max-width:calc(100% - 16px); padding:4px 10px; border-radius:999px; background:rgba(10,16,26,.62); border:1px solid rgba(255,255,255,.16);
+  -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); font-size:.75rem; font-weight:600; color:#E6EEF8; pointer-events:none; font-variant-numeric:tabular-nums; }
 .lab3d-hud:empty{ display:none; }
 .lab3d-cams{ position:absolute; left:6px; right:6px; bottom:6px; display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
-.lab3d-cams button{ font:inherit; font-size:.6875rem; padding:3px 8px; border-radius:999px; border:1px solid var(--line-strong); background:rgba(255,255,255,.9); color:var(--ink-soft); cursor:pointer; }
+.lab3d-cams button{ font:inherit; font-size:.75rem; min-height:44px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.2); background:rgba(10,16,26,.6); color:#DCE6F2; cursor:pointer;
+  -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+.lab3d-cams button:hover{ background:rgba(30,42,60,.8); }
 .lab3d-cams button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.lab3d-reset{ position:absolute; right:8px; top:8px; min-height:44px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.2); background:rgba(10,16,26,.62); color:#E6EEF8; font:inherit; font-size:.75rem; font-weight:600; cursor:pointer; }
+.lab3d-reset[hidden]{ display:none; }
+.lab3d-hint{ position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); padding:6px 14px; border-radius:999px; background:rgba(10,16,26,.7); color:#E6EEF8; font-size:.8125rem; pointer-events:none; opacity:0; transition:opacity .4s; white-space:nowrap; }
+.lab3d-hint.show{ opacity:1; }
 .lab3d-cap{ padding:9px 12px 4px; font-size:.8125rem; line-height:1.45; color:var(--ink); min-height:2.9em; }
-.lab3d-bar{ display:flex; align-items:center; gap:6px; padding:4px 10px 8px; }
-.lab3d-bar > button{ width:36px; height:36px; border-radius:999px; border:1px solid var(--line-strong); background:#fff; font-size:14px; cursor:pointer; color:var(--ink); }
+.lab3d-seek{ display:block; width:calc(100% - 20px); margin:2px 10px 0; height:28px; accent-color:#DC2626; cursor:pointer; touch-action:none; }
+.lab3d-bar{ display:flex; align-items:center; gap:6px; padding:2px 10px 8px; flex-wrap:wrap; }
+.lab3d-bar > button{ min-width:44px; height:44px; border-radius:999px; border:1px solid var(--line-strong); background:#fff; font-size:14px; cursor:pointer; color:var(--ink); }
 .lab3d-bar > button:hover{ background:var(--surface-2); }
-.lab3d-dots{ display:flex; gap:7px; margin-left:8px; flex:1; justify-content:flex-end; align-items:center; }
+.lab3d-bar > .lab3d-playbtn{ padding:0 14px; font-size:.8125rem; font-weight:700; background:#DC2626; border-color:#DC2626; color:#fff; white-space:nowrap; }
+.lab3d-bar > .lab3d-playbtn:hover{ background:#B91C1C; }
+.lab3d-bar > [data-a="loop"].on{ background:var(--accent-soft); border-color:var(--accent); }
+.lab3d-dots{ display:flex; gap:7px; margin-left:8px; flex:1; justify-content:flex-end; align-items:center; min-width:90px; }
 .lab3d-dots button{ width:12px; height:12px; padding:0; border-radius:50%; border:2px solid var(--line-strong); background:#fff; cursor:pointer; position:relative; }
 .lab3d-dots button::after{ content:""; position:absolute; inset:-8px; }
 .lab3d-dots button.done{ background:var(--accent-soft); border-color:var(--accent); }
@@ -826,16 +836,17 @@ button.row:active{ background: var(--surface-2); }
 .lab3d-prog{ height:3px; background:var(--line); }
 .lab3d-prog i{ display:block; height:100%; width:0; background:#DC2626; }
 .lab3d-err{ padding:14px; font-size:.8125rem; color:var(--err); background:var(--err-soft); border-radius:var(--r-lg); }
+.lab3d:focus-visible{ outline:2px solid var(--accent); outline-offset:2px; }
 @media (prefers-reduced-motion: reduce){ .lab3d-play{ animation:none; } }
 
 
 /* Lab 3D: playback speed, fullscreen and mobile stage sizing */
 .lab3d-view{aspect-ratio:16/11;min-height:280px}
 .lab3d-bar{flex-wrap:wrap}
-.lab3d-bar>[data-a="speed"],.lab3d-bar>[data-a="fullscreen"]{width:auto;min-width:44px;padding:0 10px;border-radius:10px;font-size:.8125rem;font-weight:600}
-.lab3d:fullscreen{display:flex;flex-direction:column;width:100vw;height:100dvh;max-width:none;max-height:none;border:0;border-radius:0;background:#F8FAFC;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.lab3d-bar>[data-a="speed"],.lab3d-bar>[data-a="fullscreen"],.lab3d-bar>[data-a="loop"]{width:auto;min-width:44px;padding:0 10px;border-radius:10px;font-size:.8125rem;font-weight:600}
+.lab3d:fullscreen{display:flex;flex-direction:column;width:100vw;height:100dvh;max-width:none;max-height:none;border:0;border-radius:0;background:#F8FAFC;overflow:auto;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
 .lab3d:fullscreen .lab3d-view{flex:1;min-height:0;aspect-ratio:auto}
-.lab3d:fullscreen .lab3d-cap,.lab3d:fullscreen .lab3d-bar,.lab3d:fullscreen .lab3d-prog{flex:none}
+.lab3d:fullscreen .lab3d-cap,.lab3d:fullscreen .lab3d-bar,.lab3d:fullscreen .lab3d-prog,.lab3d:fullscreen .lab3d-seek{flex:none}
 .ai-pop{height:fit-content;min-height:0;padding-bottom:4px}
 @media(max-width:639px){
   /* Mobile browsers: avoid an oversized absolute popover when its content is short. */
@@ -849,5 +860,7 @@ button.row:active{ background: var(--surface-2); }
   }
   .lab3d-view{aspect-ratio:4/3;min-height:300px}
   .lab3d-bar{gap:5px;padding:5px 8px 8px}
-  .lab3d-bar>[data-a="speed"],.lab3d-bar>[data-a="fullscreen"]{min-width:42px;height:36px;padding:0 8px}
+  .lab3d-bar>[data-a="speed"],.lab3d-bar>[data-a="fullscreen"],.lab3d-bar>[data-a="loop"]{min-width:44px;height:44px;padding:0 8px}
+  .lab3d-bar>.lab3d-playbtn{padding:0 10px}
+  .lab3d-dots{flex-basis:100%;margin:0;justify-content:center}
 }

@@ -41,14 +41,14 @@ function makeVessel({ H, R, wall = .18, floor = .4, refY, ticks = 0, tickLen = .
   // Định luật Beer–Lambert: ánh sáng đi qua lớp dung dịch càng dày càng bị hấp thụ → đáy đậm, sát mặt thoáng sáng
   const uSurf = { value: 0 }, uAbs = { value: .2 };
   const mkLiq = clip => {
-    const m = new THREE.MeshPhysicalMaterial({ color: liqColor, transparent: true, opacity: .8, roughness: .05, clearcoat: .7, clearcoatRoughness: .05,
-      side: THREE.DoubleSide, clippingPlanes: clip ? [plane] : null, envMapIntensity: .9, emissive: liqColor, emissiveIntensity: .22, depthWrite: false });
+    const m = new THREE.MeshPhysicalMaterial({ color: liqColor, transparent: true, opacity: .8, roughness: .08, clearcoat: .25, clearcoatRoughness: .1,
+      side: THREE.DoubleSide, clippingPlanes: clip ? [plane] : null, envMapIntensity: .35, emissive: liqColor, emissiveIntensity: .05, depthWrite: false });
     m.onBeforeCompile = sh => {
       sh.uniforms.uSurf = uSurf; sh.uniforms.uAbs = uAbs;
       sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vWY;")
         .replace("#include <begin_vertex>", "#include <begin_vertex>\n vWY = (modelMatrix * vec4(transformed, 1.0)).y;");
       sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vWY; uniform float uSurf; uniform float uAbs;")
-        .replace("#include <dithering_fragment>", "#include <dithering_fragment>\n float dpt = max(uSurf - vWY, 0.0); float ab = 1.0 - exp(-dpt * uAbs);\n gl_FragColor.rgb *= mix(1.28, 0.5, ab); gl_FragColor.a = clamp(gl_FragColor.a + ab * 0.2, 0.0, 1.0);");
+        .replace("#include <dithering_fragment>", "#include <dithering_fragment>\n float dpt = max(uSurf - vWY, 0.0); float ab = 1.0 - exp(-dpt * uAbs);\n gl_FragColor.rgb = pow(max(gl_FragColor.rgb, vec3(0.0)), vec3(1.0 + ab * 0.45)) * mix(0.95, 0.42, ab); gl_FragColor.a = clamp(gl_FragColor.a + ab * 0.25, 0.0, 1.0);");
     };
     return m;
   };
@@ -260,24 +260,24 @@ export function createSim(anim, lib) {
   scene.background = canvasTex(4, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#070b12"); g.addColorStop(.55, "#17202d"); g.addColorStop(1, "#2a3647"); x.fillStyle = g; x.fillRect(0, 0, w, h); });
   scene.fog = new THREE.Fog(0x131b27, 70, 190);
   const camera = new THREE.PerspectiveCamera(32, 16 / 10, .5, 400);
-  scene.add(new THREE.HemisphereLight(0xdbe6f6, 0x1b2331, .6));
-  const sun = new THREE.DirectionalLight(0xfff4e6, 1.55); sun.position.set(22, 42, 28); scene.add(sun);              // đèn chính (ấm)
+  scene.add(new THREE.HemisphereLight(0xdbe6f6, 0x1b2331, .35));
+  const sun = new THREE.DirectionalLight(0xfff4e6, 1.15); sun.position.set(22, 42, 28); scene.add(sun);              // đèn chính (ấm)
   const rim = new THREE.DirectionalLight(0x86b4ff, 1.25); rim.position.set(-34, 26, -30); scene.add(rim);          // đèn viền (lạnh) → viền sáng trên kính
   const fill = new THREE.DirectionalLight(0xffffff, .3); fill.position.set(-26, 12, 30); scene.add(fill);
 
   const std = (c, r = .5, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
-  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xeaf6ff, roughness: .02, metalness: 0, transparent: true, opacity: .1, side: THREE.DoubleSide,
-    depthWrite: false, envMapIntensity: 2.2, clearcoat: 1, clearcoatRoughness: .02 });
-  glassMat.onBeforeCompile = sh => { // viền phản quang Fresnel trên thành thủy tinh (rõ nét trên nền tối)
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xaac4dc, roughness: .03, metalness: 0, transparent: true, opacity: .035, side: THREE.DoubleSide,
+    depthWrite: false, envMapIntensity: .5, clearcoat: .5, clearcoatRoughness: .03, specularIntensity: .45 });
+  glassMat.onBeforeCompile = sh => { // viền phản quang Fresnel chỉ ở mép thành thủy tinh (giữa thân trong suốt để thấy rõ màu dung dịch)
     sh.fragmentShader = sh.fragmentShader.replace("#include <dithering_fragment>",
-      "#include <dithering_fragment>\n float fr = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.4); gl_FragColor.rgb += vec3(0.55, 0.7, 0.9) * fr * 0.55; gl_FragColor.a = clamp(gl_FragColor.a + fr * 0.75, 0.0, 1.0);");
+      "#include <dithering_fragment>\n float fr = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 3.4); gl_FragColor.rgb += vec3(0.55, 0.7, 0.9) * fr * 0.4; gl_FragColor.a = clamp(gl_FragColor.a + fr * 0.55, 0.0, 1.0);");
   };
   const colored = isColored(A.chemId), stock = tintOf(A.chemId);
-  const LIQ_OP = colored ? .9 : .5;                 // dung dịch có màu: đặc hơn; nước/dung dịch không màu: trong, ánh xanh
+  const LIQ_OP = colored ? .96 : .5;                 // dung dịch có màu: đặc hơn; nước/dung dịch không màu: trong, ánh xanh
 
   // Sàn + bóng mờ
   // Mặt bàn tối, mờ, có vệt sáng ở giữa như đèn chiếu → bóng đổ và đáy kính đọc rõ
-  const floorTex = canvasTex(256, 256, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 6, w / 2, h / 2, w / 2); g.addColorStop(0, "#56667d"); g.addColorStop(.45, "#2c384a"); g.addColorStop(1, "#0f151e"); x.fillStyle = g; x.fillRect(0, 0, w, h); });
+  const floorTex = canvasTex(256, 256, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 6, w / 2, h / 2, w / 2); g.addColorStop(0, "#2b3646"); g.addColorStop(.45, "#161e2a"); g.addColorStop(1, "#070a10"); x.fillStyle = g; x.fillRect(0, 0, w, h); });
   const floor = new THREE.Mesh(new THREE.CircleGeometry(90, 64), new THREE.MeshStandardMaterial({ map: floorTex, roughness: .5, metalness: .15 })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
   const blobTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
     gr.addColorStop(0, "rgba(0,0,0,.6)"); gr.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
@@ -329,9 +329,10 @@ export function createSim(anim, lib) {
   { const ring = new THREE.Mesh(new THREE.TorusGeometry(1.03, .04, 8, 64), new THREE.MeshBasicMaterial({ color: 0xff4a3d, toneMapped: false })); ring.rotation.x = Math.PI / 2; ring.position.y = 13; flask.group.add(ring); }
   const bottleR = y => y < 7 ? 2.6 : y < 9 ? lerp(2.6, 1.1, sstep(7, 9, y)) : 1.1;
   const stockV = makeVessel({ H: 10.5, R: bottleR, wall: .15, floor: .35, refY: 6.5, glassMat, liqColor: stock });
-  stockV.setColor(stock, colored ? .93 : .6);
+  stockV.setColor(stock, colored ? .96 : .6);
 
   beaker.setColor(WATER, .5); flask.setColor(WATER, .5);
+  { const ab = colored ? .6 : .12; beaker.setAbsorb(ab); flask.setAbsorb(ab); stockV.setAbsorb(ab); }
   const stockCap = new THREE.Group(); { const c = new THREE.Mesh(new THREE.CylinderGeometry(1.32, 1.32, 1.3, 40), std(0xf1f5f9, .3, .1)); c.position.y = 10.5 + .65;
     for (let i = 0; i < 26; i++) { const a = i / 26 * Math.PI * 2, r = new THREE.Mesh(new THREE.BoxGeometry(.08, 1.2, .1), std(0xcbd5e1, .5)); r.position.set(Math.cos(a) * 1.33, 0, Math.sin(a) * 1.33); r.rotation.y = -a; c.add(r); }
     stockCap.add(c); }
@@ -367,7 +368,7 @@ export function createSim(anim, lib) {
     const body = new THREE.Mesh(new THREE.CylinderGeometry(.9, .55, 9, 24), std(0xf3f4f6, .4)); body.position.y = 8.2;
     const btn = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, 1.4, 20), std(0xdc2626, .4)); btn.position.y = 13.4; tool.group.add(body, btn);
   }
-  if (tool) { tool.setColor(stock, colored ? .93 : .65); scene.add(tool.group); tool.group.visible = false; }
+  if (tool) { tool.setAbsorb(colored ? .6 : .12); tool.setColor(stock, colored ? .96 : .65); scene.add(tool.group); tool.group.visible = false; }
 
   /* ---- Chai tia nước cất (nhựa PE mờ, nắp xanh có khía, vòi thuôn) ---- */
   const wash = new THREE.Group(); {
@@ -677,16 +678,21 @@ export function createSim(anim, lib) {
 /* ====================================================================================================
  * mount: dựng khung sân khấu (canvas WebGL + điều khiển) vào host, trả về { destroy }
  * ================================================================================================== */
-const VIEWS = [["dir", "Đạo diễn"], ["all", "Toàn cảnh"], ["mark", "Cận cảnh vạch"], ["top", "Góc cao"]];
+const VIEWS = [["dir", "Tự động"], ["all", "Toàn cảnh"], ["mark", "Cận cảnh vạch"], ["top", "Góc cao"]];
+const SPEEDS = [.5, .75, 1, 1.5, 2];
+const fmtSpeed = s => `${String(s).replace(".", ",")}×`;
 
 export function mount(host, anim) {
   const lib = { THREE: globalThis.THREE, gsap: globalThis.gsap };
   if (!lib.THREE || !lib.gsap) { host.innerHTML = `<div class="lab3d-err">Chưa tải được thư viện 3D (Three.js / GSAP). Hãy kết nối mạng một lần để lưu vào bộ nhớ đệm.</div>`; return { destroy() {} }; }
-  host.innerHTML = `<div class="lab3d"><div class="lab3d-view"><canvas></canvas><div class="lab3d-hud"></div>
+  host.innerHTML = `<div class="lab3d" tabindex="0" aria-label="Mô phỏng 3D pha chế. Phím Space: phát/tạm dừng, mũi tên: đổi bước, F: toàn màn hình, R: phát lại"><div class="lab3d-view"><canvas></canvas><div class="lab3d-hud"></div>
+    <button type="button" class="lab3d-reset" data-a="resetview" aria-label="Đặt lại góc nhìn" hidden>⟲ Đặt lại góc nhìn</button>
+    <div class="lab3d-hint" aria-hidden="true">Kéo để xoay · Chụm để thu phóng</div>
     <div class="lab3d-cams">${VIEWS.map(([k, n], i) => `<button type="button" data-v="${k}" class="${i ? "" : "on"}">${n}</button>`).join("")}</div></div>
     <div class="lab3d-cap"></div>
-    <div class="lab3d-bar"><button type="button" data-a="prev" aria-label="Bước trước">⏮</button><button type="button" data-a="play" aria-label="Tạm dừng / Phát lại">⏸</button><button type="button" data-a="next" aria-label="Bước tiếp">⏭</button>
-    <button type="button" data-a="speed" aria-label="Tốc độ phát: x1">x1</button><button type="button" data-a="fullscreen" aria-label="Toàn màn hình">⛶</button>
+    <input class="lab3d-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Thanh tua mô phỏng">
+    <div class="lab3d-bar"><button type="button" data-a="prev" aria-label="Bước trước">⏮</button><button type="button" class="lab3d-playbtn" data-a="play" aria-label="Tạm dừng">⏸ Tạm dừng</button><button type="button" data-a="next" aria-label="Bước tiếp">⏭</button>
+    <button type="button" data-a="speed" aria-label="Tốc độ phát: 1×">1×</button><button type="button" data-a="loop" aria-pressed="false" aria-label="Lặp lại">🔁 Lặp</button><button type="button" data-a="fullscreen" aria-label="Toàn màn hình">⛶</button>
     <div class="lab3d-dots"></div></div><div class="lab3d-prog"><i></i></div></div>`;
   const $ = s => host.querySelector(s), canvas = $("canvas");
   let renderer;
@@ -694,52 +700,83 @@ export function mount(host, anim) {
     renderer = new lib.THREE.WebGLRenderer({ canvas, antialias: true });
   } catch (e) { host.innerHTML = `<div class="lab3d-err">Thiết bị không hỗ trợ WebGL nên không hiển thị được mô phỏng 3D.</div>`; return { destroy() {} }; }
   const THREE_ = lib.THREE;
-  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.outputEncoding = THREE_.sRGBEncoding; renderer.toneMapping = THREE_.ACESFilmicToneMapping;
+  renderer.setPixelRatio(Math.min(devicePixelRatio || 1, 2)); renderer.outputEncoding = THREE_.sRGBEncoding; renderer.toneMapping = THREE_.ACESFilmicToneMapping; renderer.toneMappingExposure = .9;
   renderer.localClippingEnabled = true;
 
   const sim = createSim(anim, lib), { scene, camera, tl, steps, P } = sim;
-  { // môi trường studio (PMREM) cho phản xạ/khúc xạ thủy tinh
-    const env = new THREE_.Scene(); env.add(new THREE_.Mesh(new THREE_.SphereGeometry(60, 24, 12), new THREE_.MeshBasicMaterial({ color: 0x131c2b, side: THREE_.BackSide })));
+  { // môi trường studio (PMREM): nền tối + vài tấm đèn dịu → phản xạ không làm bạc màu dung dịch
+    const env = new THREE_.Scene(); env.add(new THREE_.Mesh(new THREE_.SphereGeometry(60, 24, 12), new THREE_.MeshBasicMaterial({ color: 0x0b111b, side: THREE_.BackSide })));
     const panel = (w, h, x, y, z, i) => { const m = new THREE_.Mesh(new THREE_.PlaneGeometry(w, h), new THREE_.MeshBasicMaterial({ color: new THREE_.Color(i, i, i), side: THREE_.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); env.add(m); };
-    panel(36, 16, 0, 40, 12, 6); panel(8, 40, -38, 14, 8, 5); panel(8, 40, 38, 14, -6, 3.5); panel(24, 8, 0, 8, 45, 1.6);
+    panel(36, 16, 0, 40, 12, 3.2); panel(8, 40, -38, 14, 8, 2.6); panel(8, 40, 38, 14, -6, 2); panel(24, 8, 0, 8, 45, 1);
     const pm = new THREE_.PMREMGenerator(renderer); scene.environment = pm.fromScene(env, .02).texture; pm.dispose();
   }
 
   const card = $(".lab3d");
-  const hud = $(".lab3d-hud"), cap = $(".lab3d-cap"), dots = $(".lab3d-dots"), prog = $(".lab3d-prog i"), playBtn = $("[data-a=play]");
+  const hud = $(".lab3d-hud"), cap = $(".lab3d-cap"), dots = $(".lab3d-dots"), prog = $(".lab3d-prog i"), playBtn = $("[data-a=play]"), seek = $(".lab3d-seek");
+  const resetBtn = $(".lab3d-reset"), hint = $(".lab3d-hint"), loopBtn = $("[data-a=loop]"), speedBtn = $("[data-a=speed]");
   dots.innerHTML = steps.map((s, i) => `<button type="button" data-i="${i}" aria-label="Bước ${i + 1}"></button>`).join("");
+  const reduceMotion = !!(globalThis.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches);
+
+  // Trạng thái điều khiển: userWants = người dùng muốn đang phát; autoPaused = tự dừng do khung ẩn / tab ẩn
+  let dirty = true, loopOn = false, scrubbing = false, scrubResume = false, autoPaused = false, onScreen = true, tabVisible = !document.hidden;
+  const playing = () => !tl.paused() && tl.progress() < 1;
+  const poke = () => { dirty = true; };
 
   // Camera: quỹ đạo quanh mục tiêu; kéo/chạm xoay 360°, cuộn/chụm để thu phóng
   let view = "dir", off = { th: 0, ph: 0, z: 1 }; const cs = { th: 0, ph: 0, d: 0, x: 0, y: 0, z: 0 }; let first = true;
   const FX = sim.FX, vm = sim.volM;
   const preset = { all: [.4, 1.22, vm ? 62 : 46, vm ? FX / 2 - 2 : 0, 8, 0], mark: vm ? [.1, 1.43, 16, FX, 13, 0] : [.12, 1.4, 20, 0, 6, 0], top: [.3, .55, vm ? 60 : 44, vm ? FX / 2 - 2 : 0, 6, 0] };
   const target = () => view === "dir" ? [P.cTh, P.cPh, P.cD, P.cX, P.cY, P.cZ] : preset[view];
+  const viewMoved = () => Math.abs(off.th) > .03 || Math.abs(off.ph) > .03 || Math.abs(off.z - 1) > .03;
+  const syncReset = () => { resetBtn.hidden = !viewMoved(); };
+  const resetView = () => { off = { th: 0, ph: 0, z: 1 }; syncReset(); poke(); };
+  /** trả về true nếu camera còn đang hội tụ (cần vẽ tiếp) */
   function updCam(dt) {
     const t = target(), k = first ? 1 : 1 - Math.exp(-6 * dt); first = false;
-    cs.th = lerp(cs.th, t[0], k); cs.ph = lerp(cs.ph, t[1], k); cs.d = lerp(cs.d, t[2], k); cs.x = lerp(cs.x, t[3], k); cs.y = lerp(cs.y, t[4], k); cs.z = lerp(cs.z, t[5], k);
+    let d2 = 0; const keys = ["th", "ph", "d", "x", "y", "z"];
+    keys.forEach((key, i) => { const nv = lerp(cs[key], t[i], k); d2 = Math.max(d2, Math.abs(nv - cs[key]) + Math.abs(t[i] - nv) * .02); cs[key] = nv; });
     const th = cs.th + off.th, ph = clamp(cs.ph + off.ph, .12, 1.55), d = cs.d * off.z;
     camera.position.set(cs.x + d * Math.sin(ph) * Math.sin(th), cs.y + d * Math.cos(ph), cs.z + d * Math.sin(ph) * Math.cos(th)); camera.lookAt(cs.x, cs.y, cs.z);
+    return d2 > 5e-4;
   }
-  const ptrs = new Map(); let pinch = 0;
+
+  // Con trỏ: 1 ngón kéo = xoay, 2 ngón = thu phóng, chạm (không di chuyển) = phát/tạm dừng
+  const ptrs = new Map(); let pinch = 0, tap = null;
   canvas.style.touchAction = "none";
-  canvas.addEventListener("pointerdown", e => { canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, e); });
+  const hideHint = () => { hint.classList.remove("show"); };
+  canvas.addEventListener("pointerdown", e => {
+    canvas.setPointerCapture(e.pointerId); ptrs.set(e.pointerId, e); hideHint();
+    tap = ptrs.size === 1 ? { x: e.clientX, y: e.clientY, t: performance.now(), ok: true } : (tap && (tap.ok = false), tap);
+  });
   canvas.addEventListener("pointermove", e => {
     const prev = ptrs.get(e.pointerId); if (!prev) return;
+    if (tap && tap.ok && Math.hypot(e.clientX - tap.x, e.clientY - tap.y) > 6) tap.ok = false;
     if (ptrs.size === 1) { off.th -= (e.clientX - prev.clientX) * .008; off.ph -= (e.clientY - prev.clientY) * .008; }
     ptrs.set(e.pointerId, e);
     if (ptrs.size === 2) { const [a, b] = [...ptrs.values()], d = Math.hypot(a.clientX - b.clientX, a.clientY - b.clientY); if (pinch) off.z = clamp(off.z * pinch / d, .35, 2.2); pinch = d; }
+    syncReset(); poke();
   });
-  const up = e => { ptrs.delete(e.pointerId); pinch = 0; }; canvas.addEventListener("pointerup", up); canvas.addEventListener("pointercancel", up);
-  canvas.addEventListener("wheel", e => { e.preventDefault(); off.z = clamp(off.z * Math.exp(e.deltaY * .001), .35, 2.2); }, { passive: false });
+  const up = e => {
+    const was = ptrs.has(e.pointerId); ptrs.delete(e.pointerId); pinch = 0;
+    if (was && e.type === "pointerup" && tap && tap.ok && ptrs.size === 0 && performance.now() - tap.t < 450) togglePlay();
+    if (!ptrs.size) tap = null;
+  };
+  canvas.addEventListener("pointerup", up); canvas.addEventListener("pointercancel", up);
+  canvas.addEventListener("wheel", e => { e.preventDefault(); off.z = clamp(off.z * Math.exp(e.deltaY * .001), .35, 2.2); hideHint(); syncReset(); poke(); }, { passive: false });
+  canvas.addEventListener("dblclick", () => { resetView(); });
 
   const stepAt = tm => { let i = 0; steps.forEach((s, k) => { if (tm >= s.t - .001) i = k; }); return i; };
-  let lastStep = -1;
+  let lastStep = -1, lastLabel = "";
   const ui = () => {
-    const tm = tl.time(), i = stepAt(tm);
+    const tm = tl.time(), i = stepAt(tm), ended = tl.progress() >= 1 && tl.paused();
     if (i !== lastStep) { lastStep = i; cap.textContent = `${i + 1}/${steps.length} · ${steps[i].cap}`; dots.querySelectorAll("button").forEach((b, k) => b.classList.toggle("on", k === i)); }
     dots.querySelectorAll("button").forEach((b, k) => b.classList.toggle("done", k < i));
-    prog.style.width = `${clamp(tm / (tl.duration() || 1)) * 100}%`;
-    playBtn.textContent = tl.paused() ? "▶" : "⏸";
+    const frac = clamp(tm / (tl.duration() || 1));
+    prog.style.width = `${frac * 100}%`;
+    if (!scrubbing) seek.value = Math.round(frac * 1000);
+    const label = ended || (tl.progress() >= 1) ? "↻ Phát lại" : tl.paused() ? "▶ Tiếp tục" : "⏸ Tạm dừng";
+    if (label !== lastLabel) { lastLabel = label; playBtn.textContent = label; playBtn.setAttribute("aria-label", label.slice(2)); playBtn.classList.toggle("is-paused", label !== "⏸ Tạm dừng"); }
+    poke();
   };
   const hudText = () => {
     const a = anim, parts = [];
@@ -749,29 +786,51 @@ export function mount(host, anim) {
     return parts.join("  ·  ");
   };
   const go = i => { i = clamp(i, 0, steps.length - 1); tl.tweenTo("s" + i, { duration: clamp(Math.abs(tl.time() - steps[i].t) * .25, .25, 1.2), ease: "power1.inOut" }); };
+  const pause = () => { tl.paused(true); autoPaused = false; ui(); };
+  const resume = () => { if (tl.progress() >= 1) tl.restart(); else tl.paused(false); autoPaused = false; ui(); };
+  const togglePlay = () => { if (tl.progress() >= 1 || tl.paused()) resume(); else pause(); };
+  const replay = () => { autoPaused = false; tl.restart(); ui(); };
+  const prevStep = () => { tl.pause(); const i = stepAt(tl.time()); go(tl.time() - steps[i].t > .6 ? i : i - 1); ui(); };
+  const nextStep = () => { tl.pause(); go(stepAt(tl.time()) + 1); ui(); };
+  const toggleFS = () => { if (document.fullscreenElement === card) document.exitFullscreen?.(); else card.requestFullscreen?.().catch(() => {}); };
+  const setSpeed = () => { const i = SPEEDS.indexOf(tl.timeScale()), s = SPEEDS[(i + 1) % SPEEDS.length]; tl.timeScale(s); speedBtn.textContent = fmtSpeed(s); speedBtn.setAttribute("aria-label", `Tốc độ phát: ${fmtSpeed(s)}`); };
+  const setLoop = () => { loopOn = !loopOn; loopBtn.setAttribute("aria-pressed", String(loopOn)); loopBtn.classList.toggle("on", loopOn); };
+
   host.addEventListener("click", e => {
     const b = e.target.closest("button"); if (!b) return;
-    if (b.dataset.v) { view = b.dataset.v; off = { th: 0, ph: 0, z: 1 }; host.querySelectorAll(".lab3d-cams button").forEach(x => x.classList.toggle("on", x === b)); }
-    else if (b.dataset.i != null) { tl.pause(); go(+b.dataset.i); }
-    else if (b.dataset.a === "prev") { tl.pause(); const i = stepAt(tl.time()); go(tl.time() - steps[i].t > .6 ? i : i - 1); }
-    else if (b.dataset.a === "next") { tl.pause(); go(stepAt(tl.time()) + 1); }
-    else if (b.dataset.a === "play") { if (tl.progress() >= 1) tl.restart(); else tl.paused(!tl.paused()); ui(); }
-    else if (b.dataset.a === "speed") {
-      const speeds = [1, 1.25, 1.5, .5];
-      const current = tl.timeScale();
-      const index = speeds.findIndex(x => Math.abs(x - current) < .001);
-      const speed = speeds[(index + 1) % speeds.length];
-      tl.timeScale(speed); b.textContent = `x${speed}`; b.setAttribute("aria-label", `Tốc độ phát: x${speed}`);
-    }
-    else if (b.dataset.a === "fullscreen") {
-      if (document.fullscreenElement === card) document.exitFullscreen?.();
-      else card.requestFullscreen?.().catch(() => {});
-    }
+    if (b.dataset.v) { view = b.dataset.v; resetView(); host.querySelectorAll(".lab3d-cams button").forEach(x => x.classList.toggle("on", x === b)); }
+    else if (b.dataset.i != null) { tl.pause(); go(+b.dataset.i); ui(); }
+    else if (b.dataset.a === "prev") prevStep();
+    else if (b.dataset.a === "next") nextStep();
+    else if (b.dataset.a === "play") togglePlay();
+    else if (b.dataset.a === "speed") setSpeed();
+    else if (b.dataset.a === "loop") setLoop();
+    else if (b.dataset.a === "resetview") resetView();
+    else if (b.dataset.a === "fullscreen") toggleFS();
   });
-  tl.eventCallback("onUpdate", ui); tl.eventCallback("onComplete", ui);
+
+  // Thanh tua: tạm dừng khi kéo, tiếp tục khi thả nếu trước đó đang phát
+  const seekStart = () => { if (scrubbing) return; scrubbing = true; scrubResume = playing(); tl.pause(); };
+  const seekEnd = () => { if (!scrubbing) return; scrubbing = false; if (scrubResume && tl.progress() < 1) tl.paused(false); scrubResume = false; ui(); };
+  seek.addEventListener("pointerdown", seekStart);
+  seek.addEventListener("input", () => { seekStart(); tl.time(seek.value / 1000 * tl.duration(), false); ui(); });
+  seek.addEventListener("change", seekEnd); seek.addEventListener("pointerup", seekEnd); seek.addEventListener("pointercancel", seekEnd);
+
+  // Phím tắt (khi khung đang được chọn)
+  card.addEventListener("keydown", e => {
+    if (e.ctrlKey || e.metaKey || e.altKey) return;
+    const onBtn = e.target.closest?.("button"), onSeek = e.target === seek;
+    if (e.key === " " || e.code === "Space") { if (onBtn) return; e.preventDefault(); togglePlay(); }
+    else if (e.key === "ArrowRight" && !onSeek) { e.preventDefault(); nextStep(); }
+    else if (e.key === "ArrowLeft" && !onSeek) { e.preventDefault(); prevStep(); }
+    else if (e.key === "f" || e.key === "F") { e.preventDefault(); toggleFS(); }
+    else if (e.key === "r" || e.key === "R") { e.preventDefault(); replay(); }
+  });
+  tl.eventCallback("onUpdate", ui);
+  tl.eventCallback("onComplete", () => { if (loopOn) { tl.restart(); } ui(); });
 
   const view$ = $(".lab3d-view");
-  const resize = () => { const w = view$.clientWidth || 380, h = view$.clientHeight || 230; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
+  const resize = () => { const w = view$.clientWidth || 380, h = view$.clientHeight || 230; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); poke(); };
   const ro = new ResizeObserver(resize); ro.observe(view$); resize();
   const fullscreenBtn = $("[data-a=fullscreen]");
   const onFullscreenChange = () => {
@@ -781,13 +840,38 @@ export function mount(host, anim) {
     requestAnimationFrame(resize);
   };
   document.addEventListener("fullscreenchange", onFullscreenChange);
-  let raf = 0, last = performance.now(), dead = false, shown = "";
+
+  // Tự tạm dừng khi khung ra khỏi màn hình hoặc tab bị ẩn; tự tiếp tục nếu trước đó đang phát
+  const syncVisibility = () => {
+    const vis = onScreen && tabVisible;
+    if (!vis && playing()) { tl.paused(true); autoPaused = true; ui(); }
+    else if (vis && autoPaused) { autoPaused = false; if (tl.progress() < 1) tl.paused(false); ui(); }
+    if (vis) poke();
+  };
+  const io = typeof IntersectionObserver === "function" ? new IntersectionObserver(en => { onScreen = en[en.length - 1].isIntersecting; syncVisibility(); }, { threshold: .05 }) : null;
+  io?.observe(view$);
+  const onVis = () => { tabVisible = !document.hidden; syncVisibility(); };
+  document.addEventListener("visibilitychange", onVis);
+
+  // Gợi ý thao tác: chỉ hiện một lần
+  let hintTimer = 0;
+  try { if (!localStorage.getItem("lab3dHint")) { localStorage.setItem("lab3dHint", "1"); hint.classList.add("show"); hintTimer = setTimeout(hideHint, 5000); } } catch (e) { hint.classList.add("show"); hintTimer = setTimeout(hideHint, 5000); }
+
+  // Vòng lặp: đồng hồ hoạt ảnh riêng chỉ tiến khi mô phỏng đang chạy/tua; chỉ vẽ khi có thay đổi
+  let raf = 0, last = performance.now(), dead = false, shown = "", animT = 0, lastTl = -1;
   const loop = now => {
     if (dead) return; raf = requestAnimationFrame(loop);
     const dt = Math.min(.05, (now - last) / 1000); last = now;
-    sim.apply(now / 1000); updCam(dt); renderer.render(scene, camera);
+    if (!onScreen || !tabVisible) return;
+    const tm = tl.time(), moving = Math.abs(tm - lastTl) > 1e-6; lastTl = tm;
+    if (moving || playing()) { animT += dt; dirty = true; }
+    const camMoving = updCam(dt); if (camMoving) dirty = true;
+    if (!dirty) return;
+    dirty = false;
+    sim.apply(animT); renderer.render(scene, camera);
     const h = hudText(); if (h !== shown) { shown = h; hud.textContent = h; }
   };
-  tl.progress(0); ui(); raf = requestAnimationFrame(loop); tl.play();
-  return { destroy() { dead = true; cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener("fullscreenchange", onFullscreenChange); if (document.fullscreenElement === card) document.exitFullscreen?.(); tl.kill(); sim.dispose(); renderer.dispose(); host.innerHTML = ""; } };
+  tl.progress(0); ui(); raf = requestAnimationFrame(loop);
+  if (!reduceMotion) tl.play(); else ui();
+  return { destroy() { dead = true; cancelAnimationFrame(raf); clearTimeout(hintTimer); ro.disconnect(); io?.disconnect(); document.removeEventListener("fullscreenchange", onFullscreenChange); document.removeEventListener("visibilitychange", onVis); if (document.fullscreenElement === card) document.exitFullscreen?.(); tl.kill(); sim.dispose(); renderer.dispose(); renderer.forceContextLoss?.(); host.innerHTML = ""; } };
 }
