@@ -96,7 +96,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     preview.innerHTML=richHtml(source.value)||'<span class="muted">(chưa có nội dung)</span>';
     renderMath(preview);
   };
-  node.addEventListener("click",e=>{
+  node.addEventListener("pointerdown",e=>{\n    if(e.target.closest("[data-menu],[data-insert],[data-chem-action],[data-grid]"))e.preventDefault();\n  });\n  node.addEventListener("click",e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.dataset.menu){
       const key=b.dataset.menu,panel=node.querySelector(`[data-menu-panel="${key}"]`);
@@ -142,11 +142,26 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     if(e.target===source && !preview.hidden)previewNow();
   });
   const result=await openModal({
-    title, node,
+    title: "", node,
     buttons:[{label:"Đóng",value:null},{label:"Áp dụng & Đóng",kind:"primary",value:()=>source.value}],
     onMount(body){
-      const modal=body.closest(".modal");if(modal)modal.classList.add("step-editor-modal");
+      const modal=body.closest(".modal");
+      if(modal){
+        modal.classList.add("step-editor-modal");
+        const backdrop=modal.parentElement,viewport=window.visualViewport;
+        const fit=()=>{
+          if(!viewport)return;
+          modal.style.height=Math.max(280,viewport.height-12)+"px";
+          modal.style.maxHeight=modal.style.height;
+          backdrop.style.setProperty("--se-vv-top",Math.max(0,viewport.offsetTop)+"px");
+        };
+        viewport?.addEventListener("resize",fit);
+        viewport?.addEventListener("scroll",fit);
+        fit();
+      }
       source.focus();
+      source.setSelectionRange(source.value.length,source.value.length);
+      remember(source);
     }
   });
   return result;
