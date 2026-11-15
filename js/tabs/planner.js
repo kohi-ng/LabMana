@@ -130,8 +130,8 @@ function stepBody(s, flat) {
   return `<div class="step-body">
     <div class="lbl-t">Các bước tiến hành</div>
     <div class="toolbar step-editor-actions">
-        <button type="button" class="step-editor-trigger" data-act="step-editor">✏️ Biên soạn</button>
-        <button type="button" class="ai-compose-trigger" data-act="ai-compose">✦ AI Compose</button>
+        <button type="button" class="step-editor-trigger" data-act="step-editor">Biên soạn</button>
+        <button type="button" class="ai-compose-trigger" data-act="ai-compose">AI Compose</button>
       </div>
       <textarea class="inp" rows="4" data-f="text" placeholder="Hướng dẫn thao tác. Công thức: $x^2$, hóa học: $\\ce{H2SO4}$">${esc(s.text)}</textarea>
     </label>
