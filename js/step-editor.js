@@ -60,9 +60,9 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
   source.addEventListener("input",()=>remember(source));
   source.addEventListener("keyup",()=>remember(source));
   source.addEventListener("click",()=>remember(source));
-  const insert=(text,back=0)=>{
-    const target=activeTarget?.isConnected?activeTarget:source;
-    const start=Math.min(lastStart,target.value.length),end=Math.min(lastEnd,target.value.length);
+  const insert=(text,back=0,targetOverride=null)=>{
+    const target=targetOverride||(activeTarget?.isConnected?activeTarget:source);
+    const start=Math.min(target===source?sourceStart:lastStart,target.value.length),end=Math.min(target===source?sourceEnd:lastEnd,target.value.length);
     target.value=target.value.slice(0,start)+text+target.value.slice(end);
     const pos=start+text.length-back;
     target.focus();target.setSelectionRange(pos,pos);lastStart=lastEnd=pos;if(target===source){sourceStart=sourceEnd=pos;}
