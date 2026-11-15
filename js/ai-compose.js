@@ -1,17 +1,21 @@
 // ============ AI Compose cho trang Kế hoạch ============
 import { flatten } from "./plan-logic.js";
-import { esc, openModal } from "./utils.js";
+import { esc, openModal, richHtml, renderMath } from "./utils.js";
 import * as ai from "./tabs/ai.js";
 
 const DRAFT_PREFIX = "labmana_ai_draft_";
 const DEFAULT_CHIPS = { markdown: true, latex: true, table: true, safety: false, reaction: false };
 
 function cleanOutput(value) {
-  return String(value || "").trim()
+  let text = String(value || "").trim()
     .replace(/^\s*```(?:markdown|md|text)?\s*\r?\n?/i, "")
     .replace(/\r?\n?\s*```\s*$/i, "")
     .trim();
+  text = text.replace(/^#{1,6}\s+(.+?)\s*#*\s*$/gm, "*$1*");
+  text = text.replace(/\*\*(.+?)\*\*/gs, "*$1*");
+  return text.trim();
 }
+
 function contextFor(experiment, stepId, currentText) {
   const flat = flatten(experiment);
   const found = flat.find(item => item.step.id === stepId);
