@@ -5,6 +5,10 @@ import * as ai from "./tabs/ai.js";
 
 const DRAFT_PREFIX = "labmana_ai_draft_";
 
+function displayModel(model) {
+  return String(model || "").replace(/^gemini-/,"").replace(/-flash-preview$/i," Flash Preview").replace(/-flash-lite$/i," Lite").replace(/-flash$/i," Flash").replace(/-/g," ");
+}
+
 function cleanOutput(value) {
   let text = String(value || "").trim()
     .replace(/^\s*```(?:markdown|md|text)?\s*\r?\n?/i, "")
@@ -49,7 +53,7 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
   node.className = "ai-compose-modal";
   node.innerHTML = `
 <label class="lbl">Prompt<textarea class="inp ai-compose-prompt" data-role="prompt" rows="3" placeholder="Mô tả nội dung cần soạn..."></textarea></label>
-<div class="ai-compose-modelbar"><button type="button" class="ai-compose-model-trigger" data-role="model-toggle" aria-haspopup="true" aria-expanded="false"><span data-role="model-current">${esc(settings.model.replace(/^gemini-/,""))}</span><span class="chev">⌄</span></button><button type="button" class="ai-compose-generate" data-role="generate">✦ Tạo nội dung</button></div>
+<div class="ai-compose-modelbar"><button type="button" class="ai-compose-model-trigger" data-role="model-toggle" aria-haspopup="true" aria-expanded="false"><span data-role="model-current">${esc(displayModel(settings.model))}</span></button><button type="button" class="ai-compose-generate" data-role="generate">✦ Tạo nội dung</button></div>
 <div class="ai-compose-popover" data-role="compose-popover" hidden></div><div class="ai-compose-status" data-role="status">${esc(configError)}</div>
 <section class="ai-compose-preview" data-role="preview" ${draft?"":"hidden"}><div class="ai-compose-preview-head"><div class="ai-compose-preview-tabs"><button type="button" class="ai-compose-tab on" data-tab="rendered">Xem hiển thị</button><button type="button" class="ai-compose-tab" data-tab="source">Mã nguồn</button></div></div><div class="ai-compose-rendered" data-role="rendered"></div><textarea class="ai-compose-source" data-role="source" spellcheck="false" hidden></textarea><div class="ai-compose-preview-actions"><button type="button" data-role="regenerate">Tạo lại</button><button type="button" data-role="insert">Chèn vào con trỏ</button><button type="button" class="primary" data-role="replace">Xác nhận thay thế</button></div></section>`
   const status = node.querySelector('[data-role="status"]');
@@ -80,7 +84,7 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
   const renderPopover=()=>{
     popover.hidden=!popOpen;modelTrigger.setAttribute("aria-expanded",String(popOpen));if(!popOpen)return;
     const models=settings.models||[],activeModel=settings.model;
-    popover.innerHTML=`<div class="ai-pop-h">Mô hình</div>${models.map(model=>`<button type="button" class="ai-opt ${model===activeModel?"on":""}" data-role="model-option" data-val="${esc(model)}"><span>${esc(model.replace(/^gemini-/,"").replace(/-flash-preview$/," Flash Preview").replace(/-flash-lite$/," Lite").replace(/-flash$/," Flash"))}</span><i>${model===activeModel?"✓":""}</i></button>`).join("")}<div class="ai-pop-sep"></div><button type="button" class="ai-adv-btn" data-role="advanced-toggle" aria-expanded="${advOpen}"><span>Tinh chỉnh sâu</span><span class="chev">${advOpen?"⌃":"⌄"}</span></button>${advOpen?`<div class="ai-adv"><div class="ai-adv-title">Tinh chỉnh cho <b>${esc(activeModel.replace(/^gemini-/,""))}</b></div>
+    popover.innerHTML=`<div class="ai-pop-h">Mô hình</div>${models.map(model=>`<button type="button" class="ai-opt ${model===activeModel?"on":""}" data-role="model-option" data-val="${esc(model)}"><span>${esc(displayModel(model))}</span><i>${model===activeModel?"✓":""}</i></button>`).join("")}<div class="ai-pop-sep"></div><button type="button" class="ai-adv-btn" data-role="advanced-toggle" aria-expanded="${advOpen}"><span>Tinh chỉnh sâu</span></button>${advOpen?`<div class="ai-adv"><div class="ai-adv-title">Tinh chỉnh cho <b>${esc(displayModel(activeModel))}</b></div>
 <div class="ai-field"><div class="ai-field-h"><span>maxOutputTokens</span><input type="number" class="ai-num" data-role="tokens" min="64" max="32768" step="128" value="${settings.maxOutputTokens}"></div><div class="ai-chips">${[1024,2048,3072,4096].map(n=>`<button type="button" class="ai-chip ${settings.maxOutputTokens===n?"on":""}" data-tune="maxOutputTokens" data-val="${n}">${n}</button>`).join("")}</div></div>
 <div class="ai-field"><div class="ai-field-h"><span>Suy luận ngầm (thinkingBudget)</span><em>${settings.thinkingBudget}</em></div><div class="ai-chips">${[[0,"Tắt (0)"],[128,"Nhẹ (128)"],[256,"Vừa (256)"],[512,"Sâu (512)"]].map(([n,l])=>`<button type="button" class="ai-chip ${settings.thinkingBudget===n?"on":""}" data-tune="thinkingBudget" data-val="${n}">${l}</button>`).join("")}</div></div>
 <div class="ai-field"><div class="ai-field-h"><span>Sáng tạo (temperature)</span><em data-role="temperature-label">${Number(settings.temperature).toFixed(2)}</em></div><input type="range" class="ai-range" data-role="temperature" min="0" max="1" step="0.05" value="${settings.temperature}"></div><div class="ai-pop-foot"><button type="button" class="link-btn" data-role="tuning-reset">Mặc định</button><span class="ai-pop-note">Lưu riêng theo từng mô hình.</span></div></div>`:""}`;
