@@ -10,7 +10,7 @@ const CHEMICALS = [
 ];
 const MATH = [
   ["+","+"],["−","−"],["×","×"],["÷","÷"],["=","="],["≈","≈"],["±","±"],
-  ["°C","°C"],["Δ","Δ"],["µ","µ"],["Phân số","$\\frac{}{ }$"],
+  ["°C","°C"],["Δ","Δ"],["µ","µ"],["Phân số","$\\frac{}{}"],
   ["x²","x²"],["x³","x³"],["xₙ","xₙ"]
 ];
 const CHEM = [
@@ -26,7 +26,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     <div class="se-toolbar">
       <div class="se-toolgroup">
         <button type="button" class="se-tool" data-menu="math">📐 Phép toán <span>⌄</span></button>
-        <div class="se-menu" data-menu-panel="math" hidden>${MATH.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${label==="Phân số"?3:0}">${esc(label)}</button>`).join("")}</div>
+        <div class="se-menu" data-menu-panel="math" hidden>${MATH.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${label==="Phân số"?4:0}">${esc(label)}</button>`).join("")}</div>
       </div>
       <div class="se-toolgroup">
         <button type="button" class="se-tool" data-menu="chem">🧪 Hóa học <span>⌄</span></button>
