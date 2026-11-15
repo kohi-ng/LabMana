@@ -23,35 +23,35 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
   const node=document.createElement("div");
   node.className="step-editor";
   node.innerHTML=`
-    <div class="se-toolbar">
+    <div class="se-tabs"><button type="button" class="on" data-tab="edit">Soạn thảo</button><button type="button" data-tab="preview">Xem trước thực tế</button></div>
+    <textarea class="se-source" data-source spellcheck="false" placeholder="Nhập nội dung thao tác; công thức toán/hóa học đặt trong $...$"></textarea>
+    <div class="se-preview" data-preview hidden></div>
+    <div class="se-dock">
       <div class="se-toolgroup">
-        <button type="button" class="se-tool" data-menu="math">📐 Phép toán <span>⌄</span></button>
+        <button type="button" class="se-tool" data-menu="math">Phép toán</button>
         <div class="se-menu" data-menu-panel="math" hidden>${MATH.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${label==="Phân số"?4:0}">${esc(label)}</button>`).join("")}</div>
       </div>
       <div class="se-toolgroup">
-        <button type="button" class="se-tool" data-menu="chem">🧪 Hóa học <span>⌄</span></button>
+        <button type="button" class="se-tool" data-menu="chem">Hóa học</button>
         <div class="se-menu se-chem-menu" data-menu-panel="chem" hidden>
           <div class="se-chem-quick">${CHEM.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${label==="$\\ce{...}$"?2:label==="$ ... $"?2:0}">${esc(label)}</button>`).join("")}</div>
           <div class="se-chem-compose">
-            <label>Nồng độ / hàm lượng<input type="text" data-concentration placeholder="VD: 0,1 M hoặc 5%"></label>
+            <label>Nồng độ / hàm lượng<input type="text" data-concentration placeholder="0,1 M hoặc 5%"></label>
             <label>Hóa chất<select data-chemical>${CHEMICALS.map(([formula,name])=>`<option value="${esc(formula)}">${esc(formula)} — ${esc(name)}</option>`).join("")}</select></label>
             <div class="se-chem-actions"><button type="button" data-chem-action="concentration-first">Nồng độ + hóa chất</button><button type="button" data-chem-action="chemical-first">Hóa chất + nồng độ</button><button type="button" data-insert="$C_{M}$ ">C_M</button></div>
           </div>
         </div>
       </div>
       <div class="se-toolgroup">
-        <button type="button" class="se-tool" data-menu="table">📊 Bảng <span>⌄</span></button>
+        <button type="button" class="se-tool" data-menu="table">Bảng</button>
         <div class="se-menu se-table-menu" data-menu-panel="table" hidden>
           <div class="se-table-controls"><label>Hàng<input type="number" min="1" max="20" value="3" data-grid-rows></label><label>Cột<input type="number" min="1" max="10" value="3" data-grid-cols></label></div>
           <div class="se-grid-wrap" data-grid-wrap></div>
           <div class="se-table-actions"><button type="button" data-grid="add-row">+ Hàng</button><button type="button" data-grid="del-row">− Hàng</button><button type="button" data-grid="add-col">+ Cột</button><button type="button" data-grid="del-col">− Cột</button><button type="button" class="primary" data-grid="insert">Chèn bảng</button></div>
-          <p class="se-hint">Chọn một ô rồi dùng Phép toán / Hóa học để chèn công thức vào ô đó.</p>
+          <p class="se-hint">Chọn ô rồi chèn công thức toán hoặc hóa học.</p>
         </div>
       </div>
-    </div>
-    <div class="se-tabs"><button type="button" class="on" data-tab="edit">Soạn thảo</button><button type="button" data-tab="preview">Xem trước thực tế</button></div>
-    <textarea class="se-source" data-source spellcheck="false" placeholder="Nhập nội dung thao tác; công thức toán/hóa học đặt trong $...$"></textarea>
-    <div class="se-preview" data-preview hidden></div>`;
+    </div>`;
   const source=node.querySelector("[data-source]"),preview=node.querySelector("[data-preview]");
   source.value=String(value??"");
   let activeTarget=source,lastStart=0,lastEnd=0,sourceStart=0,sourceEnd=0,rows=3,cols=3;
