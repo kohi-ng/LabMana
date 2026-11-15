@@ -2,7 +2,7 @@
 import { state } from "../store.js";
 import { db, ready, isConfigured } from "../firebase.js";
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { esc, snippet, renderMath } from "../utils.js";
+import { esc, snippet, richHtml, renderMath } from "../utils.js";
 import { normalizeExperiment } from "../plan-logic.js";
 import * as sop from "./sop.js";
 import * as calc from "./calc.js";
@@ -353,24 +353,9 @@ export async function composeForPlanner({ prompt, context = "", systemInstructio
 }
 
 /* ------------------------------ Hiển thị tin nhắn ------------------------------ */
-const inline = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
-
-/** Markdown gọn: **đậm**, `code`, gạch đầu dòng, danh sách số, tiêu đề → chữ đậm. */
+/** Dùng chung bộ Markdown của Planner để bảng, tiêu đề và định dạng đồng nhất. */
 function mdToHtml(text) {
-  const out = [];
-  let list = null;
-  const close = () => { if (list) { out.push(`</${list}>`); list = null; } };
-  for (const line of String(text).split("\n")) {
-    const b = line.match(/^\s*(?:[-*•])\s+(.*)$/);
-    const n = line.match(/^\s*\d+[.)]\s+(.*)$/);
-    const h = line.match(/^\s*#{1,6}\s+(.*)$/);
-    if (b) { if (list !== "ul") { close(); out.push("<ul>"); list = "ul"; } out.push(`<li>${inline(b[1])}</li>`); }
-    else if (n) { if (list !== "ol") { close(); out.push("<ol>"); list = "ol"; } out.push(`<li>${inline(n[1])}</li>`); }
-    else if (!line.trim()) close();
-    else { close(); out.push(h ? `<p><b>${inline(h[1])}</b></p>` : `<p>${inline(line)}</p>`); }
-  }
-  close();
-  return out.join("");
+  return richHtml(text);
 }
 
 function renderMessages() {
