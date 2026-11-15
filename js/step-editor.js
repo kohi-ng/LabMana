@@ -85,7 +85,13 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     node.querySelector("[data-grid-rows]").value=rows;node.querySelector("[data-grid-cols]").value=cols;drawGrid();
   };
   drawGrid();
-  node.addEventListener("change",e=>{if(e.target.matches("[data-grid-rows],[data-grid-cols]"))updateDims();});
+  node.addEventListener("change",e=>{
+    if(e.target.matches("[data-grid-rows],[data-grid-cols]"))updateDims();
+    if(e.target.matches("[data-chemical]")){
+      const concentration=node.querySelector("[data-concentration]").value.trim();
+      insert((concentration?concentration+" ":"")+"$\\\\ce{"+e.target.value+"}$ ");
+    }
+  });
   const previewNow=()=>{
     preview.innerHTML=richHtml(source.value)||'<span class="muted">(chưa có nội dung)</span>';
     renderMath(preview);
