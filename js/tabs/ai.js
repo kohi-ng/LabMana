@@ -307,7 +307,7 @@ export async function composeForPlanner({ prompt, context = "", systemInstructio
     };
     const budget = clamp(Math.round(num(thinkingBudget, 256)), 0, 24576);
     if (budget > 0) generationConfig.thinkingConfig = { thinkingBudget: budget };
-    const instruction = [SYSTEM_BASE, systemInstruction].filter(Boolean).join("\n\n");
+    const instruction = ["Bạn là trợ lý soạn thảo SOP thí nghiệm hóa học LabMana. Viết chính xác, thực tế, rõ ràng và bám sát ngữ cảnh được cung cấp.", systemInstruction].filter(Boolean).join("\n\n");
     const userText = [context ? "NGỮ CẢNH BÀI THÍ NGHIỆM:\n" + context : "", "YÊU CẦU SOẠN THẢO:\n" + String(prompt || "").trim()].filter(Boolean).join("\n\n");
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(active)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
     try {
