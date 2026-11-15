@@ -13,7 +13,7 @@ import { openAICompose } from "../ai-compose.js";
 import { openStepEditor } from "../step-editor.js";
 
 let root, view = "list", exp = null, expId = null, dirty = false;
-const openSteps = new Set(), previewSteps = new Set(), errSteps = new Set();
+const openSteps = new Set(), hiddenPreviewSteps = new Set(), errSteps = new Set();
 const uploadingImgs = new Set(); // step ids đang upload ảnh (khóa UI của ảnh đó)
 const pendingDriveDeletes = new Set(), newlyUploadedDriveFiles = new Set(), failedDriveDeletes = new Set();
 const INPUT_FIELDS = new Set(["title", "description", "section_name", "step_title", "text", "input_label", "input_unit", "rule-value", "obs_label", "exp_label"]);
@@ -135,8 +135,8 @@ function stepBody(s, flat) {
       </div>
       <textarea class="inp" rows="4" data-f="text" placeholder="Hướng dẫn thao tác. Công thức: $x^2$, hóa học: $\\ce{H2SO4}$">${esc(s.text)}</textarea>
     </label>
-    <button class="link-btn" style="margin-left:-8px" data-act="toggle-preview">${previewSteps.has(s.id) ? "Ẩn xem trước" : "Xem trước"}</button>
-    ${previewSteps.has(s.id) ? `<div class="preview" data-preview="${s.id}"></div>` : ""}
+    <button class="link-btn" style="margin-left:-8px" data-act="toggle-preview">${hiddenPreviewSteps.has(s.id) ? "Xem trước" : "Ẩn xem trước"}</button>
+    ${!hiddenPreviewSteps.has(s.id) ? `<div class="preview" data-preview="${s.id}"></div>` : ""}
 
     <div class="lbl-t">Ảnh minh họa</div>
     ${imagesHtml(s)}
@@ -261,7 +261,7 @@ function applyField(t) {
     case "text":
       if (!step) return;
       step.text = t.value;
-      if (previewSteps.has(step.id)) {
+      if (!hiddenPreviewSteps.has(step.id)) {
         const p = stepEl.querySelector("[data-preview]");
         if (p) { p.innerHTML = richHtml(step.text) || '<span class="muted">(trống)</span>'; renderMath(p); }
       }
@@ -345,13 +345,13 @@ async function onClick(e) {
 
   switch (act) {
     /* danh sách */
-    case "new": exp = newExperiment(); expId = null; dirty = true; openSteps.clear(); previewSteps.clear(); errSteps.clear();
+    case "new": exp = newExperiment(); expId = null; dirty = true; openSteps.clear(); hiddenPreviewSteps.clear(); errSteps.clear();
       openSteps.add(exp.sections[0].steps[0].id); view = "editor"; render(); break;
     case "import": root.querySelector("#pl-import").click(); break;
     case "open": {
       const raw = state.experiments.find(x => x.id === card.dataset.id); if (!raw) return;
       exp = normalizeExperiment(clone(raw)); expId = raw.id; exp.created_at_ms = raw.created_at_ms || null;
-      dirty = false; openSteps.clear(); previewSteps.clear(); errSteps.clear(); view = "editor"; render(); break;
+      dirty = false; openSteps.clear(); hiddenPreviewSteps.clear(); errSteps.clear(); view = "editor"; render(); break;
     }
     case "dup": {
       const raw = state.experiments.find(x => x.id === card.dataset.id); if (!raw) return;
@@ -388,7 +388,7 @@ async function onClick(e) {
     /* thao tác (step) */
     case "add-step": { const sec = exp.sections.find(s => s.id === secId); const st = newStep(); sec.steps.push(st); openSteps.add(st.id); markDirty(); render(); break; }
     case "toggle-step": openSteps.has(sid) ? openSteps.delete(sid) : openSteps.add(sid); render(); break;
-    case "toggle-preview": previewSteps.has(sid) ? previewSteps.delete(sid) : previewSteps.add(sid); render(); break;
+    case "toggle-preview": hiddenPreviewSteps.has(sid) ? hiddenPreviewSteps.delete(sid) : hiddenPreviewSteps.add(sid); render(); break;
     case "move-step": moveStep(secId, sid, +btn.dataset.dir); markDirty(); render(); break;
     case "dup-step": {
       const f = findStep(sid); const c = clone(f.step); c.id = uid("s"); c.branch_logic = c.branch_logic || [];
@@ -516,7 +516,7 @@ function importJson(input) {
       const data = JSON.parse(rd.result);
       if (!Array.isArray(data.sections)) throw new Error("Thiếu mảng sections");
       exp = normalizeExperiment(data); expId = null; dirty = true;
-      openSteps.clear(); previewSteps.clear(); errSteps.clear(); view = "editor"; render();
+      openSteps.clear(); hiddenPreviewSteps.clear(); errSteps.clear(); view = "editor"; render();
       toast("Đã nhập — kiểm tra rồi bấm Lưu", "success");
     } catch (err) { toast("File JSON không hợp lệ: " + err.message, "error", 4500); }
   };
