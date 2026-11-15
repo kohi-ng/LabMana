@@ -1,5 +1,5 @@
 // ============ AI Compose cho trang Kế hoạch ============
-import { flatten } from "./plan-logic.js";
+import { flatten, secTagSp } from "./plan-logic.js";
 import { esc, openModal, richHtml, renderMath } from "./utils.js";
 import * as ai from "./tabs/ai.js";
 
@@ -26,9 +26,9 @@ function contextFor(experiment, stepId, currentText) {
   const preparation = found.sec.steps[0];
   const lines = [
     `Tên bài: ${experiment.title || "(chưa đặt tên)"}`,
-    `Thí nghiệm hiện tại: TN ${found.si + 1} — ${found.sec.section_name || "(chưa đặt tên)"}`,
+    `Thí nghiệm hiện tại: ${secTagSp(found.si)} — ${found.sec.section_name || "(chưa đặt tên)"}`,
     `Tiêu đề bước đang thao tác: ${found.label} ${found.step.title || "(chưa có tiêu đề)"}`,
-    `Nội dung bước chuẩn bị (${found.si + 1}.1):\n${preparation?.text || "(trống)"}`,
+    `Nội dung bước chuẩn bị (${found.si}.1):\n${preparation?.text || "(trống)"}`,
     `Nội dung hiện có trong ô bước ${found.label}:\n${currentText || "(trống)"}`
   ];
   return lines.join("\n\n");

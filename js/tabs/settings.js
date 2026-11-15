@@ -4,7 +4,7 @@ import { auth, db } from "../firebase.js";
 import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove, deleteField, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { esc, richHtml, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
 import { driveCreateReport, isDriveConfigured } from "../drive.js";
-import { normalizeExperiment, flatten } from "../plan-logic.js";
+import { normalizeExperiment, flatten, secTagSp } from "../plan-logic.js";
 
 let root;
 const CFG = () => doc(db, "config", "lab");
@@ -266,7 +266,7 @@ async function collectReportData() {
 
   const experiment = normalizeExperiment(raw);
   let droppedPhotos = 0;
-  const steps = flatten(experiment).map(item => {
+  const steps = flatten(experiment).filter(item => item.si > 0).map(item => {   // báo cáo chỉ nạp từ TN1, bỏ phần CB
     const log = logs[item.step.id] || {};
     const photos = Array.isArray(log.photos) && log.photos.length
       ? log.photos
@@ -274,7 +274,7 @@ async function collectReportData() {
     const reportPhotos = reportForm.includePhotos ? photos.map((photo, index) => {
       const fileId = photo?.file_id || driveIdFromUrl(photo?.url);
       const url = String(photo?.url || "");
-      const name = photo?.name || `TN${item.si + 1}_${item.label}_Anh${index + 1}`;
+      const name = photo?.name || `TN${item.si}_${item.label}_Anh${index + 1}`;
       const code = photoCode(name, item.label, index);
       if (fileId) return { file_id: fileId, name, code };
       // Ảnh dự phòng (Drive chưa xác nhận lúc tải): gửi kèm nội dung để Apps Script vẫn nhúng được vào Docs.
@@ -286,7 +286,7 @@ async function collectReportData() {
     }).filter(Boolean) : [];
     const observation = reportForm.includeObservation ? log.observation_text || "" : "";
     return {
-      section: `${item.si + 1}. ${item.sec.section_name || "Thí nghiệm"}`,
+      section: `${item.si}. ${item.sec.section_name || "Thí nghiệm"}`,
       label: item.label,
       // Cột "Các bước tiến hành": tiêu đề + hướng dẫn thao tác (số bước được in đậm riêng ở đầu ô).
       action: `${item.step.title || ""}\n${item.step.text || ""}`.replace(/\n{3,}/g, "\n\n").trim(),
@@ -296,6 +296,7 @@ async function collectReportData() {
       photos: reportPhotos
     };
   });
+  if (!steps.length) throw new Error("Báo cáo chỉ nạp từ TN1 trở đi, nhưng bài này chưa có thí nghiệm nào ngoài phần Chuẩn bị.");
   const imagesSkipped = droppedPhotos;
   const inlinePhotos = steps.reduce((total, step) => total + step.photos.filter(photo => photo.data_url).length, 0);
   return {

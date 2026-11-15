@@ -3,7 +3,7 @@ import { state } from "../store.js";
 import { db, ready, isConfigured } from "../firebase.js";
 import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { esc, snippet, richHtml, renderMath } from "../utils.js";
-import { normalizeExperiment } from "../plan-logic.js";
+import { normalizeExperiment, secTagSp } from "../plan-logic.js";
 import * as sop from "./sop.js";
 import * as calc from "./calc.js";
 
@@ -153,11 +153,11 @@ function ctxOptions() {
   if (raw) {
     const exp = normalizeExperiment(raw);
     exp.sections.forEach((sec, si) => {
-      const secName = plain(sec.section_name) || `Thí nghiệm ${si + 1}`;
+      const secName = plain(sec.section_name) || (si === 0 ? "Chuẩn bị" : `Thí nghiệm ${si}`);
       sec.steps.forEach((step, ti) => {
-        const label = `${si + 1}.${ti + 1}`;
+        const label = `${si}.${ti + 1}`;
         const log = state.logs[step.id];
-        const lines = [`[Bài: ${plain(exp.title)} · TN ${si + 1}: ${secName} · Bước ${label}]`];
+        const lines = [`[Bài: ${plain(exp.title)} · ${secTagSp(si)}: ${secName} · Bước ${label}]`];
         if (step.title) lines.push(`Tiêu đề: ${plain(step.title)}`);
         if (step.text) lines.push(`Nội dung: ${String(step.text).trim()}`);
         if (log) {
@@ -166,7 +166,7 @@ function ctxOptions() {
         }
         opts.push({
           id: "step:" + step.id,
-          group: `TN ${si + 1} · ${secName}`,
+          group: `${secTagSp(si)} · ${secName}`,
           label: `${label} ${step.title ? plain(step.title) : snippet(step.text, 50)}`,
           text: lines.join("\n"),
           stepId: step.id

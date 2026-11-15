@@ -8,7 +8,7 @@ import { db } from "../firebase.js";
 import { doc, collection, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
 import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, statusCard, downloadFile, $$ } from "../utils.js";
-import { OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
+import { secTagSp, OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
 import { openAICompose } from "../ai-compose.js";
 import { openStepEditor } from "../step-editor.js";
 
@@ -91,15 +91,15 @@ function renderEditor() {
 
 function sectionHtml(sec, si, flat) {
   return `<section class="sec-block" data-sec="${sec.id}">
-    <div class="sec-head"><span class="sec-no">TN ${si + 1}</span>
-      <input class="inp" data-f="section_name" value="${esc(sec.section_name)}" placeholder="Tên thí nghiệm">
+    <div class="sec-head"><span class="sec-no">${secTagSp(si)}</span>
+      <input class="inp" data-f="section_name" value="${esc(sec.section_name)}" placeholder="${si === 0 ? "Chuẩn bị" : "Tên thí nghiệm"}">
     </div>
     <div class="sec-tools">
-      <button class="link-btn muted" data-act="move-sec" data-dir="-1">Lên</button>
+      ${si === 0 ? `<span class="muted small">Phần Chuẩn bị (CB) — không đưa vào báo cáo</span>` : `${si > 1 ? `<button class="link-btn muted" data-act="move-sec" data-dir="-1">Lên</button>` : ""}
       <button class="link-btn muted" data-act="move-sec" data-dir="1">Xuống</button>
-      <button class="link-btn danger" data-act="del-sec">Xóa thí nghiệm</button>
+      <button class="link-btn danger" data-act="del-sec">Xóa thí nghiệm</button>`}
     </div>
-    <div class="steps">${sec.steps.map((st, ti) => stepHtml(st, `${si + 1}.${ti + 1}`, flat)).join("")}</div>
+    <div class="steps">${sec.steps.map((st, ti) => stepHtml(st, `${si}.${ti + 1}`, flat)).join("")}</div>
     <button class="btn block" data-act="add-step">Thêm thao tác</button>
   </section>`;
 }
@@ -375,13 +375,14 @@ async function onClick(e) {
     case "export": downloadFile((exp.title || "bai-thi-nghiem").replace(/[^\w\-]+/g, "_") + ".json", JSON.stringify(serializeExperiment(exp), null, 2), "application/json"); break;
 
     /* thí nghiệm (section) */
-    case "add-sec": { const s = newSection(`Thí nghiệm ${exp.sections.length + 1}`); exp.sections.push(s); openSteps.add(s.steps[0].id); markDirty(); render(); break; }
+    case "add-sec": { const s = newSection(`Thí nghiệm ${exp.sections.length}`); exp.sections.push(s); openSteps.add(s.steps[0].id); markDirty(); render(); break; }
     case "del-sec":
+      if (exp.sections[0]?.id === secId) return toast("Phần Chuẩn bị (CB) luôn nằm đầu bài, không xóa được.", "warn");
       if (await confirmBox("Xóa cả thí nghiệm này và mọi thao tác bên trong?", "Xóa")) { exp.sections = exp.sections.filter(s => s.id !== secId); markDirty(); render(); }
       break;
     case "move-sec": {
       const i = exp.sections.findIndex(s => s.id === secId), j = i + +btn.dataset.dir;
-      if (j < 0 || j >= exp.sections.length) return;
+      if (i < 1 || j < 1 || j >= exp.sections.length) return;   // CB luôn ở đầu
       [exp.sections[i], exp.sections[j]] = [exp.sections[j], exp.sections[i]]; markDirty(); render(); break;
     }
 

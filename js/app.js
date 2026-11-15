@@ -6,7 +6,7 @@ import * as sop from "./tabs/sop.js";
 import * as settings from "./tabs/settings.js";
 import * as calc from "./tabs/calc.js";
 import * as ai from "./tabs/ai.js";
-import { normalizeExperiment } from "./plan-logic.js";
+import { normalizeExperiment, secTagSp } from "./plan-logic.js";
 
 const TABS = { planner, sop, calc, ai, settings };
 const inited = {};
@@ -95,11 +95,11 @@ function renderProgressMenu() {
       const sectionDone = section.steps.filter(step => sop.isStepProgressDone(step.id)).length;
       return `<div class="pm-section">
         <button type="button" class="pm-section-title ${section.id === sectionId ? "active" : ""}" data-progress-section="${esc(section.id)}">
-          <span>TN ${si + 1} · ${richHtml(section.section_name) || "Chưa đặt tên"}</span><span>${sectionDone}/${section.steps.length}</span>
+          <span>${secTagSp(si)} · ${richHtml(section.section_name) || "Chưa đặt tên"}</span><span>${sectionDone}/${section.steps.length}</span>
         </button>
         <div class="pm-steps">${section.steps.map((step, ti) => {
           const cls = [sop.isStepProgressDone(step.id) ? "done" : "", step.id === stepId ? "active" : ""].join(" ");
-          return `<button type="button" class="pm-step ${cls}" data-progress-step="${esc(step.id)}" data-progress-section="${esc(section.id)}"><b>${si + 1}.${ti + 1}</b><span>${plainTitle(step)}</span></button>`;
+          return `<button type="button" class="pm-step ${cls}" data-progress-step="${esc(step.id)}" data-progress-section="${esc(section.id)}"><b>${si}.${ti + 1}</b><span>${plainTitle(step)}</span></button>`;
         }).join("")}</div>
       </div>`;
     }).join("")}`;

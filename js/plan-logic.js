@@ -29,7 +29,7 @@ export const newStep = () => ({
 export const newSection = (name = "Phần mới") => ({ id: uid("p"), section_name: name, steps: [newStep()] });
 export const newExperiment = () => ({
   schema_version: 2, title: "Bài thí nghiệm mới", description: "",
-  created_at_ms: null, sections: [newSection("Chuẩn bị")]
+  created_at_ms: null, sections: [newSection("Chuẩn bị"), newSection("Thí nghiệm 1")]
 });
 
 /** Ảnh v1 là chuỗi URL, v2 là {file_id, url, name}: luôn trả về dạng object (hoặc null nếu rỗng). */
@@ -110,11 +110,15 @@ export function serializeExperiment(exp) {
   };
 }
 
+/** Phần đầu tiên (chỉ số 0) luôn là CB = Chuẩn bị (bước 0.1, 0.2…); các phần sau là TN1, TN2… (bước 1.1, 2.1…). */
+export const secTag = si => si === 0 ? "CB" : `TN${si}`;
+export const secTagSp = si => si === 0 ? "CB" : `TN ${si}`;
+
 /** Làm phẳng sections → danh sách bước theo thứ tự thực hiện, kèm nhãn "2.3". */
 export function flatten(exp) {
   const out = [];
   exp.sections.forEach((sec, si) => sec.steps.forEach((step, ti) =>
-    out.push({ step, sec, si, ti, label: `${si + 1}.${ti + 1}`, index: out.length })));
+    out.push({ step, sec, si, ti, label: `${si}.${ti + 1}`, index: out.length })));
   return out;
 }
 
@@ -125,8 +129,8 @@ export function validatePlan(exp) {
   if (!exp.title.trim()) add("Chưa đặt tên bài thí nghiệm.");
   if (!exp.sections.length) add("Cần ít nhất 1 phần.");
   exp.sections.forEach((sec, si) => {
-    if (!sec.section_name.trim()) add(`Phần ${si + 1}: chưa đặt tên.`);
-    if (!sec.steps.length) add(`Phần ${si + 1}: chưa có bước nào.`);
+    if (!sec.section_name.trim()) add(`Phần ${secTagSp(si)}: chưa đặt tên.`);
+    if (!sec.steps.length) add(`Phần ${secTagSp(si)}: chưa có bước nào.`);
   });
   const flat = flatten(exp);
   const idx = new Map(flat.map(f => [f.step.id, f.index]));

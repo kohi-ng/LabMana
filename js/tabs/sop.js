@@ -5,7 +5,7 @@ import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
 import { esc, richHtml, richInline, renderMath, toast, openModal, confirmBox, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
-import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
+import { secTagSp, computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null, selectedStepId = null;
 let expOpen = false, sectionOpen = false;   // ẩn/hiện: danh sách TN dưới tiêu đề bài; danh sách bước dưới tiêu đề thí nghiệm
@@ -99,7 +99,7 @@ function sectionTabs() {
       const done = steps.length > 0 && steps.every(item => isProgressDone(item.step.id));
       const active = section.id === selectedSectionId;
       return `<button type="button" class="tab-btn ${active ? "active" : ""} ${done ? "done" : ""}"
-        data-act="select-section" data-section="${esc(section.id)}" aria-pressed="${active}">TN ${index + 1}</button>`;
+        data-act="select-section" data-section="${esc(section.id)}" aria-pressed="${active}">${secTagSp(index)}</button>`;
     }).join("")}
   </nav>`;
 }
