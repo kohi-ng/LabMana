@@ -126,7 +126,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
         const lines=matrix.map(row=>"| "+row.map(v=>v.replace(/\|/g,"\\|").replace(/\n/g," ")).join(" | ")+" |");
         lines.splice(1,0,"| "+Array(cols).fill("---").join(" | ")+" |");
         if(rows===1)lines.push("| "+Array(cols).fill("").join(" | ")+" |");
-        insert("\n"+lines.join("\n")+"\n");return;
+        insert("\n"+lines.join("\n")+"\n",0,source);return;
       }
       node.querySelector("[data-grid-rows]").value=rows;node.querySelector("[data-grid-cols]").value=cols;drawGrid();return;
     }
