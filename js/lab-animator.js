@@ -168,7 +168,7 @@ const teardropGeo = () => {
 
 function lcdCanvas() {
   const cv = document.createElement("canvas"); cv.width = 320; cv.height = 110;
-  const ctx = cv.getContext("2d"), tex = new THREE.CanvasTexture(cv); let last = null;
+  const ctx = cv.getContext("2d"), tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; let last = null;
   return { tex, draw(text) {
     if (text === last) return; last = text;
     ctx.fillStyle = "#a9bd96"; ctx.fillRect(0, 0, 320, 110); ctx.fillStyle = "#1c2915"; ctx.font = "bold 52px ui-monospace, Menlo, monospace";
@@ -183,9 +183,9 @@ export function createSim(anim, lib) {
   THREE = lib.THREE; gsap = lib.gsap;
   const A = anim, mode = A.mode, solidM = mode.startsWith("solid"), volM = mode.endsWith("vol");
   const FV = A.finalVolume, sa = A.soluteAmount, wa = A.solventAmount, F = A.soluteFormula, exo = !!A.exothermic;
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xf8fafc);
+  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xc3ccd8);
   const camera = new THREE.PerspectiveCamera(32, 16 / 10, .5, 400);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xdbe3ec, .85));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa7b8, .85));
   const sun = new THREE.DirectionalLight(0xffffff, 1.15); sun.position.set(22, 42, 28); scene.add(sun);
 
   const std = (c, r = .5, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
@@ -198,7 +198,7 @@ export function createSim(anim, lib) {
   const stock = tintOf(A.chemId);
 
   // Sàn + bóng mờ
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 64), std(0xeef2f7, 1)); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 64), std(0xb4bfcd, 1)); floor.rotation.x = -Math.PI / 2; scene.add(floor);
   const blobTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
     gr.addColorStop(0, "rgba(15,23,42,.35)"); gr.addColorStop(1, "rgba(15,23,42,0)"); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const blobs = [];
@@ -209,8 +209,8 @@ export function createSim(anim, lib) {
     const g = new THREE.Group(), L = lcdCanvas();
     const body = new THREE.Mesh(new THREE.BoxGeometry(9, 1.6, 7), std(0xe5e7eb, .4)); body.position.y = .8;
     const pan = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, .18, 48), std(0xb8c0cc, .25, .8)); pan.position.y = 1.69;
-    const scr = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.3), new THREE.MeshBasicMaterial({ map: L.tex })); scr.position.set(0, .85, 3.52);
-    const bez = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.5, .1), std(0x1f2937, .5)); bez.position.set(0, .85, 3.48);
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.3), new THREE.MeshBasicMaterial({ map: L.tex, toneMapped: false })); scr.position.set(0, .85, 3.56); L.draw("0,000 g");
+    const bez = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.5, .1), std(0x1f2937, .5)); bez.position.set(0, .85, 3.45);
     g.add(body, pan, scr, bez); scene.add(g); return { group: g, panY: 1.78, draw: L.draw, tex: L.tex };
   })();
   const needBal = mode !== "dilute-vol", balX = mode === "solid-vol" ? -13 : 0;
@@ -231,7 +231,7 @@ export function createSim(anim, lib) {
   const FX = mode === "solid-vol" ? 10 : 3, SX = -10;
   const fp = new THREE.Group(); flask.group.position.y = -8; fp.add(flask.group); // trục xoay bình ở tâm bầu
   scene.add(beaker.group, fp, stockV.group);
-  beaker.group.visible = true; fp.visible = volM; stockV.group.visible = !solidM;
+  beaker.group.visible = solidM || !volM; fp.visible = volM; stockV.group.visible = !solidM;
   blob(beaker.group, 9, BY0); if (volM) blob(fp, 12, 8); if (!solidM) blob(stockV.group, 8);
   { // nhãn dán trên chai dung dịch gốc & bình định mức
     const lbl = (text, w, h) => { const c = document.createElement("canvas"); c.width = 256; c.height = Math.round(256 * h / w); const x = c.getContext("2d");
@@ -283,7 +283,7 @@ export function createSim(anim, lib) {
   const setRod = (a, b) => { const d = b.clone().sub(a), len = d.length(); rod.position.copy(a).addScaledVector(d, .5); rod.scale.set(1, len, 1); rod.quaternion.setFromUnitVectors(Y, d.normalize()); rod.visible = true; };
   const stopper = new THREE.Group(); { const c = new THREE.Mesh(new THREE.CylinderGeometry(1.1, .8, 2.2, 24), new THREE.MeshPhysicalMaterial({ color: 0xe0f2fe, transparent: true, opacity: .6, roughness: .1, clearcoat: 1 }));
     const t = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, .5, 24), new THREE.MeshPhysicalMaterial({ color: 0xe0f2fe, transparent: true, opacity: .6, roughness: .1 })); t.position.y = 1.3; stopper.add(c, t); }
-  stopper.visible = false; scene.add(stopper);
+  stopper.visible = false; fp.add(stopper);
   const vapors = []; const vgeo = new THREE.SphereGeometry(.5, 10, 8);
   for (let i = 0; i < 16; i++) { const m = new THREE.Mesh(vgeo, new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0, depthWrite: false })); m.visible = false; scene.add(m); vapors.push(m); }
 
@@ -451,7 +451,7 @@ export function createSim(anim, lib) {
     }
     wash.visible = p.wOn > .5; wash.position.set(p.wX, p.wY, 0); wash.rotation.z = -p.wTilt;
     boat.visible = solidM && p.boatOn > .5; boat.position.set(p.boatX, p.boatY, 0); boat.rotation.z = -p.boatTilt * .5;
-    stopper.visible = p.stopY < 29; stopper.position.set(FX, p.stopY, 0);
+    stopper.visible = p.stopY < 29; stopper.position.set(0, p.stopY - 8, 0);
 
     scene.updateMatrixWorld(true);
     // màu dung dịch (nước cất → màu hóa chất)

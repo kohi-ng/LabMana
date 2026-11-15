@@ -805,7 +805,7 @@ button.row:active{ background: var(--surface-2); }
 @keyframes lab3dPulse{ 0%{ box-shadow:0 2px 8px rgba(220,38,38,.35), 0 0 0 0 rgba(220,38,38,.45); } 70%,100%{ box-shadow:0 2px 8px rgba(220,38,38,.35), 0 0 0 12px rgba(220,38,38,0); } }
 .lab3d-wrap{ overflow:hidden; margin:0 0 12px; }
 .lab3d{ border:1px solid var(--line); border-radius:var(--r-lg); overflow:hidden; background:#F8FAFC; }
-.lab3d-view{ position:relative; width:100%; aspect-ratio:16/10; background:#F8FAFC; }
+.lab3d-view{ position:relative; width:100%; aspect-ratio:16/10; background:#C3CCD8; }
 .lab3d-view canvas{ position:absolute; inset:0; width:100%; height:100%; display:block; cursor:grab; touch-action:none; }
 .lab3d-view canvas:active{ cursor:grabbing; }
 .lab3d-hud{ position:absolute; left:8px; top:8px; max-width:calc(100% - 16px); padding:3px 9px; border-radius:999px; background:rgba(255,255,255,.88); border:1px solid var(--line);
