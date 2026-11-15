@@ -813,6 +813,8 @@ button.row:active{ background: var(--surface-2); }
 .lab3d-hud:empty{ display:none; }
 .lab3d-cams{ display:flex; gap:6px; padding:6px 8px; background:#0e1520; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
 .lab3d-cams button{ flex:none; }
+.lab3d-cams .lab3d-more{ margin-left:auto; }
+.lab3d-cams .lab3d-more.on{ background:rgba(255,255,255,.16); border-color:rgba(255,255,255,.35); }
 .lab3d-cams button{ font:inherit; font-size:.75rem; min-height:44px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#DCE6F2; cursor:pointer; }
 .lab3d-cams button:hover{ background:rgba(30,42,60,.8); }
 .lab3d-cams button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
@@ -820,18 +822,20 @@ button.row:active{ background: var(--surface-2); }
 .lab3d-reset[hidden]{ display:none; }
 .lab3d-hint{ position:absolute; left:50%; top:46%; transform:translate(-50%,-50%); padding:6px 14px; border-radius:999px; background:rgba(10,16,26,.7); color:#E6EEF8; font-size:.8125rem; pointer-events:none; opacity:0; transition:opacity .4s; white-space:nowrap; }
 .lab3d-hint.show{ opacity:1; }
+.lab3d-panel{ background:#0e1520; padding:4px 0 6px; }
+.lab3d-panel[hidden]{ display:none; }
 .lab3d-cap{ padding:9px 12px 4px; font-size:.8125rem; line-height:1.45; color:var(--ink); min-height:2.9em; }
 .lab3d-seek{ display:block; width:calc(100% - 20px); margin:2px 10px 0; height:28px; accent-color:#DC2626; cursor:pointer; touch-action:none; }
 .lab3d-bar{ display:flex; align-items:center; gap:6px; padding:2px 10px 8px; flex-wrap:wrap; }
-.lab3d-bar > button{ min-width:44px; height:44px; border-radius:999px; border:1px solid var(--line-strong); background:#fff; font-size:14px; cursor:pointer; color:var(--ink); }
-.lab3d-bar > button:hover{ background:var(--surface-2); }
+.lab3d-bar > button{ min-width:44px; height:44px; border-radius:999px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); font-size:14px; cursor:pointer; color:#DCE6F2; }
+.lab3d-bar > button:hover{ background:rgba(255,255,255,.16); }
 .lab3d-bar > .lab3d-playbtn{ padding:0 14px; font-size:.8125rem; font-weight:700; background:#DC2626; border-color:#DC2626; color:#fff; white-space:nowrap; }
 .lab3d-bar > .lab3d-playbtn:hover{ background:#B91C1C; }
-.lab3d-bar > [data-a="loop"].on{ background:var(--accent-soft); border-color:var(--accent); }
+.lab3d-bar > [data-a="loop"].on{ background:var(--accent); border-color:var(--accent); color:#fff; }
 .lab3d-dots{ display:flex; gap:7px; margin-left:8px; flex:1; justify-content:flex-end; align-items:center; min-width:90px; }
-.lab3d-dots button{ width:12px; height:12px; padding:0; border-radius:50%; border:2px solid var(--line-strong); background:#fff; cursor:pointer; position:relative; }
+.lab3d-dots button{ width:12px; height:12px; padding:0; border-radius:50%; border:2px solid rgba(255,255,255,.4); background:transparent; cursor:pointer; position:relative; }
 .lab3d-dots button::after{ content:""; position:absolute; inset:-8px; }
-.lab3d-dots button.done{ background:var(--accent-soft); border-color:var(--accent); }
+.lab3d-dots button.done{ background:var(--accent); border-color:var(--accent); }
 .lab3d-dots button.on{ background:#DC2626; border-color:#DC2626; transform:scale(1.25); }
 .lab3d-prog{ height:3px; background:var(--line); }
 .lab3d-prog i{ display:block; height:100%; width:0; background:#DC2626; }

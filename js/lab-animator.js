@@ -696,12 +696,13 @@ export function mount(host, anim) {
     <button type="button" class="lab3d-reset" data-a="resetview" aria-label="Đặt lại góc nhìn" hidden>⟲ Đặt lại góc nhìn</button>
     <div class="lab3d-hint" aria-hidden="true">Kéo để xoay · Chụm để thu phóng</div>
     </div>
-    <div class="lab3d-cams">${VIEWS.map(([k, n], i) => `<button type="button" data-v="${k}" class="${i ? "" : "on"}">${n}</button>`).join("")}</div>
+    <div class="lab3d-cams">${VIEWS.map(([k, n], i) => `<button type="button" data-v="${k}" class="${i ? "" : "on"}">${n}</button>`).join("")}<button type="button" class="lab3d-more" data-a="panel" aria-expanded="false" aria-controls="lab3d-panel">⚙ Điều khiển</button></div>
     <div class="lab3d-cap"></div>
+    <div class="lab3d-panel" id="lab3d-panel" hidden>
     <input class="lab3d-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Thanh tua mô phỏng">
     <div class="lab3d-bar"><button type="button" data-a="prev" aria-label="Bước trước">⏮</button><button type="button" class="lab3d-playbtn" data-a="play" aria-label="Tạm dừng">⏸ Tạm dừng</button><button type="button" data-a="next" aria-label="Bước tiếp">⏭</button>
     <button type="button" data-a="speed" aria-label="Tốc độ phát: 1×">1×</button><button type="button" data-a="loop" aria-pressed="false" aria-label="Lặp lại">🔁 Lặp</button><button type="button" data-a="fullscreen" aria-label="Toàn màn hình">⛶</button>
-    <div class="lab3d-dots"></div></div><div class="lab3d-prog"><i></i></div></div>`;
+    <div class="lab3d-dots"></div></div></div><div class="lab3d-prog"><i></i></div></div>`;
   const $ = s => host.querySelector(s), canvas = $("canvas");
   let renderer;
   try {
@@ -814,6 +815,7 @@ export function mount(host, anim) {
     else if (b.dataset.a === "speed") setSpeed();
     else if (b.dataset.a === "loop") setLoop();
     else if (b.dataset.a === "resetview") resetView();
+    else if (b.dataset.a === "panel") { const pn = $(".lab3d-panel"), open = pn.hidden; pn.hidden = !open; b.setAttribute("aria-expanded", String(open)); b.textContent = open ? "✕ Thu gọn" : "⚙ Điều khiển"; b.classList.toggle("on", open); }
     else if (b.dataset.a === "fullscreen") toggleFS();
   });
 
