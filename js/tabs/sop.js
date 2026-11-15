@@ -4,7 +4,7 @@ import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
-import { esc, richHtml, renderMath, toast, openModal, confirmBox, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
+import { esc, richHtml, richInline, renderMath, toast, openModal, confirmBox, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
 import { computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null, selectedStepId = null;
@@ -74,11 +74,11 @@ function render() {
   const pct = sectionFlat.length ? Math.round(sectionDone / sectionFlat.length * 100) : 0;
   let html = `<div class="sop-head"><button type="button" class="link-btn" data-act="sop-home">Danh sách bài</button></div>
     <h1 class="sop-title"><button type="button" class="acc-btn" data-act="toggle-exp" aria-expanded="${expOpen}">
-      <span>${esc(curExp.title || "Bài thí nghiệm")}</span><span class="chev ${expOpen ? "open" : ""}" aria-hidden="true"></span></button></h1>
+      <span>${richInline(curExp.title || "Bài thí nghiệm")}</span><span class="chev ${expOpen ? "open" : ""}" aria-hidden="true"></span></button></h1>
     ${expOpen ? sectionTabs() : ""}
     <div class="section-run-head">
       <h2><button type="button" class="acc-btn" data-act="toggle-section" aria-expanded="${sectionOpen}">
-        <span>${richHtml(selectedSection.section_name) || `Thí nghiệm ${sectionIndex + 1}`}</span><span class="chev ${sectionOpen ? "open" : ""}" aria-hidden="true"></span></button></h2>
+        <span>${richInline(selectedSection.section_name) || `Thí nghiệm ${sectionIndex + 1}`}</span><span class="chev ${sectionOpen ? "open" : ""}" aria-hidden="true"></span></button></h2>
       <p class="muted small">${sectionDone}/${sectionFlat.length} bước</p>
       <div class="bar"><span style="width:${pct}%"></span></div>
       ${sectionOpen ? tocStrip(sectionFlat) : ""}
@@ -197,7 +197,7 @@ function stepView(f) {
       <span class="step-label">Bước ${f.label}</span>
       ${s.assigned_role ? `<span class="step-role">Phụ trách: ${esc(s.assigned_role)}</span>` : ""}
     </div>
-    ${s.title ? `<h3 class="step-h">${richHtml(s.title)}</h3>` : ""}
+    ${s.title ? `<h3 class="step-h">${richInline(s.title)}</h3>` : ""}
     <div class="step-text">${richHtml(s.text)}</div>` +
     (s.images.length ? `<div>${s.images.map(im => {
       const imageUrl = im.file_id ? driveImageUrl(im.file_id) : im.url;
