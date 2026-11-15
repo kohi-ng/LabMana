@@ -11,10 +11,15 @@ const sstep = (a, b, x) => { const t = clamp((x - a) / (b - a)); return t * t * 
 function rng(a) { return () => { a |= 0; a = a + 0x6D2B79F5 | 0; let t = Math.imul(a ^ a >>> 15, 1 | a); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; }; }
 
 // Màu đặc trưng của dung dịch (nước cất → màu hóa chất)
-const TINTS = { cuso4_5: 0x3b8fe0, kmno4: 0x9b2fae, k2cr2o7: 0xf08a1c, k2cro4: 0xf2d21a, niso4_6: 0x4fb36a, cocl2_6: 0xe0577f,
-  fecl3_6: 0xe3b52a, feso4_7: 0x9cd1a0, mohr: 0xa9d9b0, crcl3_6: 0x3f8f5a, agno3: 0xd5eaf4, mnso4_h2o: 0xf3c9d3 };
-const tintOf = id => TINTS[id] ?? 0xc9e4f4;
-const WATER = 0xcfe9f7;
+// Màu dung dịch (bão hòa hơn để nổi trên nền tối): Cu²⁺ xanh lam, MnO₄⁻ tím, Cr₂O₇²⁻ cam, CrO₄²⁻ vàng, Ni²⁺ lục, Co²⁺ hồng, Fe³⁺ vàng nâu...
+const TINTS = { cuso4_5: 0x1d8cf0, kmno4: 0x8a1fb0, k2cr2o7: 0xff7d00, k2cro4: 0xffd400, niso4_6: 0x2fbf6a, cocl2_6: 0xf0457f,
+  fecl3_6: 0xe8a317, feso4_7: 0x7fd39a, mohr: 0x8fd9a8, crcl3_6: 0x1f9a57, mnso4_h2o: 0xf7b7c9, pbno3_2: 0xd9eefc };
+// Màu tinh thể chất rắn
+const CRYSTAL = { cuso4_5: 0x2878d8, kmno4: 0x2a0a3a, k2cr2o7: 0xe8530a, k2cro4: 0xe0b000, niso4_6: 0x2a9a58, cocl2_6: 0xa81e55,
+  fecl3_6: 0xb2701a, feso4_7: 0x86c897, mohr: 0x96d0a6, crcl3_6: 0x2a6a46, mnso4_h2o: 0xf4cfd9 };
+const isColored = id => TINTS[id] != null;
+const tintOf = id => TINTS[id] ?? 0xa9dcf7;
+const WATER = 0xa4d6f5;
 
 /* ------------------------------ Dụng cụ thủy tinh (LatheGeometry) ------------------------------ */
 function makeVessel({ H, R, wall = .18, floor = .4, refY, ticks = 0, tickLen = .9, glassMat, liqColor }) {
@@ -33,8 +38,20 @@ function makeVessel({ H, R, wall = .18, floor = .4, refY, ticks = 0, tickLen = .
   for (let i = 0; i <= N; i++) { const y = floor + (H - floor) * i / N; lp.push(V2(inner(y) - .03, y)); }
   lp.push(V2(0, H));
   const plane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 0);
-  const mkLiq = clip => new THREE.MeshPhysicalMaterial({ color: liqColor, transparent: true, opacity: .8, roughness: .06, clearcoat: 1,
-    side: THREE.DoubleSide, clippingPlanes: clip ? [plane] : null, envMapIntensity: 1.1 });
+  // Định luật Beer–Lambert: ánh sáng đi qua lớp dung dịch càng dày càng bị hấp thụ → đáy đậm, sát mặt thoáng sáng
+  const uSurf = { value: 0 }, uAbs = { value: .2 };
+  const mkLiq = clip => {
+    const m = new THREE.MeshPhysicalMaterial({ color: liqColor, transparent: true, opacity: .8, roughness: .05, clearcoat: .7, clearcoatRoughness: .05,
+      side: THREE.DoubleSide, clippingPlanes: clip ? [plane] : null, envMapIntensity: .9, emissive: liqColor, emissiveIntensity: .22, depthWrite: false });
+    m.onBeforeCompile = sh => {
+      sh.uniforms.uSurf = uSurf; sh.uniforms.uAbs = uAbs;
+      sh.vertexShader = sh.vertexShader.replace("#include <common>", "#include <common>\nvarying float vWY;")
+        .replace("#include <begin_vertex>", "#include <begin_vertex>\n vWY = (modelMatrix * vec4(transformed, 1.0)).y;");
+      sh.fragmentShader = sh.fragmentShader.replace("#include <common>", "#include <common>\nvarying float vWY; uniform float uSurf; uniform float uAbs;")
+        .replace("#include <dithering_fragment>", "#include <dithering_fragment>\n float dpt = max(uSurf - vWY, 0.0); float ab = 1.0 - exp(-dpt * uAbs);\n gl_FragColor.rgb *= mix(1.28, 0.5, ab); gl_FragColor.a = clamp(gl_FragColor.a + ab * 0.2, 0.0, 1.0);");
+    };
+    return m;
+  };
   const lm = mkLiq(true), sm = mkLiq(false);
   const liquid = new THREE.Mesh(new THREE.LatheGeometry(lp, 72), lm); liquid.renderOrder = 1;
 
@@ -72,7 +89,8 @@ function makeVessel({ H, R, wall = .18, floor = .4, refY, ticks = 0, tickLen = .
   const tmp = new THREE.Vector3(), wq = new THREE.Quaternion();
   const v = {
     group: g, H, R, inner, hOf, f: 0, floor, refY,
-    setColor(c, op) { lm.color.set(c); sm.color.set(c); if (op != null) { lm.opacity = sm.opacity = op; } },
+    setColor(c, op) { lm.color.set(c); sm.color.set(c); lm.emissive.set(c); sm.emissive.set(c); if (op != null) { lm.opacity = sm.opacity = op; } },
+    setAbsorb(k) { uAbs.value = k; },
     /** o: {vort, rip:{a,t}|null, slosh} */
     update(time, o = {}) {
       const show = v.f > .002; liquid.visible = surf.visible = show; if (!show) return;
@@ -80,6 +98,7 @@ function makeVessel({ H, R, wall = .18, floor = .4, refY, ticks = 0, tickLen = .
       tmp.set(0, h, 0); g.localToWorld(tmp);
       let rimY = Infinity; for (const sx of [-1, 1]) { const q = new THREE.Vector3(sx * R(H), H, 0); g.localToWorld(q); rimY = Math.min(rimY, q.y); }
       plane.constant = Math.min(tmp.y, rimY - .05);               // mặt thoáng luôn nằm ngang theo trọng lực
+      uSurf.value = plane.constant;
       g.getWorldQuaternion(wq); const tiltA = Math.acos(clamp(new THREE.Vector3(0, 1, 0).applyQuaternion(wq).y, -1, 1));
       surf.visible = tiltA < .3;
       sgrp.position.set(0, h, 0); sgrp.quaternion.copy(wq).invert();
@@ -166,14 +185,66 @@ const teardropGeo = () => {
   return new THREE.LatheGeometry(pts, 24);
 };
 
+/** LCD cân điện tử: nền xanh lá nhạt có đèn nền, số lớn + đơn vị nhỏ + chấm ổn định */
 function lcdCanvas() {
-  const cv = document.createElement("canvas"); cv.width = 320; cv.height = 110;
-  const ctx = cv.getContext("2d"), tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; let last = null;
-  return { tex, draw(text) {
-    if (text === last) return; last = text;
-    ctx.fillStyle = "#a9bd96"; ctx.fillRect(0, 0, 320, 110); ctx.fillStyle = "#1c2915"; ctx.font = "bold 52px ui-monospace, Menlo, monospace";
-    ctx.textAlign = "right"; ctx.textBaseline = "middle"; ctx.fillText(text, 300, 58); tex.needsUpdate = true;
+  const cv = document.createElement("canvas"); cv.width = 384; cv.height = 128;
+  const ctx = cv.getContext("2d"), tex = new THREE.CanvasTexture(cv); tex.encoding = THREE.sRGBEncoding; tex.anisotropy = 4; let last = null;
+  return { tex, draw(text, stable = true) {
+    const key = text + stable; if (key === last) return; last = key;
+    const g = ctx.createLinearGradient(0, 0, 0, 128); g.addColorStop(0, "#c4d8ae"); g.addColorStop(1, "#a9c18f");
+    ctx.fillStyle = g; ctx.fillRect(0, 0, 384, 128);
+    const i = text.lastIndexOf(" "), num = i < 0 ? text : text.slice(0, i), unit = i < 0 ? "" : text.slice(i + 1);
+    ctx.fillStyle = "#17230f"; ctx.textBaseline = "middle"; ctx.textAlign = "right";
+    let fs = 78; ctx.font = `bold ${fs}px ui-monospace, Menlo, Consolas, monospace`;
+    while (ctx.measureText(num).width > 270 && fs > 34) { fs -= 4; ctx.font = `bold ${fs}px ui-monospace, Menlo, Consolas, monospace`; }
+    ctx.fillText(num, 322, 70);
+    ctx.font = "bold 40px ui-monospace, Menlo, Consolas, monospace"; ctx.textAlign = "left"; ctx.fillText(unit, 332, 84);
+    ctx.fillStyle = stable ? "#17230f" : "rgba(23,35,15,.25)"; ctx.beginPath(); ctx.arc(26, 26, 9, 0, 6.3); ctx.fill();
+    ctx.font = "bold 22px ui-monospace, Menlo, monospace"; ctx.textAlign = "left"; ctx.fillText("STABLE", 42, 28);
+    tex.needsUpdate = true;
   } };
+}
+
+/* ------------------------------ Chữ in lên dụng cụ (decal cong bám thành) ------------------------------ */
+function canvasTex(w, h, draw) {
+  const c = document.createElement("canvas"); c.width = w; c.height = h; draw(c.getContext("2d"), w, h);
+  const t = new THREE.CanvasTexture(c); t.encoding = THREE.sRGBEncoding; t.anisotropy = 4; return t;
+}
+const decalMat = tex => new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false, toneMapped: false, polygonOffset: true, polygonOffsetFactor: -3, polygonOffsetUnits: -3 });
+/** Vá hình trụ bán kính R, cao y0..y1, rộng `len` rad, tâm lệch theta0 (0 = hướng +z, về phía camera) */
+function cylDecal(R, y0, y1, len, theta0, tex) {
+  const m = new THREE.Mesh(new THREE.CylinderGeometry(R, R, y1 - y0, 40, 1, true, theta0 - len / 2, len), decalMat(tex));
+  m.position.y = (y0 + y1) / 2; m.renderOrder = 5; return m;
+}
+/** Vá hình cầu (bầu bình định mức): tâm cầu ở cy, vá cao dy so với xích đạo, rộng w × cao h (cm) */
+function sphDecal(R, cy, dy, w, h, tex) {
+  const pl = w / R, tl = h / R, tc = Math.PI / 2 - Math.asin(clamp(dy / R, -.95, .95));
+  const m = new THREE.Mesh(new THREE.SphereGeometry(R, 40, 24, Math.PI / 2 - pl / 2, pl, tc - tl / 2, tl), decalMat(tex));
+  m.position.y = cy; m.renderOrder = 5; return m;
+}
+function roundedBox(w, d, h, r, mat) {  // hộp bo góc (w × d trên mặt sàn, cao h), đáy ở y=0
+  const sh = new THREE.Shape(), x = -w / 2, y = -d / 2;
+  sh.moveTo(x + r, y); sh.lineTo(x + w - r, y); sh.quadraticCurveTo(x + w, y, x + w, y + r); sh.lineTo(x + w, y + d - r); sh.quadraticCurveTo(x + w, y + d, x + w - r, y + d);
+  sh.lineTo(x + r, y + d); sh.quadraticCurveTo(x, y + d, x, y + d - r); sh.lineTo(x, y + r); sh.quadraticCurveTo(x, y, x + r, y);
+  const g = new THREE.ExtrudeGeometry(sh, { depth: h - .24, bevelEnabled: true, bevelThickness: .12, bevelSize: .12, bevelSegments: 3, curveSegments: 10 });
+  g.rotateX(-Math.PI / 2); const m = new THREE.Mesh(g, mat); m.position.y = .12; return m;
+}
+const KIND_BAND = { acid: "#d97706", base: "#2563eb", oxidizer: "#7c3aed", toxic: "#dc2626", salt: "#16a34a", unknown: "#64748b" };
+/** Nhãn dán trên chai/lọ: dải màu theo nhóm nguy cơ, công thức, nồng độ/độ tinh khiết */
+function bottleLabel(formula, name, sub, kind) {
+  return canvasTex(512, 300, (x, w, h) => {
+    x.fillStyle = "#fbfbf8"; x.fillRect(0, 0, w, h);
+    x.fillStyle = KIND_BAND[kind] || KIND_BAND.unknown; x.fillRect(0, 0, w, 56);
+    x.fillStyle = "#fff"; x.textAlign = "center"; x.textBaseline = "middle";
+    let nf = 30; x.font = `bold ${nf}px Inter, sans-serif`; const nm = name.toUpperCase();
+    while (x.measureText(nm).width > w - 30 && nf > 14) { nf -= 2; x.font = `bold ${nf}px Inter, sans-serif`; }
+    x.fillText(nm, w / 2, 29);
+    let fs = 92; x.fillStyle = "#0b1220"; x.font = `800 ${fs}px Inter, sans-serif`;
+    while (x.measureText(formula).width > w - 50 && fs > 30) { fs -= 4; x.font = `800 ${fs}px Inter, sans-serif`; }
+    x.fillText(formula, w / 2, 148);
+    x.fillStyle = "#475569"; x.font = "600 34px Inter, sans-serif"; x.fillText(sub, w / 2, 236);
+    x.strokeStyle = "#cbd5e1"; x.lineWidth = 4; x.strokeRect(2, 2, w - 4, h - 4);
+  });
 }
 
 /* ====================================================================================================
@@ -181,52 +252,90 @@ function lcdCanvas() {
  * ================================================================================================== */
 export function createSim(anim, lib) {
   THREE = lib.THREE; gsap = lib.gsap;
+  if (THREE.ColorManagement && "legacyMode" in THREE.ColorManagement) THREE.ColorManagement.legacyMode = false;  // hex sRGB → tuyến tính đúng → màu sâu, bão hòa, không bị bạc
   const A = anim, mode = A.mode, solidM = mode.startsWith("solid"), volM = mode.endsWith("vol");
   const FV = A.finalVolume, sa = A.soluteAmount, wa = A.solventAmount, F = A.soluteFormula, exo = !!A.exothermic;
-  const scene = new THREE.Scene(); scene.background = new THREE.Color(0xc3ccd8);
+  const scene = new THREE.Scene();
+  // Nền studio tối (độ tương phản cao) để kính viền sáng và màu dung dịch nổi bật
+  scene.background = canvasTex(4, 256, (x, w, h) => { const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, "#070b12"); g.addColorStop(.55, "#17202d"); g.addColorStop(1, "#2a3647"); x.fillStyle = g; x.fillRect(0, 0, w, h); });
+  scene.fog = new THREE.Fog(0x131b27, 70, 190);
   const camera = new THREE.PerspectiveCamera(32, 16 / 10, .5, 400);
-  scene.add(new THREE.HemisphereLight(0xffffff, 0x9aa7b8, .85));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.15); sun.position.set(22, 42, 28); scene.add(sun);
+  scene.add(new THREE.HemisphereLight(0xdbe6f6, 0x1b2331, .6));
+  const sun = new THREE.DirectionalLight(0xfff4e6, 1.55); sun.position.set(22, 42, 28); scene.add(sun);              // đèn chính (ấm)
+  const rim = new THREE.DirectionalLight(0x86b4ff, 1.25); rim.position.set(-34, 26, -30); scene.add(rim);          // đèn viền (lạnh) → viền sáng trên kính
+  const fill = new THREE.DirectionalLight(0xffffff, .3); fill.position.set(-26, 12, 30); scene.add(fill);
 
   const std = (c, r = .5, m = 0) => new THREE.MeshStandardMaterial({ color: c, roughness: r, metalness: m });
-  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xffffff, roughness: .03, metalness: 0, transparent: true, opacity: .15, side: THREE.DoubleSide,
-    depthWrite: false, envMapIntensity: 1.7, clearcoat: 1, clearcoatRoughness: .02 });
-  glassMat.onBeforeCompile = sh => { // viền phản quang Fresnel trên thành thủy tinh
+  const glassMat = new THREE.MeshPhysicalMaterial({ color: 0xeaf6ff, roughness: .02, metalness: 0, transparent: true, opacity: .1, side: THREE.DoubleSide,
+    depthWrite: false, envMapIntensity: 2.2, clearcoat: 1, clearcoatRoughness: .02 });
+  glassMat.onBeforeCompile = sh => { // viền phản quang Fresnel trên thành thủy tinh (rõ nét trên nền tối)
     sh.fragmentShader = sh.fragmentShader.replace("#include <dithering_fragment>",
-      "#include <dithering_fragment>\n gl_FragColor.a = clamp(gl_FragColor.a + pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 3.0) * 0.6, 0.0, 1.0);");
+      "#include <dithering_fragment>\n float fr = pow(1.0 - abs(dot(normalize(vNormal), normalize(vViewPosition))), 2.4); gl_FragColor.rgb += vec3(0.55, 0.7, 0.9) * fr * 0.55; gl_FragColor.a = clamp(gl_FragColor.a + fr * 0.75, 0.0, 1.0);");
   };
-  const stock = tintOf(A.chemId);
+  const colored = isColored(A.chemId), stock = tintOf(A.chemId);
+  const LIQ_OP = colored ? .9 : .5;                 // dung dịch có màu: đặc hơn; nước/dung dịch không màu: trong, ánh xanh
 
   // Sàn + bóng mờ
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 64), std(0x788597, .92)); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+  // Mặt bàn tối, mờ, có vệt sáng ở giữa như đèn chiếu → bóng đổ và đáy kính đọc rõ
+  const floorTex = canvasTex(256, 256, (x, w, h) => { const g = x.createRadialGradient(w / 2, h / 2, 6, w / 2, h / 2, w / 2); g.addColorStop(0, "#56667d"); g.addColorStop(.45, "#2c384a"); g.addColorStop(1, "#0f151e"); x.fillStyle = g; x.fillRect(0, 0, w, h); });
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(90, 64), new THREE.MeshStandardMaterial({ map: floorTex, roughness: .5, metalness: .15 })); floor.rotation.x = -Math.PI / 2; scene.add(floor);
   const blobTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
-    gr.addColorStop(0, "rgba(15,23,42,.35)"); gr.addColorStop(1, "rgba(15,23,42,0)"); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
+    gr.addColorStop(0, "rgba(0,0,0,.6)"); gr.addColorStop(1, "rgba(0,0,0,0)"); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const blobs = [];
   const blob = (obj, size, base = 0) => { const m = new THREE.Mesh(new THREE.PlaneGeometry(size, size), new THREE.MeshBasicMaterial({ map: blobTex, transparent: true, depthWrite: false })); m.rotation.x = -Math.PI / 2; m.position.y = .03; scene.add(m); blobs.push({ obj, m, size, base }); };
 
   /* ---- Cân điện tử ---- */
   const bal = (() => {
     const g = new THREE.Group(), L = lcdCanvas();
-    const body = new THREE.Mesh(new THREE.BoxGeometry(9, 1.6, 7), std(0xe5e7eb, .4)); body.position.y = .8;
-    const pan = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, .18, 48), std(0xb8c0cc, .25, .8)); pan.position.y = 1.69;
-    const scr = new THREE.Mesh(new THREE.PlaneGeometry(4.2, 1.3), new THREE.MeshBasicMaterial({ map: L.tex, toneMapped: false })); scr.position.set(0, .85, 3.56); L.draw("0,000 g");
-    const bez = new THREE.Mesh(new THREE.BoxGeometry(4.6, 1.5, .1), std(0x1f2937, .5)); bez.position.set(0, .85, 3.45);
-    g.add(body, pan, scr, bez); scene.add(g); return { group: g, panY: 1.78, draw: L.draw, tex: L.tex };
+    const bodyM = std(0xe3e8ee, .3, .12), dark = std(0x182231, .4, .3), steel = std(0xd2d9e2, .2, .95);
+    const body = roundedBox(9.6, 7.2, 1.62, .9, bodyM);
+    const deck = roundedBox(7.6, 4.6, .1, .7, dark); deck.position.set(0, 1.62, 0);   // tấm đệm tối quanh đĩa cân
+    const post = new THREE.Mesh(new THREE.CylinderGeometry(.55, .7, .16, 24), steel); post.position.set(0, 1.78, 0);
+    const pan = new THREE.Mesh(new THREE.CylinderGeometry(2.8, 2.8, .16, 64), steel); pan.position.set(0, 1.69, 0);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(2.74, .05, 8, 64), steel); ring.rotation.x = Math.PI / 2; ring.position.set(0, 1.77, 0);
+    const bez = new THREE.Mesh(new THREE.BoxGeometry(4.9, 1.45, .12), std(0x0f1824, .35, .3)); bez.position.set(0, .84, 3.76);
+    const scr = new THREE.Mesh(new THREE.PlaneGeometry(4.5, 1.15), new THREE.MeshBasicMaterial({ map: L.tex, toneMapped: false })); scr.position.set(0, .84, 3.83);
+    L.draw("0,000 g");
+    const btn = (x, c) => { const b = new THREE.Mesh(new THREE.CylinderGeometry(.3, .3, .16, 20), std(c, .4, .2)); b.rotation.x = Math.PI / 2; b.position.set(x, .84, 3.8); return b; };
+    const led = new THREE.Mesh(new THREE.SphereGeometry(.1, 12, 8), new THREE.MeshBasicMaterial({ color: 0x4ade80, toneMapped: false })); led.position.set(-4.05, 1.32, 3.78);
+    g.add(body, deck, post, pan, ring, bez, scr, btn(3.35, 0x475569), btn(4.05, 0xdc2626), led);
+    for (const [fx, fz] of [[-4, -2.9], [4, -2.9], [-4, 2.9], [4, 2.9]]) { const f = new THREE.Mesh(new THREE.CylinderGeometry(.35, .4, .14, 12), dark); f.position.set(fx, .02, fz); g.add(f); }
+    scene.add(g); return { group: g, panY: 1.78, draw: L.draw, tex: L.tex };
   })();
+  const maxRead = A.finalMass ?? sa, dec = maxRead < 1 ? 4 : maxRead < 100 ? 3 : maxRead < 1000 ? 2 : 1;
+  const balText = v => `${(+v).toLocaleString("vi-VN", { minimumFractionDigits: dec, maximumFractionDigits: dec })} g`;
   const needBal = mode !== "dilute-vol", balX = mode === "solid-vol" ? -13 : 0;
-  bal.group.visible = needBal; bal.group.position.x = balX; if (needBal) blob(bal.group, 14);
+  bal.group.visible = needBal; bal.group.position.x = balX; bal.draw(balText(0)); if (needBal) blob(bal.group, 14);
   const PAN = bal.panY;
 
   /* ---- Dụng cụ thủy tinh ---- */
-  const beaker = makeVessel({ H: 9, R: () => 3.3, wall: .2, floor: .45, refY: 7.6, ticks: 8, tickLen: .9, glassMat, liqColor: WATER });
+  const beaker = makeVessel({ H: 9, R: () => 3.3, wall: .2, floor: .45, refY: 7.6, ticks: 0, glassMat, liqColor: WATER });
+  { // thang chia độ in men trắng: 50…250 mL (f=1 ứng với vạch 250 mL) + vạch phụ
+    const NT = 5, W = 200, Hh = 600, tex = canvasTex(W, Hh, (x, w, h) => {
+      x.fillStyle = "#f8fafc"; x.strokeStyle = "#f8fafc"; x.textBaseline = "middle"; x.textAlign = "right";
+      const yy = hh => (1 - hh / 9) * h;
+      for (let i = 1; i <= NT; i++) {
+        const y = yy(beaker.hOf(i / NT)); x.lineWidth = 3; x.beginPath(); x.moveTo(w * .56, y); x.lineTo(w * .92, y); x.stroke();
+        x.font = "bold 26px Inter, sans-serif"; x.fillText(String(i * 50), w * .5, y);
+        const ym = yy(beaker.hOf((i - .5) / NT)); x.lineWidth = 2; x.beginPath(); x.moveTo(w * .56, ym); x.lineTo(w * .74, ym); x.stroke();
+      }
+      x.textAlign = "left"; x.font = "bold 24px Inter, sans-serif"; x.fillText("250 mL", w * .12, yy(8.45));
+    });
+    beaker.group.add(cylDecal(3.3 + .03, 0, 9, 1.05, .62, tex));
+  }
   const flaskR = y => { const s = y < 8 ? 4.5 * Math.sqrt(Math.max(0, 1 - ((y - 4.7) / 4.5) ** 2)) : 0;
     const sh = y >= 8 && y < 11 ? lerp(2.83, 1.0, sstep(8, 11, y)) : 0; return y < 1 ? Math.max(s, 2.4) : y < 8 ? s : y < 11 ? sh : y > 15.4 ? 1.0 + .18 * sstep(15.4, 16, y) : 1.0; };
   const flask = makeVessel({ H: 16, R: flaskR, wall: .18, floor: .4, refY: 13, glassMat, liqColor: WATER });
-  { const ring = new THREE.Mesh(new THREE.TorusGeometry(1.03, .035, 8, 64), new THREE.MeshBasicMaterial({ color: 0xdc2626 })); ring.rotation.x = Math.PI / 2; ring.position.y = 13; flask.group.add(ring); }
+  { const ring = new THREE.Mesh(new THREE.TorusGeometry(1.03, .04, 8, 64), new THREE.MeshBasicMaterial({ color: 0xff4a3d, toneMapped: false })); ring.rotation.x = Math.PI / 2; ring.position.y = 13; flask.group.add(ring); }
   const bottleR = y => y < 7 ? 2.6 : y < 9 ? lerp(2.6, 1.1, sstep(7, 9, y)) : 1.1;
   const stockV = makeVessel({ H: 10.5, R: bottleR, wall: .15, floor: .35, refY: 6.5, glassMat, liqColor: stock });
-  stockV.setColor(stock, .88);
+  stockV.setColor(stock, colored ? .93 : .6);
 
+  beaker.setColor(WATER, .5); flask.setColor(WATER, .5);
+  const stockCap = new THREE.Group(); { const c = new THREE.Mesh(new THREE.CylinderGeometry(1.32, 1.32, 1.3, 40), std(0xf1f5f9, .3, .1)); c.position.y = 10.5 + .65;
+    for (let i = 0; i < 26; i++) { const a = i / 26 * Math.PI * 2, r = new THREE.Mesh(new THREE.BoxGeometry(.08, 1.2, .1), std(0xcbd5e1, .5)); r.position.set(Math.cos(a) * 1.33, 0, Math.sin(a) * 1.33); r.rotation.y = -a; c.add(r); }
+    stockCap.add(c); }
+  stockV.group.add(stockCap);
   const bx = 0, BY0 = !volM ? PAN : 0;
   const FX = mode === "solid-vol" ? 10 : 3, SX = -10;
   const fp = new THREE.Group(); flask.group.position.y = -8; fp.add(flask.group); // trục xoay bình ở tâm bầu
@@ -237,8 +346,14 @@ export function createSim(anim, lib) {
     const lbl = (text, w, h) => { const c = document.createElement("canvas"); c.width = 256; c.height = Math.round(256 * h / w); const x = c.getContext("2d");
       x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height); x.fillStyle = "#0f172a"; x.font = "bold 54px Inter, sans-serif"; x.textAlign = "center"; x.textBaseline = "middle";
       x.fillText(text, 128, c.height / 2); return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: new THREE.CanvasTexture(c) })); };
-    const l1 = lbl(F, 3.4, 1.8); l1.position.set(0, 3.2, 2.66); stockV.group.add(l1);
-    const l2 = lbl(A.targetText, 3.6, 1.5); l2.position.set(0, 5, 3.4); flask.group.add(l2);
+    // nhãn chai dung dịch gốc (dải màu theo nhóm, công thức, nồng độ/khối lượng riêng) bám sát thân chai
+    const cm = CHEMS[A.chemId] || {}, sub = cm.assay ? `${String(cm.assay).replace(".", ",")}% · d ${String(cm.density).replace(".", ",")} g/mL` : "dung dịch gốc";
+    stockV.group.add(cylDecal(2.6 + .03, 1.0, 5.6, 1.55, 0, bottleLabel(F, cm.name || "", sub, cm.kind)));
+    // bình định mức: chữ in men (dung tích, nhiệt độ hiệu chuẩn) + nhãn dán giấy ghi tên và nồng độ
+    const print = canvasTex(360, 200, (x, w, h) => { x.fillStyle = "#f8fafc"; x.textAlign = "center"; x.textBaseline = "middle";
+      x.font = "800 64px Inter, sans-serif"; x.fillText(fmtVol(FV ?? 0), w / 2, 62); x.font = "600 34px Inter, sans-serif"; x.fillText("20 °C  ·  CLASS A", w / 2, 128); });
+    flask.group.add(sphDecal(4.5 + .03, 4.7, 2.5, 3.9, 2.1, print));
+    flask.group.add(sphDecal(4.5 + .035, 4.7, -.9, 3.9, 2.7, bottleLabel(F, "", A.targetText, (CHEMS[A.chemId] || {}).kind)));
   }
 
   /* ---- Cốc/ống đong/pipet dùng để lấy dung dịch gốc (dilute-vol) ---- */
@@ -252,26 +367,37 @@ export function createSim(anim, lib) {
     const body = new THREE.Mesh(new THREE.CylinderGeometry(.9, .55, 9, 24), std(0xf3f4f6, .4)); body.position.y = 8.2;
     const btn = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, 1.4, 20), std(0xdc2626, .4)); btn.position.y = 13.4; tool.group.add(body, btn);
   }
-  if (tool) { tool.setColor(stock, .85); scene.add(tool.group); tool.group.visible = false; }
+  if (tool) { tool.setColor(stock, colored ? .93 : .65); scene.add(tool.group); tool.group.visible = false; }
 
-  /* ---- Chai tia nước cất ---- */
-  const wash = new THREE.Group(); { const b = new THREE.Mesh(new THREE.CylinderGeometry(1.5, 1.5, 7, 32), std(0xf8fafc, .35)); b.position.y = 3.5;
-    const sh = new THREE.Mesh(new THREE.CylinderGeometry(.55, 1.5, 1.6, 32), std(0xf8fafc, .35)); sh.position.y = 7.8;
-    const nz = new THREE.Mesh(new THREE.CylinderGeometry(.14, .2, 2, 12), std(0x2563eb, .4)); nz.position.y = 9.5;
-    const cap = new THREE.Mesh(new THREE.CylinderGeometry(.55, .55, .6, 20), std(0x2563eb, .4)); cap.position.y = 8.9;
-    wash.add(b, sh, cap, nz); scene.add(wash); wash.visible = false; }
+  /* ---- Chai tia nước cất (nhựa PE mờ, nắp xanh có khía, vòi thuôn) ---- */
+  const wash = new THREE.Group(); {
+    const V2 = (x, y) => new THREE.Vector2(x, y);
+    const bodyPts = [V2(0, 0), V2(1.05, 0), V2(1.38, .22), V2(1.5, .7), V2(1.5, 5.6), V2(1.4, 6.5), V2(1.0, 7.2), V2(.62, 7.7), V2(.55, 8.3)];
+    const pe = new THREE.MeshPhysicalMaterial({ color: 0xf1f6fc, roughness: .42, transparent: true, opacity: .72, clearcoat: .6, side: THREE.DoubleSide, envMapIntensity: 1.2 });
+    const b = new THREE.Mesh(new THREE.LatheGeometry(bodyPts, 48), pe);
+    const cap = new THREE.Mesh(new THREE.CylinderGeometry(.62, .66, .75, 32), std(0x1d6fe8, .35, .1)); cap.position.y = 8.55;
+    for (let i = 0; i < 18; i++) { const a = i / 18 * Math.PI * 2, r = new THREE.Mesh(new THREE.BoxGeometry(.06, .62, .07), std(0x1558c0, .5)); r.position.set(Math.cos(a) * .66, 0, Math.sin(a) * .66); r.rotation.y = -a; cap.add(r); }
+    const nz = new THREE.Mesh(new THREE.CylinderGeometry(.1, .24, 1.6, 16), std(0x1d6fe8, .35, .1)); nz.position.y = 9.7;
+    const tip = new THREE.Mesh(new THREE.CylinderGeometry(.06, .1, .3, 12), std(0x0f172a, .5)); tip.position.y = 10.5;
+    wash.add(b, cap, nz, tip); scene.add(wash); wash.visible = false; }
   const NOZ = new THREE.Vector3(0, 10.5, 0);
   const washPose = (tip, tilt) => { const o = NOZ.clone().applyAxisAngle(new THREE.Vector3(0, 0, 1), -tilt); return { x: tip.x - o.x, y: tip.y - o.y }; };
   const WREST = { x: 20, y: 0 };
 
   /* ---- Lọ chất rắn + thuyền cân + tinh thể ---- */
-  const solidBottle = new THREE.Group(); { const b = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.2, 5.5, 32), std(0xf8fafc, .3)); b.position.y = 2.75;
-    const c = new THREE.Mesh(new THREE.CylinderGeometry(2.3, 2.3, 1.1, 32), std(0x2563eb, .4)); c.position.y = 6.05; solidBottle.add(b, c); }
+  const solidBottle = new THREE.Group(); {
+    const cm = CHEMS[A.chemId] || {};
+    const b = new THREE.Mesh(new THREE.CylinderGeometry(2.2, 2.3, 5.5, 48), new THREE.MeshPhysicalMaterial({ color: 0xf3f6fa, roughness: .35, clearcoat: .5 })); b.position.y = 2.75;
+    const sh = new THREE.Mesh(new THREE.CylinderGeometry(1.9, 2.2, .5, 48), std(0xf3f6fa, .35)); sh.position.y = 5.7;
+    const c = new THREE.Mesh(new THREE.CylinderGeometry(1.95, 1.95, 1.1, 48), std(0x1d4ed8, .35, .1)); c.position.y = 6.5;
+    for (let i = 0; i < 28; i++) { const a = i / 28 * Math.PI * 2, r = new THREE.Mesh(new THREE.BoxGeometry(.09, 1.0, .12), std(0x1e40af, .5)); r.position.set(Math.cos(a) * 1.97, 0, Math.sin(a) * 1.97); r.rotation.y = -a; c.add(r); }
+    solidBottle.add(b, sh, c, cylDecal(2.3 + .03, .9, 4.9, 1.6, 0, bottleLabel(F, cm.name || "", cm.purity ? `độ tinh khiết ${String(cm.purity).replace(".", ",")}%` : "chất rắn", cm.kind)));
+  }
   solidBottle.position.set(solidM && volM ? balX - 8.5 : -9, 0, -1.5); solidBottle.visible = solidM; scene.add(solidBottle);
   const boat = new THREE.Mesh(new THREE.SphereGeometry(1.5, 28, 12, 0, Math.PI * 2, Math.PI / 2, Math.PI / 2), new THREE.MeshStandardMaterial({ color: 0xf1f5f9, roughness: .4, side: THREE.DoubleSide }));
   boat.scale.set(1.6, .5, 1.1); boat.visible = solidM; scene.add(boat);
   const NC = 42, cr = rng(7), crystals = [], cgeo = [new THREE.IcosahedronGeometry(1, 0), new THREE.OctahedronGeometry(1, 0), new THREE.DodecahedronGeometry(1, 0)];
-  const cmat = new THREE.MeshStandardMaterial({ color: A.chemId === "kmno4" ? 0x5b1a6b : 0xf8fafc, roughness: .25, metalness: .1 });
+  const cmat = new THREE.MeshPhysicalMaterial({ color: CRYSTAL[A.chemId] ?? 0xf6f8fb, roughness: .18, metalness: .05, clearcoat: 1, clearcoatRoughness: .08, envMapIntensity: 1.6 });
   for (let i = 0; i < NC; i++) {
     const m = new THREE.Mesh(cgeo[i % 3], cmat); m.visible = false; scene.add(m);
     crystals.push({ m, a: cr() * 6.28, rr: cr(), s: .16 + cr() * .2, d: cr() * .55, rot: cr() * 6, bx: (cr() - .5) * 1.8, bz: (cr() - .5) * 1.1, ph: cr() });
@@ -279,7 +405,8 @@ export function createSim(anim, lib) {
 
   /* ---- Đũa thủy tinh, nút bình, hơi nhiệt ---- */
   const rod = new THREE.Mesh(new THREE.CylinderGeometry(.2, .2, 1, 14), new THREE.MeshPhysicalMaterial({ color: 0xffffff, transparent: true, opacity: .45, roughness: .05, clearcoat: 1, envMapIntensity: 1.5 }));
-  rod.visible = false; scene.add(rod); const Y = new THREE.Vector3(0, 1, 0);
+  rod.visible = false; scene.add(rod);
+  const Y = new THREE.Vector3(0, 1, 0);
   const setRod = (a, b) => { const d = b.clone().sub(a), len = d.length(); rod.position.copy(a).addScaledVector(d, .5); rod.scale.set(1, len, 1); rod.quaternion.setFromUnitVectors(Y, d.normalize()); rod.visible = true; };
   const stopper = new THREE.Group(); { const c = new THREE.Mesh(new THREE.CylinderGeometry(1.1, .8, 2.2, 24), new THREE.MeshPhysicalMaterial({ color: 0xe0f2fe, transparent: true, opacity: .6, roughness: .1, clearcoat: 1 }));
     const t = new THREE.Mesh(new THREE.CylinderGeometry(1.3, 1.3, .5, 24), new THREE.MeshPhysicalMaterial({ color: 0xe0f2fe, transparent: true, opacity: .6, roughness: .1 })); t.position.y = 1.3; stopper.add(c, t); }
@@ -437,7 +564,7 @@ export function createSim(anim, lib) {
   const waterC = new THREE.Color(WATER), tintC = new THREE.Color(stock), mixC = new THREE.Color();
   const dropSplashDir = Array.from({ length: 5 }, (_, i) => ({ vx: (i - 2) * .55, vy: 1.4 + (i % 2) * .5 }));
   const fCenter = () => FX;
-  let lastLCD = "";
+  let lastLCD = "", lastRead = 0;
 
   function apply(time) {
     const p = P;
@@ -446,6 +573,7 @@ export function createSim(anim, lib) {
     beaker.group.position.set(p.bX, p.bY, 0); beaker.group.rotation.z = -p.bTilt;
     fp.position.set(FX, 8 + p.fLift, 0); fp.rotation.z = p.fRot;
     stockV.group.position.set(p.sX, p.sY, 0); stockV.group.rotation.z = -p.sTilt;
+    stockCap.visible = p.sTilt < .02 && !(p.tOn > .5) && p.rodMode !== 2;   // nắp chỉ đậy khi chai đứng yên và chưa dùng
     if (tool) {
       tool.f = p.tFill; tool.group.visible = p.tOn > .5; tool.group.position.set(p.tX, p.tY, 0); tool.group.rotation.z = -p.tTilt;
     }
@@ -455,7 +583,7 @@ export function createSim(anim, lib) {
 
     scene.updateMatrixWorld(true);
     // màu dung dịch (nước cất → màu hóa chất)
-    mixC.copy(waterC).lerp(tintC, p.tint * .85); beaker.setColor(mixC, lerp(.55, .82, p.tint)); flask.setColor(mixC, lerp(.55, .82, p.tint));
+    mixC.copy(waterC).lerp(tintC, p.tint); beaker.setColor(mixC, lerp(.5, LIQ_OP, p.tint)); flask.setColor(mixC, lerp(.5, LIQ_OP, p.tint));
     jetMat.color.copy(waterC); pourMat.color.copy(p.pSrc === 0 ? mixC : tintC);
 
     // mặt thoáng + sóng
@@ -487,7 +615,7 @@ export function createSim(anim, lib) {
     });
 
     // LCD cân điện tử (fmtMass/fmtVol khớp #calc)
-    if (needBal) { const txt = p.lcd <= 0 ? "0,000 g" : fmtMass(p.lcd); bal.draw(txt); lastLCD = txt; }
+    if (needBal) { const txt = balText(Math.max(0, p.lcd)); bal.draw(txt, Math.abs(p.lcd - lastRead) < 1e-6 * (1 + p.lcd) || p.lcd <= 0); lastRead = p.lcd; lastLCD = txt; }
 
     // đũa thủy tinh
     rod.visible = false;
@@ -571,9 +699,9 @@ export function mount(host, anim) {
 
   const sim = createSim(anim, lib), { scene, camera, tl, steps, P } = sim;
   { // môi trường studio (PMREM) cho phản xạ/khúc xạ thủy tinh
-    const env = new THREE_.Scene(); env.add(new THREE_.Mesh(new THREE_.SphereGeometry(60, 24, 12), new THREE_.MeshBasicMaterial({ color: 0x9fb0c3, side: THREE_.BackSide })));
+    const env = new THREE_.Scene(); env.add(new THREE_.Mesh(new THREE_.SphereGeometry(60, 24, 12), new THREE_.MeshBasicMaterial({ color: 0x131c2b, side: THREE_.BackSide })));
     const panel = (w, h, x, y, z, i) => { const m = new THREE_.Mesh(new THREE_.PlaneGeometry(w, h), new THREE_.MeshBasicMaterial({ color: new THREE_.Color(i, i, i), side: THREE_.DoubleSide })); m.position.set(x, y, z); m.lookAt(0, 0, 0); env.add(m); };
-    panel(40, 20, 0, 40, 12, 7); panel(14, 40, -38, 14, 8, 5); panel(14, 40, 38, 14, -6, 4); panel(30, 12, 0, 8, 45, 3);
+    panel(36, 16, 0, 40, 12, 6); panel(8, 40, -38, 14, 8, 5); panel(8, 40, 38, 14, -6, 3.5); panel(24, 8, 0, 8, 45, 1.6);
     const pm = new THREE_.PMREMGenerator(renderer); scene.environment = pm.fromScene(env, .02).texture; pm.dispose();
   }
 
