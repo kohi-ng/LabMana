@@ -277,21 +277,25 @@ async function callGemini() {
 
 
 /* ------------------------------ AI Compose cho Kế hoạch ------------------------------ */
-export async function getPlannerComposeSettings() {
+const FORMAT_INSTRUCTION = [
+  "ĐỊNH DẠNG BẮT BUỘC TƯƠNG THÍCH VỚI BỘ HIỂN THỊ LABMANA:",
+  "Cấm tiêu đề Markdown bằng dấu thăng #, ##, ###, ####, ##### hoặc ###### ở đầu dòng. Thay tiêu đề bằng *Tiêu đề mục*.",
+  "Không dùng **hai dấu sao**. Chỉ dùng một cặp dấu sao *in đậm*.",
+  "Cú pháp hỗ trợ: *in đậm*; dòng danh sách bắt đầu bằng '- '; bảng Markdown chuẩn dạng | Cột 1 | Cột 2 | với hàng phân cách | --- | --- |; công thức hóa học trong $...$ hoặc $\ce{H2SO4}$.",
+  "Không dùng code fence, HTML, blockquote hoặc cú pháp Markdown khác. Giữ nguyên dấu $, dấu gạch đứng của bảng và dấu gạch đầu dòng.",
+  "Chỉ xuất nội dung SOP hoàn chỉnh, không chào hỏi hoặc giải thích ngoài nội dung."
+].join("\n");
+
+
+export async function getPlannerComposeSettings(requestedModel = null) {
   if (!config) await loadConfig();
-  const model = currentModel();
+  const models = modelList();
+  const model = requestedModel && models.includes(requestedModel) ? requestedModel : currentModel();
   const p = paramsFor(model);
-  return {
-    models: modelList(),
-    model,
-    maxOutputTokens: 2048,
-    thinkingBudget: 256,
-    temperature: 0.25,
-    configuredMaxOutputTokens: p.maxOutputTokens,
-    configuredThinkingBudget: p.thinkingBudget,
-    configuredTemperature: p.temperature
-  };
+  return { models, model, maxOutputTokens: p.maxOutputTokens, thinkingBudget: p.thinkingBudget ?? 256, temperature: p.temperature };
 }
+export function setPlannerComposeTuning(model, key, value) { setTuning(model, key, value); }
+export function resetPlannerComposeTuning(model) { delete tuning[model]; saveTuning(); }
 
 /** Gọi Gemini cho một tác vụ độc lập, vẫn dùng thứ tự Cascade chung của tab AI. */
 export async function composeForPlanner({ prompt, context = "", systemInstruction = "", model, maxOutputTokens = 2048, thinkingBudget = 256, temperature = 0.25 }) {
@@ -307,7 +311,7 @@ export async function composeForPlanner({ prompt, context = "", systemInstructio
     };
     const budget = clamp(Math.round(num(thinkingBudget, 256)), 0, 24576);
     if (budget > 0) generationConfig.thinkingConfig = { thinkingBudget: budget };
-    const instruction = ["Bạn là trợ lý soạn thảo SOP thí nghiệm hóa học LabMana. Viết chính xác, thực tế, rõ ràng và bám sát ngữ cảnh được cung cấp.", systemInstruction].filter(Boolean).join("\n\n");
+    const instruction = ["Bạn là trợ lý soạn thảo SOP thí nghiệm hóa học LabMana. Viết chính xác, thực tế, rõ ràng và bám sát ngữ cảnh được cung cấp.", FORMAT_INSTRUCTION, systemInstruction].filter(Boolean).join("\n\n");
     const userText = [context ? "NGỮ CẢNH BÀI THÍ NGHIỆM:\n" + context : "", "YÊU CẦU SOẠN THẢO:\n" + String(prompt || "").trim()].filter(Boolean).join("\n\n");
     const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(active)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
     try {

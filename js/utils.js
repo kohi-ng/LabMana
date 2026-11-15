@@ -13,10 +13,11 @@ export const snippet = (t, n = 48) => {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 };
 
-/** Văn bản người dùng → HTML an toàn; hỗ trợ công thức và bảng Markdown đơn giản. */
+/** Văn bản người dùng → HTML an toàn; hỗ trợ *đậm*, danh sách gạch đầu dòng và bảng Markdown đơn giản. */
 export function richHtml(t) {
   const lines = String(t ?? "").split("\n");
   const html = [];
+  const inline = value => esc(value).replace(/\*([^*\n]+)\*/g, "<strong>$1</strong>");
   const tableCells = line => {
     const value = line.trim();
     if (!value.startsWith("|") || !value.endsWith("|")) return null;
@@ -24,27 +25,35 @@ export function richHtml(t) {
   };
   for (let i = 0; i < lines.length;) {
     const cells = tableCells(lines[i]);
-    if (!cells || cells.length < 2) {
-      html.push(esc(lines[i]).replace(/\n/g, "<br>"));
-      i++;
+    if (cells && cells.length >= 2) {
+      const rows = [];
+      while (i < lines.length) {
+        const row = tableCells(lines[i]);
+        if (!row || row.length < 2) break;
+        rows.push(row);
+        i++;
+      }
+      const header = rows.shift() || [];
+      if (rows.length && rows[0].every(cell => /^:?-{3,}:?$/.test(cell))) rows.shift();
+      html.push(\`<div class="table-scroll"><table class="text-table"><thead><tr>\${header.map(cell => \`<th>\${inline(cell)}</th>\`).join("")}</tr></thead><tbody>\${rows.map(row =>
+        \`<tr>\${header.map((_, index) => \`<td>\${inline(row[index] ?? "")}</td>\`).join("")}</tr>\`
+      ).join("")}</tbody></table></div>\`);
       continue;
     }
-    const rows = [];
-    while (i < lines.length) {
-      const row = tableCells(lines[i]);
-      if (!row || row.length < 2) break;
-      rows.push(row);
-      i++;
+    if (/^\\s*-\\s+/.test(lines[i])) {
+      const items = [];
+      while (i < lines.length && /^\\s*-\\s+/.test(lines[i])) {
+        items.push(\`<li>\${inline(lines[i].replace(/^\\s*-\\s+/, ""))}</li>\`);
+        i++;
+      }
+      html.push(\`<ul>\${items.join("")}</ul>\`);
+      continue;
     }
-    const header = rows.shift();
-    if (rows.length && rows[0].every(cell => /^:?-{3,}:?$/.test(cell))) rows.shift();
-    html.push(`<div class="table-scroll"><table class="text-table"><thead><tr>${header.map(cell => `<th>${esc(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map(row =>
-      `<tr>${header.map((_, index) => `<td>${esc(row[index] ?? "")}</td>`).join("")}</tr>`
-    ).join("")}</tbody></table></div>`);
+    html.push(inline(lines[i]));
+    i++;
   }
   return html.join("<br>");
 }
-
 export function renderMath(el, tries = 0) {
   if (typeof window.renderMathInElement === "function") {
     try {
