@@ -660,3 +660,21 @@ button.row:active{ background: var(--surface-2); }
 .ai-compose-source{width:100%;min-height:180px;max-height:42vh;resize:vertical;padding:12px;background:#fff;border:1px solid #E2E8F0;border-radius:8px;color:#0F172A;font:.84rem/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}
 .ai-compose-preview-actions button{cursor:pointer}
 .ai-compose-preview-actions button:disabled{cursor:not-allowed}
+
+/* AI Compose: unified model + advanced settings popover */
+.ai-compose-modelbar{display:flex;align-items:center;gap:8px;margin:12px 0;position:relative}
+.ai-compose-model-trigger{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:42px;padding:0 13px;border:1px solid #CBD5E1;border-radius:10px;background:#fff;color:#0F172A;font:inherit;font-size:.9rem;cursor:pointer;flex:1;min-width:0}
+.ai-compose-model-trigger .chev{color:#64748B}.ai-compose-modelbar .ai-compose-generate{width:auto;flex:1.2;margin:0}
+.ai-compose-popover{position:relative;z-index:5;max-height:min(58vh,480px);overflow-y:auto;margin:4px 0 12px;padding:8px;background:#F8FAFC;border:1px solid #E2E8F0;border-radius:15px;box-shadow:0 8px 24px rgba(15,23,42,.12)}
+.ai-compose-popover[hidden]{display:none}.ai-compose-popover .ai-pop-h{padding:8px 8px 4px;font-size:.75rem;font-weight:600;letter-spacing:.04em;text-transform:uppercase;color:#64748B}
+.ai-compose-popover .ai-opt{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:44px;padding:0 10px;border:0;border-radius:10px;background:none;color:#0F172A;font:inherit;font-size:.9375rem;text-align:left;cursor:pointer}
+.ai-compose-popover .ai-opt.on{background:#E8F0FE;font-weight:600}.ai-compose-popover .ai-opt i{font-style:normal;color:#2563EB}
+.ai-compose-popover .ai-pop-sep{height:1px;margin:6px 0;background:#E2E8F0}
+.ai-compose-popover .ai-adv-btn{display:flex;align-items:center;justify-content:space-between;width:100%;min-height:44px;padding:0 10px;border:0;border-radius:10px;background:none;color:#2563EB;font:inherit;font-size:.9375rem;font-weight:600;cursor:pointer}
+.ai-compose-popover .ai-adv{padding:2px 8px 6px}.ai-compose-popover .ai-adv-title{padding:4px 2px 8px;font-size:.8125rem;color:#64748B}.ai-compose-popover .ai-adv-title b{color:#0F172A}
+.ai-compose-popover .ai-field{padding:8px 2px 10px;border-top:1px solid #E2E8F0}.ai-compose-popover .ai-field-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;font-size:.875rem;font-weight:500}
+.ai-compose-popover .ai-field-h em{font-style:normal;font-size:.8125rem;color:#64748B}.ai-compose-popover .ai-chips{display:flex;flex-wrap:wrap;gap:6px}
+.ai-compose-popover .ai-chip{min-height:36px;padding:0 12px;border:1px solid #CBD5E1;border-radius:999px;background:#fff;color:#475569;font:inherit;font-size:.8125rem;cursor:pointer}
+.ai-compose-popover .ai-chip.on{background:#E8F0FE;border-color:#2563EB;color:#2563EB;font-weight:600}.ai-compose-popover .ai-num{width:84px;min-height:36px;padding:0 8px;border:1px solid #CBD5E1;border-radius:8px;background:#fff;font:inherit;font-size:.875rem;text-align:right}
+.ai-compose-popover .ai-range{width:100%;min-height:32px;accent-color:#2563EB}.ai-compose-popover .ai-pop-foot{display:flex;justify-content:space-between;gap:8px;padding:4px 0 0}
+.ai-compose-popover .ai-pop-foot .link-btn{font-size:.8125rem;cursor:pointer}.ai-compose-popover button{touch-action:manipulation}
