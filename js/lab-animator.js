@@ -198,7 +198,7 @@ export function createSim(anim, lib) {
   const stock = tintOf(A.chemId);
 
   // Sàn + bóng mờ
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 64), std(0xb4bfcd, 1)); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 64), std(0x8d99aa, 1)); floor.rotation.x = -Math.PI / 2; scene.add(floor);
   const blobTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
     gr.addColorStop(0, "rgba(15,23,42,.35)"); gr.addColorStop(1, "rgba(15,23,42,0)"); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const blobs = [];
@@ -297,7 +297,7 @@ export function createSim(anim, lib) {
 
   /* ---------------------------------- Trạng thái số P (duy nhất) ---------------------------------- */
   const P = { cTh: .3, cPh: 1.2, cD: 50, cX: 0, cY: 7, cZ: 0,
-    bX: bx, bY: BY0, bTilt: 0, bFill: 0, fFill: 0, fRot: 0, fLift: 0, sFill: .85, sX: SX, sTilt: 0,
+    bX: bx, bY: BY0, bTilt: 0, bFill: 0, fFill: 0, fRot: 0, fLift: 0, sFill: .85, sX: SX, sY: 0, sTilt: 0,
     tFill: 0, tX: SX, tY: 26, tTilt: 0, tOn: 0, wOn: 0, wX: WREST.x, wY: 0, wTilt: 0,
     boatX: -13, boatY: PAN + 8, boatTilt: 0, boatOn: 0, boatLoad: 0, fall: 0, dissolve: 0,
     lcd: 0, tint: 0, heat: 0, heatV: 0, vort: 0, stir: 0, slosh: 0, rodMode: 0, rodT: 0,
@@ -408,9 +408,9 @@ export function createSim(anim, lib) {
     step(`Cho trước ${fmtMass(wa)} nước cất vào cốc (cân trực tiếp).`, 4.4, camAll, t => {
       washFill(t, 4.4, new THREE.Vector3(bx - .8, PAN + 14, 0), 0, "bFill", 0, .5); seg(t + .9, 2.4, { lcd: [0, wa] }, "none"); });
     step(`Thêm từ từ ${fmtMass(sa)} ${F} gốc dọc đũa thủy tinh${A.isAcid ? " (luôn cho axit vào nước)" : ""}.`, 6, [.6, 1.2, 44, -4, 8, 0], t => {
-      seg(t, 1.5, { sX: [sRest.x, sp.x], sTilt: [0, 1.3] }); sw(t + 1.1, "rodMode", 0, 2); sw(t + 1.1, "pSrc", 0, 1);
+      seg(t, 1.5, { sX: [sRest.x, sp.x], sY: [0, sp.y], sTilt: [0, 1.3] }); sw(t + 1.1, "rodMode", 0, 2); sw(t + 1.1, "pSrc", 0, 1);
       seg(t + 1.4, .5, { pH: [0, 1], pT: [0, 0] }, "none"); seg(t + 1.6, 2.6, { sFill: [.85, .72], bFill: [.5, .58], lcd: [wa, A.finalMass] }, "none"); seg(t + 4.4, .5, { pT: [0, 1] }, "none");
-      sw(t + 4.9, "rodMode", 2, 0); sw(t + 4.9, "pH", 1, 0); seg(t + 4.7, 1.2, { sX: [sp.x, sRest.x], sTilt: [1.3, 0] }); });
+      sw(t + 4.9, "rodMode", 2, 0); sw(t + 4.9, "pH", 1, 0); seg(t + 4.7, 1.2, { sX: [sp.x, sRest.x], sY: [sp.y, 0], sTilt: [1.3, 0] }); });
     step(`Khuấy đều đến khi ${exo ? "dung dịch nguội và " : ""}đồng nhất.`, 4.6, [.3, 1.15, 30, 0, 6, 0], t => {
       stirSeq(t, 4.6, 0); seg(t + .3, 3.4, { tint: [0, 1] }, "none"); });
   }
@@ -445,7 +445,7 @@ export function createSim(anim, lib) {
     beaker.f = p.bFill; stockV.f = p.sFill; if (volM) flask.f = p.fFill;
     beaker.group.position.set(p.bX, p.bY, 0); beaker.group.rotation.z = -p.bTilt;
     fp.position.set(FX, 8 + p.fLift, 0); fp.rotation.z = p.fRot;
-    stockV.group.position.set(p.sX, 0, 0); stockV.group.rotation.z = -p.sTilt;
+    stockV.group.position.set(p.sX, p.sY, 0); stockV.group.rotation.z = -p.sTilt;
     if (tool) {
       tool.f = p.tFill; tool.group.visible = p.tOn > .5; tool.group.position.set(p.tX, p.tY, 0); tool.group.rotation.z = -p.tTilt;
     }
