@@ -99,12 +99,39 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
     </section>`;
   const status = node.querySelector('[data-role="status"]');
   const preview = node.querySelector('[data-role="preview"]');
-  const result = node.querySelector('[data-role="result"]');
+  const rendered = node.querySelector('[data-role="rendered"]');
+  const source = node.querySelector('[data-role="source"]');
   const generate = node.querySelector('[data-role="generate"]');
   const prompt = node.querySelector('[data-role="prompt"]');
-  result.textContent = draft;
+  let previewTab = "rendered";
+  source.value = draft;
+  const renderDraft = () => {
+    rendered.innerHTML = richHtml(draft) || '<span class="muted">(chưa có nội dung)</span>';
+    renderMath(rendered);
+    source.value = draft;
+  };
+  const setPreviewTab = tab => {
+    previewTab = tab;
+    node.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("on", b.dataset.tab === tab));
+    rendered.hidden = tab !== "rendered";
+    source.hidden = tab !== "source";
+    if (tab === "rendered") renderDraft(); else source.focus();
+  };
+  if (draft) renderDraft();
 
   const saveDraft = text => { try { sessionStorage.setItem(storageKey, text); } catch { /* sessionStorage unavailable */ } };
+  const refreshModelSettings = async nextModel => {
+    try {
+      settings = await ai.getPlannerComposeSettings(nextModel);
+      node.querySelector('[data-role="model-name"]').textContent = settings.model.replace(/^gemini-/,"");
+      node.querySelector('[data-role="tokens"]').value = settings.maxOutputTokens;
+      node.querySelector('[data-role="thinking-label"]').textContent = settings.thinkingBudget;
+      node.querySelector('[data-role="temperature"]').value = settings.temperature;
+      node.querySelector('[data-role="temperature-label"]').textContent = Number(settings.temperature).toFixed(2);
+      node.querySelectorAll('[data-tune="maxOutputTokens"]').forEach(b => b.classList.toggle("on", Number(b.dataset.val) === settings.maxOutputTokens));
+      node.querySelectorAll('[data-tune="thinkingBudget"]').forEach(b => b.classList.toggle("on", Number(b.dataset.val) === settings.thinkingBudget));
+    } catch (err) { setStatus(err.message, true); }
+  };
   const setStatus = (text, error = false) => { status.textContent = text; status.classList.toggle("ai-compose-error", error); };
   const run = async () => {
     const promptText = prompt.value.trim();
@@ -113,8 +140,7 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
     busy = true; generate.disabled = true; generate.textContent = "Đang soạn…";
     setStatus("Đang gửi yêu cầu đến Gemini…");
     try {
-      const includeContext = node.querySelector('[data-role="context"]').checked;
-      const context = includeContext ? contextFor(experiment, stepId, textarea.value) : "";
+      const context = contextFor(experiment, stepId, textarea.value);
       const constraints = constraintText(chipState);
       const response = await ai.composeForPlanner({
         prompt: promptText, context, systemInstruction: constraints,
@@ -125,8 +151,9 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
       });
       draft = cleanOutput(response.text);
       saveDraft(draft);
-      result.textContent = draft;
+      renderDraft();
       preview.hidden = !draft;
+      setPreviewTab("rendered");
       setStatus(response.note || `Đã tạo bằng ${response.model.replace(/^gemini-/,"")} · Bản nháp được giữ trong phiên.`);
     } catch (err) {
       console.error(err);
@@ -166,12 +193,56 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
           button.setAttribute("aria-pressed", String(chipState[key]));
           return;
         }
+        if (button.dataset.tab) return setPreviewTab(button.dataset.tab);
+        if (button.dataset.role === "tuning-toggle") {
+          const pop = node.querySelector('[data-role="tuning-pop"]');
+          pop.hidden = !pop.hidden;
+          button.setAttribute("aria-expanded", String(!pop.hidden));
+          return;
+        }
+        if (button.dataset.tune) {
+          const key = button.dataset.tune, value = Number(button.dataset.val);
+          const activeModel = node.querySelector('[data-role="model"]').value;
+          ai.setPlannerComposeTuning(activeModel, key, value);
+          if (key === "maxOutputTokens") node.querySelector('[data-role="tokens"]').value = value;
+          if (key === "thinkingBudget") {
+            settings.thinkingBudget = value;
+            node.querySelector('[data-role="thinking-label"]').textContent = value;
+          }
+          button.parentElement.querySelectorAll("[data-tune]").forEach(b => b.classList.toggle("on", b === button));
+          return;
+        }
+        if (button.dataset.role === "tuning-reset") {
+          const activeModel = node.querySelector('[data-role="model"]').value;
+          ai.resetPlannerComposeTuning(activeModel);
+          return refreshModelSettings(activeModel);
+        }
         if (button.dataset.role === "generate" || button.dataset.role === "regenerate") return run();
         if (button.dataset.role === "insert") return apply("insert");
         if (button.dataset.role === "replace") return apply("replace");
       });
+      node.addEventListener("change", event => {
+        if (event.target.matches('[data-role="model"]')) refreshModelSettings(event.target.value);
+        if (event.target.matches('[data-role="tokens"]')) {
+          const value = Math.max(64, Math.min(32768, Math.round(Number(event.target.value) || 2048)));
+          event.target.value = value;
+          ai.setPlannerComposeTuning(node.querySelector('[data-role="model"]').value, "maxOutputTokens", value);
+          node.querySelectorAll('[data-tune="maxOutputTokens"]').forEach(b => b.classList.toggle("on", Number(b.dataset.val) === value));
+        }
+      });
+      node.addEventListener("input", event => {
+        if (event.target.matches('[data-role="temperature"]')) {
+          const value = Math.max(0, Math.min(1, Number(event.target.value) || 0));
+          node.querySelector('[data-role="temperature-label"]').textContent = value.toFixed(2);
+          ai.setPlannerComposeTuning(node.querySelector('[data-role="model"]').value, "temperature", value);
+        }
+        if (event.target.matches('[data-role="source"]')) {
+          draft = event.target.value;
+          saveDraft(draft);
+        }
+      });
       prompt.focus();
-      if (draft) setStatus("Đã khôi phục bản nháp AI của bước này từ sessionStorage.");
+      if (draft) { preview.hidden = false; setPreviewTab("rendered"); setStatus("Đã khôi phục bản nháp AI của bước này từ sessionStorage."); }
       if (configError) setStatus(configError, true);
       // close được giữ trong closure để áp dụng xong tự đóng modal.
       node.dataset.ready = "1";
