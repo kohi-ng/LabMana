@@ -89,7 +89,7 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
 <div class="ai-field"><div class="ai-field-h"><span>Suy luận ngầm (thinkingBudget)</span><em>${settings.thinkingBudget}</em></div><div class="ai-chips">${[[0,"Tắt (0)"],[128,"Nhẹ (128)"],[256,"Vừa (256)"],[512,"Sâu (512)"]].map(([n,l])=>`<button type="button" class="ai-chip ${settings.thinkingBudget===n?"on":""}" data-tune="thinkingBudget" data-val="${n}">${l}</button>`).join("")}</div></div>
 <div class="ai-field"><div class="ai-field-h"><span>Sáng tạo (temperature)</span><em data-role="temperature-label">${Number(settings.temperature).toFixed(2)}</em></div><input type="range" class="ai-range" data-role="temperature" min="0" max="1" step="0.05" value="${settings.temperature}"></div><div class="ai-pop-foot"><button type="button" class="link-btn" data-role="tuning-reset">Mặc định</button><span class="ai-pop-note">Lưu riêng theo từng mô hình.</span></div></div>`:""}`;
   };
-  const refreshModelSettings=async nextModel=>{try{settings=await ai.getPlannerComposeSettings(nextModel);modelTrigger.querySelector('[data-role="model-current"]').textContent=settings.model.replace(/^gemini-/,"");renderPopover();}catch(err){setStatus(err.message,true);}};
+  const refreshModelSettings=async nextModel=>{try{settings=await ai.getPlannerComposeSettings(nextModel);modelTrigger.querySelector('[data-role="model-current"]').textContent=displayModel(settings.model);renderPopover();}catch(err){setStatus(err.message,true);}};
   const setStatus = (text, error = false) => { status.textContent = text; status.classList.toggle("ai-compose-error", error); };
   const run = async () => {
     const promptText = prompt.value.trim();
