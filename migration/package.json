@@ -1,0 +1,8 @@
+{
+  "name": "labmana-migration",
+  "private": true,
+  "type": "module",
+  "description": "Migration v2 -> v3 (Admin SDK, dry-run mặc định, idempotent)",
+  "scripts": { "test": "node plan.test.mjs", "dry-run": "node migrate.mjs" },
+  "dependencies": { "firebase-admin": "^12.7.0" }
+}
