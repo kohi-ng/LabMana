@@ -14,12 +14,14 @@ const LS_TUNE = "labmana_ai_tuning";   // { [modelId]: { turns, temperature, max
 const DEFAULT_TURNS = 3;        // 1 lượt = 1 câu hỏi + 1 câu trả lời → 3 lượt = 6 phần tử user/model
 // Thứ tự ưu tiên từ cao xuống thấp — cũng là thứ tự hạ cấp khi quá tải
 const CASCADE = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-3-flash-preview", "gemini-3.1-flash-lite", "gemini-3.5-flash-lite"];
+// Mặc định theo từng dòng: model càng mạnh càng cho phép suy luận ngầm sâu + trả lời dài; dòng lite tắt/giảm suy luận để nhanh, ít tốn lượt.
+// Lưu ý: token suy luận tính vào maxOutputTokens → luôn để maxOutputTokens lớn hơn thinkingBudget ít nhất ~2000 để câu trả lời không bị cắt.
 const MODEL_DEFAULTS = {
-  "gemini-3.8-flash":      { temperature: 0.25, maxOutputTokens: 2500, thinkingBudget: 512 },
-  "gemini-3.6-flash":      { temperature: 0.25, maxOutputTokens: 2048, thinkingBudget: 256 },
-  "gemini-3-flash-preview":        { temperature: 0.3,  maxOutputTokens: 2048, thinkingBudget: 256 },
-  "gemini-3.1-flash-lite": { temperature: 0.3,  maxOutputTokens: 1536, thinkingBudget: 128 },
-  "gemini-3.5-flash-lite": { temperature: 0.3,  maxOutputTokens: 1536, thinkingBudget: 0 }
+  "gemini-3.8-flash":       { temperature: 0.2,  maxOutputTokens: 3072, thinkingBudget: 512 },
+  "gemini-3.6-flash":       { temperature: 0.25, maxOutputTokens: 3072, thinkingBudget: 256 },
+  "gemini-3-flash-preview": { temperature: 0.25, maxOutputTokens: 2048, thinkingBudget: 256 },
+  "gemini-3.1-flash-lite":  { temperature: 0.3,  maxOutputTokens: 2048, thinkingBudget: 128 },
+  "gemini-3.5-flash-lite":  { temperature: 0.3,  maxOutputTokens: 1536, thinkingBudget: 0 }
 };
 const FALLBACK_STATUS = new Set([429, 500, 503]);
 const TURN_CHOICES = [1, 3, 5, 10];
