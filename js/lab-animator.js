@@ -454,9 +454,9 @@ export function createSim(anim, lib) {
     seg(t, .8, { wOn: [0, 1], wX: [WREST.x, end.x], wY: [WREST.y, end.y], wTilt: [0, JT] });
     seg(t + .8, .001, { jTgt: [tgt, tgt] });
     seg(t + .8, .5, { jH: [0, 1], jT: [0, 0] }, "none");
-    seg(t + .9, dur - 2.1, { [key]: [f0, f1] }, "none");
-    seg(t + dur - .9, .5, { jT: [0, 1] }, "none");
-    seg(t + dur - .7, .7, { wX: [end.x, WREST.x], wY: [end.y, WREST.y], wTilt: [JT, 0] });
+    seg(t + .9, dur - 2.5, { [key]: [f0, f1] }, "none");
+    seg(t + dur - 1.6, .5, { jT: [0, 1] }, "none");
+    seg(t + dur - 1.0, 1.0, { wX: [end.x, WREST.x], wY: [end.y, WREST.y], wTilt: [JT, 0] });
     sw(t + dur - .01, "wOn", 1, 0); sw(t + dur - .01, "jH", 1, 0);
   };
   const stirSeq = (t, dur, vessel) => { // đũa khuấy + phễu xoáy + hòa tan + đổi màu + (nếu tỏa nhiệt) hơi bốc lên
@@ -468,7 +468,7 @@ export function createSim(anim, lib) {
   };
   const stopperSeq = (t, dur) => {
     seg(t, 1, { stopY: [30, 16.9] }, "power2.in");
-    const k = [.9, -.9, .9, -.9, 0]; k.forEach((a, i) => seg(t + 1.1 + i * .5, .5, { fRot: [i ? k[i - 1] : 0, a] }));
+    const k = [.5, -.5, .5, -.5, 0]; k.forEach((a, i) => seg(t + 1.1 + i * .5, .5, { fRot: [i ? k[i - 1] : 0, a] }));
     seg(t, 1, { heat: [1, 0] });
   };
   const camBal = [.25, 1.2, 24, balX, 3, 0];
@@ -476,12 +476,14 @@ export function createSim(anim, lib) {
   if (mode === "solid-vol") {
     const camAll = [.35, 1.2, 62, -1, 8, 0], camPour = [.6, 1.25, 40, 6, 12, 0], camMark = [.1, 1.43, 16, FX, 13, 0];
     step(`Cân ${fmtMass(sa)} ${F} lên thuyền cân (đã hiệu chỉnh độ tinh khiết).`, 3.4, camBal, t => {
-      seg(t, .7, { boatOn: [1, 1], boatX: [balX - 7, balX], boatY: [PAN + 7, PAN + .05] }); seg(t + .6, 2.5, { boatLoad: [0, 1], lcd: [0, sa] }, "none"); });
+      seg(t, .7, { boatOn: [1, 1], boatX: [balX - 7, balX], boatY: [PAN + 7, PAN + .8] }); seg(t + .6, 2.5, { boatLoad: [0, 1], lcd: [0, sa] }, "none"); });
     step("Cho khoảng 60–70% thể tích dung môi (nước cất) vào cốc.", 4, camAll, t => {
       washFill(t, 4, new THREE.Vector3(bx - .8, 14, 0), 0, "bFill", 0, .6); });
-    step("Đổ chất rắn từ thuyền cân vào cốc.", 3.6, [.3, 1.1, 30, 0, 6, 0], t => {
-      seg(t, 1.2, { boatX: [balX, bx + 1.3], boatY: [PAN + .05, 12.8], boatTilt: [0, -.9] });
-      seg(t + 1.2, 1.7, { fall: [0, 1] }, "none"); seg(t + 3, .6, { boatY: [12.8, 22], boatX: [bx + 1.3, bx + 7] }); });
+    step("Đổ chất rắn từ thuyền cân vào cốc.", 5.2, [.3, 1.1, 30, 0, 6, 0], t => {
+      seg(t, 1.2, { boatX: [balX, bx + 1.3], boatY: [PAN + .8, 12.8], boatTilt: [0, -.9] });
+      seg(t + 1.2, 2.2, { fall: [0, 1] }, "none");
+      seg(t + 3.4, .5, { boatY: [12.8, 20], boatX: [bx + 1.3, bx + 4], boatTilt: [-.9, 0] });
+      seg(t + 3.9, 1.1, { boatX: [bx + 4, balX], boatY: [20, PAN + .8] }); });
     step(`Khuấy bằng đũa thủy tinh đến tan hoàn toàn${exo ? "; dung dịch tỏa nhiệt — chờ nguội về nhiệt độ phòng" : ""}.`, 4.6, [.3, 1.15, 30, 0, 5.5, 0], t => {
       stirSeq(t, 4.6, 0); seg(t + .6, 3.2, { dissolve: [0, 1], tint: [0, 1] }, "none"); });
     const bp = poseFromLip(beaker, { x: FX - 3.2, y: 18.4 }, 1.3), lipT = new THREE.Vector3(FX - 3.2, 18.4, 0);
@@ -497,7 +499,7 @@ export function createSim(anim, lib) {
       seg(t, 1, { bY: [PAN + 8, PAN] }, "power2.in"); seg(t + 1, 1, { lcd: [0, 38.6] }, "none"); seg(t + 2.2, .6, { lcd: [38.6, 0] }, "none"); });
     step(`Cân ${fmtMass(sa)} ${F} vào cốc đã cân bì.`, 4, [.3, 1.1, 28, 0, 6, 0], t => {
       sw(t, "boatOn", 0, 1); seg(t, 1, { boatX: [bx + 9, bx + 1.3], boatY: [PAN + 16, PAN + 11.5], boatTilt: [0, -.9], boatLoad: [1, 1] });
-      seg(t + 1, 2.2, { fall: [0, 1], lcd: [0, sa] }, "none"); seg(t + 3.3, .7, { boatY: [PAN + 11.5, PAN + 22], boatX: [bx + 1.3, bx + 8] }); });
+      seg(t + 1, 2.2, { fall: [0, 1], lcd: [0, sa] }, "none"); seg(t + 3.3, .7, { boatY: [PAN + 11.5, PAN + 22], boatX: [bx + 1.3, bx + 8] }); sw(t + 3.99, "boatOn", 1, 0); });
     step(`Thêm ${fmtMass(wa)} nước cất theo khối lượng (cân trực tiếp đến ${fmtMass(A.finalMass)}).`, 4.4, camAll, t => {
       washFill(t, 4.4, new THREE.Vector3(bx - .8, PAN + 14, 0), 0, "bFill", 0, .55); seg(t + .9, 2.4, { lcd: [sa, A.finalMass] }, "none"); });
     step(`Khuấy đến tan hoàn toàn${exo ? "; tỏa nhiệt — để nguội nếu cần" : ""}.`, 4.6, camAll, t => {
@@ -579,7 +581,7 @@ export function createSim(anim, lib) {
       tool.f = p.tFill; tool.group.visible = p.tOn > .5; tool.group.position.set(p.tX, p.tY, 0); tool.group.rotation.z = -p.tTilt;
     }
     wash.visible = p.wOn > .5; wash.position.set(p.wX, p.wY, 0); wash.rotation.z = -p.wTilt;
-    boat.visible = solidM && p.boatOn > .5; boat.position.set(p.boatX, p.boatY, 0); boat.rotation.z = -p.boatTilt * .5;
+    boat.visible = solidM && p.boatOn > .5; boat.position.set(p.boatX, p.boatY, 0); boat.rotation.z = -p.boatTilt;
     stopper.visible = p.stopY < 29; stopper.position.set(0, p.stopY - 8, 0);
 
     scene.updateMatrixWorld(true);
@@ -606,13 +608,18 @@ export function createSim(anim, lib) {
       if (p.fall <= 0) {
         if (loadVis) { m.position.set(p.boatX + c.bx, p.boatY + .2 + c.ph * .25, c.bz); m.scale.setScalar(c.s); vis = true; }
       } else {
-        const u = clamp((p.fall - c.d) / .45), ang = c.a + p.stir * (.5 + c.rr * .6) * (p.rodMode === 1 || p.stir > 0 ? 1 : 0), rr = (.15 + c.rr * .6) * rIn * (1 - .35 * p.vort * c.ph);
+        // 1) trượt dọc lòng thuyền nghiêng tới mép thấp  2) rơi tự do xuống cốc
+        const rb = boat.rotation.z, cb = Math.cos(rb), sb = Math.sin(rb), bowl = lx => -.75 * Math.sqrt(Math.max(0, 1 - (lx / 2.4) ** 2));
+        const slideAt = su => { const lx = lerp(c.bx, -2.3, su), ly = bowl(lx) + .2 + c.ph * .1 * (1 - su), lz = c.bz * (1 - .5 * su);
+          return V3(p.boatX + lx * cb - ly * sb, p.boatY + lx * sb + ly * cb, lz); };
+        const su = sstep(0, 1, clamp((p.fall - c.d * .3) / .4)), u = clamp((p.fall - .4 - c.d * .35) / .4);
+        const ang = c.a + p.stir * (.5 + c.rr * .6) * (p.rodMode === 1 || p.stir > 0 ? 1 : 0), rr = (.15 + c.rr * .6) * rIn * (1 - .35 * p.vort * c.ph);
         const dst = V3(bk.x + rr * Math.cos(ang), bFloor + c.s * .8 + p.vort * c.ph * .6, rr * Math.sin(ang));
-        const src = V3(p.boatX + c.bx, p.boatY + .2, c.bz);
-        m.position.set(lerp(src.x, dst.x, u), lerp(src.y, dst.y, u * u), lerp(src.z, dst.z, u));
+        if (u <= 0) m.position.copy(slideAt(su));
+        else { const src = slideAt(1); m.position.set(lerp(src.x, dst.x, u), lerp(src.y, dst.y, u * u), lerp(src.z, dst.z, u)); }
         m.scale.setScalar(c.s * (1 - sstep(c.d * .4, 1, p.dissolve))); vis = m.scale.x > .01;
       }
-      m.visible = vis; m.rotation.set(c.rot + (p.fall > 0 ? p.stir * .4 : 0), c.rot * 2, c.rot);
+            m.visible = vis; m.rotation.set(c.rot + (p.fall > 0 ? p.stir * .4 : 0), c.rot * 2, c.rot);
     });
 
     // LCD cân điện tử (fmtMass/fmtVol khớp #calc)
