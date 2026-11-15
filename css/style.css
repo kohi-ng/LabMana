@@ -838,6 +838,15 @@ button.row:active{ background: var(--surface-2); }
 .lab3d:fullscreen .lab3d-cap,.lab3d:fullscreen .lab3d-bar,.lab3d:fullscreen .lab3d-prog{flex:none}
 .ai-pop{height:fit-content;min-height:0;padding-bottom:4px}
 @media(max-width:639px){
+  /* Mobile browsers: avoid an oversized absolute popover when its content is short. */
+  .ai-dock .ai-pop{
+    top:auto;
+    bottom:calc(100% - 4px);
+    height:auto!important;
+    min-height:0!important;
+    max-height:min(70dvh,520px);
+    overflow-y:auto;
+  }
   .lab3d-view{aspect-ratio:4/3;min-height:300px}
   .lab3d-bar{gap:5px;padding:5px 8px 8px}
   .lab3d-bar>[data-a="speed"],.lab3d-bar>[data-a="fullscreen"]{min-width:42px;height:36px;padding:0 8px}
