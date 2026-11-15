@@ -678,3 +678,66 @@ button.row:active{ background: var(--surface-2); }
 .ai-compose-popover .ai-chip.on{background:#E8F0FE;border-color:#2563EB;color:#2563EB;font-weight:600}.ai-compose-popover .ai-num{width:84px;min-height:36px;padding:0 8px;border:1px solid #CBD5E1;border-radius:8px;background:#fff;font:inherit;font-size:.875rem;text-align:right}
 .ai-compose-popover .ai-range{width:100%;min-height:32px;accent-color:#2563EB}.ai-compose-popover .ai-pop-foot{display:flex;justify-content:space-between;gap:8px;padding:4px 0 0}
 .ai-compose-popover .ai-pop-foot .link-btn{font-size:.8125rem;cursor:pointer}.ai-compose-popover button{touch-action:manipulation}
+
+
+/* Planner — compact step actions and full-screen rich editor */
+.toolbar.step-editor-actions{display:flex;flex-wrap:wrap;gap:8px;margin:7px 0 10px}
+.step-editor-actions button{min-height:38px;padding:0 13px;border:1px solid var(--line-strong);border-radius:9px;font:inherit;font-size:.875rem;font-weight:600;cursor:pointer}
+.step-editor-actions .step-editor-trigger{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-ink)}
+.step-editor-actions .ai-compose-trigger{background:#EEF2FF;border-color:#C7D2FE;color:#4338CA}
+.step-editor-modal{width:min(1120px,96vw)!important;max-width:none!important;height:min(92dvh,920px);max-height:92dvh!important;border-radius:16px!important}
+.step-editor-modal .modal-head{flex:none;padding:15px 20px 8px}
+.step-editor-modal .modal-body{display:flex;flex-direction:column;min-height:0;padding:8px 18px 12px}
+.step-editor-modal .modal-foot{flex:none;padding:10px 18px 14px}
+.step-editor-modal .modal-foot .btn{flex:0 1 220px}
+.step-editor{display:flex;flex-direction:column;gap:10px;min-height:0;flex:1;color:var(--ink)}
+.se-toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;position:relative;z-index:4}
+.se-toolgroup{position:relative}
+.se-tool{min-height:40px;padding:0 13px;border:1px solid var(--line-strong);border-radius:9px;background:var(--bg);color:var(--ink);font:inherit;font-size:.875rem;font-weight:600;cursor:pointer}
+.se-tool span{margin-left:5px;color:var(--muted)}
+.se-menu{position:absolute;top:calc(100% + 7px);left:0;z-index:10;width:min(360px,calc(100vw - 48px));max-height:min(55vh,480px);overflow:auto;padding:10px;background:var(--bg);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow-3)}
+.se-menu[hidden]{display:none}
+.se-menu button{min-height:36px;padding:0 10px;border:1px solid var(--line);border-radius:7px;background:var(--surface-2);color:var(--ink);font:inherit;font-size:.875rem;cursor:pointer}
+.se-menu button:active{background:var(--accent-soft)}
+.se-menu:not(.se-chem-menu):not(.se-table-menu){display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.se-menu:not(.se-chem-menu):not(.se-table-menu)[hidden]{display:none}
+.se-chem-quick{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px}
+.se-chem-compose{display:grid;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--line)}
+.se-chem-compose label,.se-table-controls label{display:grid;gap:5px;font-size:.78rem;font-weight:600;color:var(--muted)}
+.se-chem-compose input,.se-chem-compose select,.se-table-controls input{width:100%;min-height:38px;padding:6px 9px;border:1px solid var(--line-strong);border-radius:7px;background:var(--bg);color:var(--ink);font:inherit}
+.se-chem-actions,.se-table-actions{display:flex;flex-wrap:wrap;gap:6px}
+.se-chem-actions button.primary,.se-table-actions button.primary{background:var(--accent);border-color:var(--accent);color:white}
+.se-tabs{display:flex;gap:4px;padding:4px;background:var(--surface-2);border-radius:10px;align-self:flex-start}
+.se-tabs button{min-height:35px;padding:0 13px;border:0;border-radius:7px;background:transparent;color:var(--muted);font:inherit;font-size:.84rem;cursor:pointer}
+.se-tabs button.on{background:var(--bg);color:var(--ink);font-weight:650;box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.se-source,.se-preview{display:block;width:100%;flex:1;min-height:260px;max-height:none;overflow:auto;resize:vertical;padding:15px;border:1px solid var(--line-strong);border-radius:10px;background:var(--bg);color:var(--ink);font: .94rem/1.65 ui-monospace,SFMono-Regular,Consolas,monospace;tab-size:2}
+.se-preview{font:inherit;line-height:1.65;white-space:normal}
+.se-preview[hidden],.se-source[hidden]{display:none}
+.se-preview .md-heading{margin:10px 0 7px;font-weight:700}
+.se-preview p{margin:0 0 9px}
+.se-preview ul,.se-preview ol{padding-left:24px;margin:6px 0 10px}
+.se-preview .table-scroll{max-width:100%;overflow:auto}
+.se-table-menu{width:min(520px,calc(100vw - 48px))}
+.se-table-controls{display:flex;gap:10px;margin-bottom:10px}
+.se-table-controls label{flex:1}
+.se-grid-wrap{overflow:auto;border:1px solid var(--line);border-radius:8px}
+.se-grid-row{display:grid;grid-template-columns:repeat(var(--se-cols,3),minmax(90px,1fr));min-width:max-content}
+.se-grid-row input{width:100%;min-width:90px;height:40px;padding:6px 8px;border:0;border-right:1px solid var(--line);border-bottom:1px solid var(--line);border-radius:0;background:var(--bg);color:var(--ink);font:inherit;font-size:.82rem}
+.se-grid-row:first-child input{background:var(--surface-2);font-weight:650}
+.se-table-actions{margin-top:9px}
+.se-hint{margin:8px 0 0;color:var(--muted);font-size:.75rem;line-height:1.4}
+.md-heading{margin:10px 0 6px;font-weight:700;line-height:1.35}
+.md-list{padding-left:24px;margin:6px 0 10px}
+.text-table td,.text-table th{overflow-wrap:anywhere}
+.katex-display{overflow-x:auto;overflow-y:hidden;padding:2px 0}
+.step-text .md-heading,.step-h .md-heading{margin:0}
+@media(max-width:639px){
+  .step-editor-modal{width:100%!important;height:calc(100dvh - env(safe-area-inset-top));max-height:calc(100dvh - env(safe-area-inset-top))!important;border-radius:16px 16px 0 0!important}
+  .step-editor-modal .modal-head{padding:12px 14px 6px}
+  .step-editor-modal .modal-body{padding:6px 12px 10px}
+  .step-editor-modal .modal-foot{padding:8px 12px calc(10px + env(safe-area-inset-bottom))}
+  .step-editor-modal .modal-foot .btn{flex:1}
+  .se-source,.se-preview{min-height:180px;padding:11px}
+  .se-tool{padding:0 10px;font-size:.8rem}
+  .se-chem-quick{grid-template-columns:repeat(3,minmax(0,1fr))}
+}
