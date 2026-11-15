@@ -1,12 +1,14 @@
-// ============ Firebase: khởi tạo + đăng nhập ẩn danh ============
-// Chỉ dùng Firestore (dữ liệu chữ/số/trạng thái) + Auth ẩn danh.
-// Ảnh KHÔNG đi qua Firebase Storage nữa — xem js/drive.js (Google Drive qua Apps Script).
+// ============ Firebase: khởi tạo (Auth email/mật khẩu + Firestore) ============
+// Đăng nhập do js/auth.js quản lý; ở đây chỉ khởi tạo SDK.
+// Ảnh KHÔNG đi qua Firebase Storage — xem js/drive.js (Google Drive qua Apps Script).
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+import { getAuth } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 import {
   getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
+// Khóa Web của Firebase vốn công khai (không phải bí mật). Nên giới hạn theo HTTP referrer
+// (kohi-ng.github.io) trong Google Cloud Console → APIs & Services → Credentials.
 export const firebaseConfig = {
     apiKey: "AIzaSyCTWIJ-0U_-Eq-lrcoIoyQeZfyi0JJdPp8",
     authDomain: "labmana-ecd8e.firebaseapp.com",
@@ -26,6 +28,7 @@ if (isConfigured) {
   auth = getAuth(app);
   try {
     // Bộ nhớ đệm ngoại tuyến: mất mạng vẫn xem/ghi được, có mạng lại tự đồng bộ.
+    // Khi đăng xuất, js/auth.js xóa cache này để tài khoản khác dùng chung máy không thấy dữ liệu cũ.
     db = initializeFirestore(app, {
       ignoreUndefinedProperties: true,
       localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
@@ -37,9 +40,3 @@ if (isConfigured) {
 }
 
 export { app, auth, db };
-
-/** Resolve khi đã đăng nhập ẩn danh xong; reject nếu lỗi / chưa cấu hình. */
-export const ready = isConfigured
-  ? signInAnonymously(auth).then(cred => cred.user)
-  : Promise.reject(new Error("NOT_CONFIGURED"));
-ready.catch(() => {}); // tránh cảnh báo "unhandled rejection"; lỗi được xử lý trong store.js
