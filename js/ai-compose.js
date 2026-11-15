@@ -146,7 +146,7 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
         prompt: promptText, context, systemInstruction: constraints,
         model: node.querySelector('[data-role="model"]').value,
         maxOutputTokens: node.querySelector('[data-role="tokens"]').value,
-        thinkingBudget: node.querySelector('[data-role="thinking"]').value,
+        thinkingBudget: settings.thinkingBudget,
         temperature: node.querySelector('[data-role="temperature"]').value
       });
       draft = cleanOutput(response.text);
