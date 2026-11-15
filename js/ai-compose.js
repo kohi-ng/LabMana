@@ -85,7 +85,7 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
       <pre data-role="result"></pre>
       <div class="ai-compose-preview-actions">
         <button type="button" data-role="regenerate">Tạo lại</button>
-        <button type="button" data-role="insert">Chèn vào vị trí con trỏ</button>
+        <button type="button" data-role="insert">Chèn vào con trỏ</button>
         <button type="button" class="primary" data-role="replace">Xác nhận thay thế</button>
       </div>
     </section>`;
