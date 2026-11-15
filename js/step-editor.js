@@ -54,8 +54,8 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     <div class="se-preview" data-preview hidden></div>`;
   const source=node.querySelector("[data-source]"),preview=node.querySelector("[data-preview]");
   source.value=String(value??"");
-  let activeTarget=source,lastStart=0,lastEnd=0,rows=3,cols=3;
-  const remember=el=>{if(el && (el===source||el.matches("[data-grid-cell]"))){activeTarget=el;lastStart=el.selectionStart??el.value.length;lastEnd=el.selectionEnd??lastStart;}};
+  let activeTarget=source,lastStart=0,lastEnd=0,sourceStart=0,sourceEnd=0,rows=3,cols=3;
+  const remember=el=>{if(el && (el===source||el.matches("[data-grid-cell]"))){activeTarget=el;lastStart=el.selectionStart??el.value.length;lastEnd=el.selectionEnd??lastStart;if(el===source){sourceStart=lastStart;sourceEnd=lastEnd;}}};
   source.addEventListener("select",()=>remember(source));
   source.addEventListener("input",()=>remember(source));
   source.addEventListener("keyup",()=>remember(source));
@@ -65,7 +65,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     const start=Math.min(lastStart,target.value.length),end=Math.min(lastEnd,target.value.length);
     target.value=target.value.slice(0,start)+text+target.value.slice(end);
     const pos=start+text.length-back;
-    target.focus();target.setSelectionRange(pos,pos);lastStart=lastEnd=pos;
+    target.focus();target.setSelectionRange(pos,pos);lastStart=lastEnd=pos;if(target===source){sourceStart=sourceEnd=pos;}
   };
   let gridData=[];
   const drawGrid=()=>{
