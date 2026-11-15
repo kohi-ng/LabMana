@@ -198,7 +198,7 @@ export function createSim(anim, lib) {
   const stock = tintOf(A.chemId);
 
   // Sàn + bóng mờ
-  const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 64), std(0x8d99aa, 1)); floor.rotation.x = -Math.PI / 2; scene.add(floor);
+  const floor = new THREE.Mesh(new THREE.CircleGeometry(80, 64), std(0x788597, .92)); floor.rotation.x = -Math.PI / 2; scene.add(floor);
   const blobTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 64; const x = c.getContext("2d"); const gr = x.createRadialGradient(32, 32, 2, 32, 32, 32);
     gr.addColorStop(0, "rgba(15,23,42,.35)"); gr.addColorStop(1, "rgba(15,23,42,0)"); x.fillStyle = gr; x.fillRect(0, 0, 64, 64); return new THREE.CanvasTexture(c); })();
   const blobs = [];
