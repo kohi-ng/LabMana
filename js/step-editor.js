@@ -23,7 +23,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
   const node=document.createElement("div");
   node.className="step-editor";
   node.innerHTML=`
-    <div class="se-tabs"><button type="button" class="on" data-tab="edit">Soạn thảo</button><button type="button" data-tab="preview">Xem trước thực tế</button></div>
+    <div class="se-tabs"><div class="se-tab-switch"><button type="button" class="on" data-tab="edit">Soạn thảo</button><button type="button" data-tab="preview">Xem trước thực tế</button></div><div class="se-tab-actions"><button type="button" class="se-close" data-modal-close aria-label="Đóng">×</button><button type="button" class="se-apply" data-modal-apply aria-label="Áp dụng">✓</button></div></div>
     <textarea class="se-source" data-source spellcheck="false" placeholder="Nhập nội dung thao tác; công thức toán/hóa học đặt trong $...$"></textarea>
     <div class="se-preview" data-preview hidden></div>
     <div class="se-dock">
@@ -146,8 +146,8 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
   });
   const result=await openModal({
     title: "", node,
-    buttons:[{label:"Đóng",value:null},{label:"Áp dụng",kind:"primary",value:()=>source.value}],
-    onMount(body){
+    buttons:[],
+    onMount(body,{close}){
       const modal=body.closest(".modal");
       if(modal){
         modal.classList.add("step-editor-modal");
@@ -166,6 +166,8 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
         viewport?.addEventListener("scroll",fit);
         fit();
       }
+      body.querySelector("[data-modal-close]")?.addEventListener("click",()=>close(null));
+      body.querySelector("[data-modal-apply]")?.addEventListener("click",()=>close(source.value));
       source.focus();
       source.setSelectionRange(source.value.length,source.value.length);
       remember(source);
