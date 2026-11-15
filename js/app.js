@@ -39,7 +39,7 @@ function updateConn() {
     b.classList.remove("hidden");
   }
   if (state.error === "NOT_CONFIGURED") {
-    b.innerHTML = "Chưa có <b>firebaseConfig</b>. Mở <code>js/firebase.js</code> và dán cấu hình Firebase (xem README.md).";
+    b.innerHTML = "Chưa có <b>firebaseConfig</b>. Mở <code>js/config.js</code>, điền cấu hình Firebase (xem docs/SETUP-NEW-PROJECT.md).";
     b.classList.remove("hidden");
   }
 }

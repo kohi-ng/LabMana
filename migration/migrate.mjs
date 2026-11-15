@@ -3,7 +3,7 @@
 //
 //   cd migration && npm install
 //   export GOOGLE_APPLICATION_CREDENTIALS=/đường/dẫn/serviceAccount.json   # Firebase Console → Project settings → Service accounts
-//   node migrate.mjs --owner-uid Eq1ueE9VHoYIbNk3UU5gnQOwJBg1               # dry-run + ghi file backup
+//   node migrate.mjs --owner-uid <UID>               # dry-run + ghi file backup
 //   node migrate.mjs --owner-uid <UID> --apply                              # áp dụng
 //   Tùy chọn: --group <groupId> (gán vào nhóm thay vì Personal) · --delete-gemini-config (xóa config/gemini sau khi đã rotate khóa)
 //
@@ -21,7 +21,7 @@ if (!ownerUid) { console.error("Thiếu --owner-uid (UID chủ sở hữu dữ l
 const { initializeApp, applicationDefault } = await import("firebase-admin/app");
 const { getFirestore } = await import("firebase-admin/firestore");
 const { getAuth } = await import("firebase-admin/auth");
-initializeApp({ credential: applicationDefault(), projectId: "labmana-ecd8e" });
+initializeApp({ credential: applicationDefault(), projectId: process.env.FIREBASE_PROJECT_ID || (() => { throw new Error("Đặt biến môi trường FIREBASE_PROJECT_ID"); })() });
 const db = getFirestore(), auth = getAuth();
 
 const read = async col => (await db.collection(col).get()).docs.map(d => ({ id: d.id, ...d.data() }));

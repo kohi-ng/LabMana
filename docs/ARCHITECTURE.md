@@ -11,7 +11,7 @@ Rules trong repo (v2) cho phép `config/{id}`; nhưng Rules **đang chạy trên
 
 | Khái niệm | Cách thực hiện |
 |---|---|
-| Danh tính | Email + mật khẩu (`js/auth.js`). Phiên ẩn danh cũ được **liên kết** (`linkWithCredential`) để giữ nguyên UID, đặc biệt `Eq1ueE9VHoYIbNk3UU5gnQOwJBg1`. Rules từ chối `sign_in_provider == 'anonymous'`. |
+| Danh tính | Email + mật khẩu (`js/auth.js`). Phiên ẩn danh cũ được **liên kết** (`linkWithCredential`) để giữ nguyên UID, đặc biệt UID Super Admin (cấu hình). Rules từ chối `sign_in_provider == 'anonymous'`. |
 | Trạng thái tài khoản | `users/{uid}.status` (`active`/`pending`/`suspended`/`disabled`). Mặc định đăng ký = `active` (**CẦN XÁC NHẬN** — muốn duyệt từng user: đổi một dòng trong Rules + `auth.js`). Super Admin luôn qua. |
 | Personal Workspace | Tài nguyên `scope='personal'`, `owner_uid=uid`. Chỉ chủ đọc/ghi; Group Admin và Super Admin **không** đọc. |
 | Group Workspace | Tài nguyên `scope='group'`, `group_id`. Quyền từ `memberships/{groupId}__{uid}` (status `active`) **và** `groups/{groupId}.status=='active'`. |
@@ -54,7 +54,7 @@ Rules trong repo (v2) cho phép `config/{id}`; nhưng Rules **đang chạy trên
 - **Gemini**: khóa API **không còn** trong client/Firestore. `ai.js` → `geminiGenerate()` → Apps Script (`handleGemini_`), khóa ở *Script properties* `GEMINI_API_KEY`. Backup cũ có `config.gemini.apiKey` ⇒ **phải rotate khóa đó** (đã lộ trong file backup/lịch sử).
 - **Apps Script** (upload/xóa ảnh, báo cáo, Gemini): mọi `doPost` yêu cầu Firebase ID token; `verifyCaller_` gọi `accounts:lookup` (loại phiên ẩn danh) và đọc `users/{uid}` qua Firestore REST bằng chính token đó (Rules áp dụng) để kiểm tra `active`. Cần Script properties `FIREBASE_WEB_API_KEY`, `GEMINI_API_KEY`.
 - **Google Drive**: quyền Drive là lớp riêng. Ảnh vẫn là "ai có link thì xem" — **GIỚI HẠN** đã nêu từ v2; không thay đổi Firestore-share ⇒ không tự cấp quyền Drive.
-- `apiKey` Web của Firebase là công khai theo thiết kế; nên giới hạn theo HTTP referrer `kohi-ng.github.io/*` trong Google Cloud Console.
+- `apiKey` Web của Firebase là công khai theo thiết kế; nên giới hạn theo HTTP referrer `<user>.github.io/*` trong Google Cloud Console.
 
 ## 7. Giới hạn đã biết (trung thực)
 

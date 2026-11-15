@@ -192,7 +192,7 @@ export function statusCard(st) {
   const e = st.error;
   if (!e) return `<div class="empty">Đang kết nối…</div>`;
   if (e === "NOT_CONFIGURED") return `<div class="notice"><h3>Chưa cấu hình Firebase</h3>
-    <p>Mở <code>js/firebase.js</code> và dán <code>firebaseConfig</code> của dự án. Xem README.md.</p></div>`;
+    <p>Mở <code>js/config.js</code> và điền <code>firebaseConfig</code> của dự án. Xem docs/SETUP-NEW-PROJECT.md.</p></div>`;
   if (/operation-not-allowed|admin-restricted/.test(e)) return `<div class="notice"><h3>Chưa bật đăng nhập Email/Mật khẩu</h3>
     <p>Firebase Console → Authentication → Sign-in method → bật <b>Email/Password</b>.</p></div>`;
   if (/permission-denied/.test(e)) return `<div class="notice"><h3>Bị từ chối quyền</h3>

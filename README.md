@@ -1,38 +1,34 @@
 # LabMana v3 — Web App quản lý thực hành Thí nghiệm Hóa Vô Cơ (Zero-Backend)
 
-SPA thuần HTML/CSS/JS (ES Modules), dữ liệu chữ/số/trạng thái trên **Firestore**, ảnh tải lên **Google Drive**
-qua **Google Apps Script Web App**. Deploy thẳng lên GitHub Pages (`https://kohi-ng.github.io/LabMana/` — giữ nguyên URL).
+SPA thuần HTML/CSS/JS (ES Modules), dữ liệu chữ/số/trạng thái trên **Firestore**, ảnh trên **Google Drive** qua
+**Google Apps Script Web App**, deploy bằng **GitHub Pages**. Bản v3 là một "ngôi nhà" riêng: **Firebase project, Apps Script,
+repo và URL tách biệt** với bản Simple-Version cũ.
 
 **Từ v3**: đăng nhập **Email + mật khẩu**, mỗi người có **Personal Workspace** và có thể tham gia nhiều **Group Workspace**
 với vai trò theo từng nhóm (Super Admin / Group Admin / Member) + chia sẻ chéo nhóm chỉ-đọc (**Viewer**). Quyền được
 **Firestore Rules thực thi** — không chỉ ẩn nút trên giao diện. Chi tiết: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).
 
+## Bắt đầu
+
+Điền cấu hình ở [`js/config.js`](js/config.js) rồi làm theo **[`docs/SETUP-NEW-PROJECT.md`](docs/SETUP-NEW-PROJECT.md)**
+(Firebase → Apps Script → tài khoản đầu tiên → gán Super Admin).
+
 ## Tiến độ & bối cảnh (cập nhật 2026-11-15)
 
 | Hạng mục | Trạng thái |
 |---|---|
-| Điều tra `permission-denied` | ✔ Nguyên nhân: Rules đang chạy chặn `config/lab` mà `store.js` v2 đọc ngay khi khởi động (xem ARCHITECTURE §1) |
-| Auth email/mật khẩu, nâng cấp phiên ẩn danh giữ UID | ✔ code xong (`js/auth.js`, `js/auth-ui.js`) — **cần bật Email/Password trong Firebase Console** |
-| Workspace cá nhân/nhóm + bộ chọn trên header | ✔ (`js/workspace.js`, `js/store.js`) |
-| Yêu cầu lập nhóm → Super Admin duyệt → Group Admin thêm/xóa Member | ✔ (`js/tabs/groups.js`) |
-| RBAC theo nhóm + ACL chia sẻ Viewer + Firestore Rules v3 | ✔ (`firestore.rules`, `js/sharing.js`) |
-| Gemini qua Apps Script (khóa không còn ở client/Firestore) | ✔ code xong — **cần đặt Script properties + deploy phiên bản mới** |
-| Apps Script xác minh Firebase ID token | ✔ code xong (`GAS/code.gs`) — cần deploy |
-| Migration dữ liệu cũ (dry-run, idempotent) | ✔ `migration/migrate.mjs` — **chưa chạy trên production** |
-| Test Rules (Emulator) | ✔ viết xong `tests/rules.test.mjs` + CI — **chưa chạy được trong môi trường phát triển (không tải được emulator); chạy `npm run test:rules` / xem tab Actions** |
-| Cloud Functions / audit bắt buộc | ✘ chủ ý chưa làm (giữ zero-backend, xem giới hạn trong ARCHITECTURE §7) |
+| Auth email/mật khẩu, hồ sơ `users`, đăng xuất xóa cache | ✔ code xong |
+| Workspace cá nhân/nhóm + bộ chọn header; store theo workspace | ✔ |
+| Yêu cầu lập nhóm → Super Admin duyệt → Group Admin quản lý Member | ✔ |
+| Scoped RBAC + chia sẻ Viewer + Firestore Rules v3 | ✔ |
+| Gemini + ảnh qua Apps Script có xác minh Firebase ID token; khóa ở Script properties | ✔ |
+| Cấu hình tách khỏi code (`js/config.js`, Script properties) để dựng project mới | ✔ |
+| Test Rules (Emulator) + CI | ✔ viết xong — **chưa chạy được trong môi trường phát triển (không tải được emulator)**; chạy `npm run test:rules` hoặc xem tab Actions |
+| Project Firebase/Apps Script mới | ⏳ chủ dự án tạo theo SETUP-NEW-PROJECT.md, rồi điền `js/config.js` |
+| Cloud Functions / audit bắt buộc | ✘ chủ ý chưa làm (giữ zero-backend; xem ARCHITECTURE §7) |
 
-### Việc chủ dự án phải làm để v3 chạy (thứ tự quan trọng)
-
-1. **Rotate khóa Gemini** (khóa cũ từng nằm trong `config/gemini` và file backup). Tạo khóa mới ở Google AI Studio.
-2. Apps Script: *Project Settings → Script properties* thêm `FIREBASE_WEB_API_KEY` (= `apiKey` trong `js/firebase.js`) và `GEMINI_API_KEY` (khóa mới); dán lại 3 file `GAS/*.gs`; chạy `authorizeDrive()` lần nữa (quyền "kết nối dịch vụ bên ngoài"); **Deploy → Manage deployments → New version** (giữ nguyên URL).
-3. Firebase Console → Authentication → Sign-in method → bật **Email/Password** (giữ Anonymous đến khi chuyển xong).
-4. **Chạy migration trước khi Publish Rules mới** (Rules mới ẩn dữ liệu chưa có `scope`):
-   `cd migration && npm install && node migrate.mjs --owner-uid Eq1ueE9VHoYIbNk3UU5gnQOwJBg1` (dry-run) rồi thêm `--apply`.
-5. Publish `firestore.rules` (Firebase Console → Firestore → Rules). Push code lên GitHub Pages.
-6. Mở app trên **thiết bị đang giữ phiên của bạn** → bấm **Tạo tài khoản (giữ dữ liệu)** → email + mật khẩu: UID Super Admin được giữ nguyên.
-7. Sau khi mọi thiết bị đã chuyển: tắt Anonymous sign-in; xóa `config/gemini` (`--delete-gemini-config`).
-8. (Khuyến nghị) Google Cloud Console → Credentials → giới hạn Web API key theo referrer `kohi-ng.github.io/*`.
+Bối cảnh: mã nguồn cũ (Simple-Version, Firebase/Apps Script/URL cũ) vẫn tiếp tục phát triển riêng; v3 tách sang nhà mới để không ảnh hưởng nhau.
+`migration/` chỉ dành cho trường hợp bạn có dữ liệu v2 trong **cùng** Firebase project và muốn gán `scope` cho nó.
 
 ## Có gì mới ở v2 (vẫn áp dụng)
 
@@ -71,7 +67,8 @@ với vai trò theo từng nhóm (Super Admin / Group Admin / Member) + chia s�
 index.html            khung + topbar (logo = Tiến trình, Kế hoạch, Cài đặt) + Bottom Nav 3 tab (Quy trình, Pha chế, AI)
 css/style.css         giao diện Apple-style sáng, mobile-first
 js/app.js             điều hướng tab, trạng thái kết nối, FAB sheet
-js/firebase.js        ⚙️ firebaseConfig; khởi tạo Auth + Firestore (cache ngoại tuyến)
+js/config.js          ⚙️ firebaseConfig + URL Apps Script + UID Super Admin (điền ở đây)
+js/firebase.js        khởi tạo Auth + Firestore (cache ngoại tuyến)
 js/auth.js            đăng nhập email/mật khẩu, nâng cấp phiên ẩn danh (giữ UID), hồ sơ users/{uid}, đăng xuất + xóa cache
 js/auth-ui.js         màn hình đăng nhập/đăng ký/quên mật khẩu/chờ quyền
 js/workspace.js       Personal + Group workspace, role theo nhóm, scopeFields()/scopeWhere()
@@ -81,7 +78,7 @@ js/tabs/groups.js     tab Nhóm: nhóm của tôi, yêu cầu lập nhóm, chia 
 migration/            migrate.mjs (Admin SDK, dry-run mặc định) + plan.mjs (logic thuần, có test)
 tests/rules.test.mjs  test allow/deny Firestore Rules (Emulator)
 docs/ARCHITECTURE.md  kiến trúc, ma trận quyền, giới hạn, quyết định cần xác nhận
-js/drive.js           ⚙️ DÁN URL Web App (Apps Script) Ở ĐÂY; tải/xóa ảnh Drive
+js/drive.js           tải/xóa ảnh Drive, gọi Gemini qua Apps Script
 js/store.js           dữ liệu real-time THEO WORKSPACE (đổi nhóm → hủy listener cũ)
 js/utils.js           modal, toast, chuyển ảnh sang base64, chọn tên, KaTeX…
 js/plan-logic.js       logic thuần: validate, flatten, rẽ nhánh, computeFlow
@@ -102,14 +99,14 @@ SCHEMA.md             thiết kế dữ liệu
 
 ### A. Firestore (dữ liệu chữ/số)
 1. **Tạo dự án Firebase**: https://console.firebase.google.com → Add project.
-2. **Thêm Web app**: Project settings → Your apps → `</>` → copy `firebaseConfig` → dán vào `js/firebase.js`.
+2. **Thêm Web app**: Project settings → Your apps → `</>` → copy `firebaseConfig` → dán vào `js/config.js`.
 3. **Authentication** → Sign-in method → bật **Email/Password** (Anonymous chỉ giữ tạm khi chuyển từ v2).
-4. **Firestore Database** → Create database (chế độ production) → tab **Rules** → dán nội dung `firestore.rules` → Publish. Super Admin = UID trong `firestore.rules` (`isSuperAdmin()`) và `js/auth.js` (`SUPER_ADMIN_UID`) — phải trùng nhau.
+4. **Firestore Database** → Create database (chế độ production) → tab **Rules** → dán nội dung `firestore.rules` → Publish. Super Admin = UID trong `firestore.rules` (`isSuperAdmin()`) và `js/config.js` (`SUPER_ADMIN_UID`) — phải trùng nhau.
 
 ### B. Google Drive (ảnh)
 1. Tạo 1 thư mục Drive, copy ID thư mục.
 2. Tạo Apps Script Web App và dán đủ ba file `GAS/code.gs`, `GAS/report.gs`, `GAS/math-render.gs`. Chạy với quyền của bạn, cho phép mọi người truy cập.
-3. Dán ID thư mục vào `GAS/code.gs`, URL Web App vào `js/drive.js`; đặt Script properties `FIREBASE_WEB_API_KEY`, `GEMINI_API_KEY`. Sau mỗi lần sửa file trong `GAS/`, vào Manage deployments → New version — Save trong editor không cập nhật URL đang chạy.
+3. Dán ID thư mục vào `GAS/code.gs`, URL Web App vào `js/config.js`; đặt Script properties `FIREBASE_WEB_API_KEY`, `GEMINI_API_KEY`. Sau mỗi lần sửa file trong `GAS/`, vào Manage deployments → New version — Save trong editor không cập nhật URL đang chạy.
 
 Không làm bước B thì app vẫn chạy bình thường — chỉ phần ảnh minh họa/ảnh chụp sẽ báo
 "Chưa cấu hình Google Drive" và tạm không dùng được, mọi thứ khác (soạn bài, thực hiện quy

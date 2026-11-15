@@ -3,6 +3,7 @@
 //   để giữ nguyên UID (đặc biệt UID Super Admin) và toàn bộ dữ liệu đã gắn với UID đó.
 // - Trạng thái phiên: loading | signed-out | anonymous | blocked | error | active
 import { auth, db, isConfigured } from "./firebase.js";
+import { SUPER_ADMIN_UID } from "./config.js";
 import {
   onAuthStateChanged, signInWithEmailAndPassword, createUserWithEmailAndPassword, EmailAuthProvider,
   linkWithCredential, sendPasswordResetEmail, sendEmailVerification, signOut
@@ -11,8 +12,8 @@ import {
   doc, getDoc, setDoc, updateDoc, terminate, clearIndexedDbPersistence
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
-/** UID chủ dự án. PHẢI trùng hàm isSuperAdmin() trong firestore.rules. */
-export const SUPER_ADMIN_UID = "Eq1ueE9VHoYIbNk3UU5gnQOwJBg1";
+/** UID Super Admin: cấu hình ở js/config.js, PHẢI trùng isSuperAdmin() trong firestore.rules. */
+export { SUPER_ADMIN_UID };
 
 export const session = { status: "loading", user: null, profile: null, error: null };
 const subs = new Set();

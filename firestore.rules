@@ -21,8 +21,8 @@ service cloud.firestore {
       return request.auth != null && request.auth.token.firebase.sign_in_provider != 'anonymous';
     }
     function me() { return request.auth.uid; }
-    // UID chủ dự án — giữ nguyên UID cũ (liên kết email/mật khẩu vào đúng UID này, xem js/auth.js).
-    function isSuperAdmin() { return signedIn() && request.auth.uid == 'Eq1ueE9VHoYIbNk3UU5gnQOwJBg1'; }
+    // UID Super Admin: thay REPLACE_WITH_SUPER_ADMIN_UID bằng UID thật (cùng giá trị với js/config.js) trước khi Publish.
+    function isSuperAdmin() { return signedIn() && request.auth.uid == 'REPLACE_WITH_SUPER_ADMIN_UID'; }
     function userPath(u) { return /databases/$(database)/documents/users/$(u); }
     function isActive() {
       return signedIn() && (isSuperAdmin()

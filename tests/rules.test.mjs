@@ -5,14 +5,14 @@ import fs from "node:fs";
 import { initializeTestEnvironment, assertSucceeds, assertFails } from "@firebase/rules-unit-testing";
 import { doc, getDoc, setDoc, updateDoc, deleteDoc, collection, query, where, getDocs, writeBatch, arrayUnion } from "firebase/firestore";
 
-const SUPER = "Eq1ueE9VHoYIbNk3UU5gnQOwJBg1";
+const SUPER = "test-super-admin";
 let env;
 const as = (uid, extra = {}) => env.authenticatedContext(uid, { email: `${uid}@x.com`, firebase: { sign_in_provider: "password" }, ...extra }).firestore();
 const seed = fn => env.withSecurityRulesDisabled(async ctx => fn(ctx.firestore()));
 const user = (uid, status = "active") => ({ uid, email: `${uid}@x.com`, status });
 
 before(async () => {
-  env = await initializeTestEnvironment({ projectId: "demo-labmana", firestore: { rules: fs.readFileSync("firestore.rules", "utf8"), host: "127.0.0.1", port: 8080 } });
+  env = await initializeTestEnvironment({ projectId: "demo-labmana", firestore: { rules: fs.readFileSync("firestore.rules", "utf8").replace("REPLACE_WITH_SUPER_ADMIN_UID", SUPER), host: "127.0.0.1", port: 8080 } });
 });
 after(() => env.cleanup());
 beforeEach(async () => {

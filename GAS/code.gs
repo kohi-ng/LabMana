@@ -29,7 +29,9 @@
 
 // NÂNG CẤP v3: file này giờ yêu cầu id_token (xem verifyCaller_ cuối file). Phải đặt Script properties rồi
 // chạy authorizeDrive() lại (thêm quyền "kết nối dịch vụ bên ngoài") và Deploy → New version.
-const ROOT_FOLDER_ID = "163F-EZ36tJ7qc9J9NTvIipvQWxOWEtJi";
+// Cấu hình qua Script properties (Project Settings → Script properties): ROOT_FOLDER_ID, FIREBASE_PROJECT_ID, SUPER_ADMIN_UID,
+// FIREBASE_WEB_API_KEY, GEMINI_API_KEY. Không dán giá trị vào mã nguồn.
+const ROOT_FOLDER_ID = PropertiesService.getScriptProperties().getProperty("ROOT_FOLDER_ID") || "";
 
 function authorizeDrive() {
   return DriveApp.getFolderById(ROOT_FOLDER_ID).getName();
@@ -228,12 +230,12 @@ function isInRootFolder_(file) {
 
 /* ---------------- Xác minh danh tính (Firebase ID token) ---------------- */
 // Cài đặt (Project Settings → Script properties):
-//   FIREBASE_WEB_API_KEY = khóa Web của Firebase (giống apiKey trong js/firebase.js)
+//   FIREBASE_WEB_API_KEY = khóa Web của Firebase (giống apiKey trong js/config.js)
 //   GEMINI_API_KEY       = khóa Gemini (KHÔNG đặt trong client/Firestore). Nên rotate khóa cũ từng nằm trong config/gemini.
 // Cách xác minh: accounts:lookup kiểm tra token còn hiệu lực + loại bỏ phiên ẩn danh; đọc users/{uid} bằng chính
 // token đó qua Firestore REST nên Firestore Rules được áp dụng (tài khoản phải active hoặc là Super Admin).
-const FIREBASE_PROJECT_ID = "labmana-ecd8e";
-const SUPER_ADMIN_UID = "Eq1ueE9VHoYIbNk3UU5gnQOwJBg1";
+const FIREBASE_PROJECT_ID = PropertiesService.getScriptProperties().getProperty("FIREBASE_PROJECT_ID") || "";
+const SUPER_ADMIN_UID = PropertiesService.getScriptProperties().getProperty("SUPER_ADMIN_UID") || "";
 
 function prop_(name) { return PropertiesService.getScriptProperties().getProperty(name) || ""; }
 

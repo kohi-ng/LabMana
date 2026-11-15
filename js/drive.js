@@ -2,8 +2,9 @@
 import { blobToBase64, blobToDataUrl } from "./utils.js";
 import { getIdToken } from "./auth.js";
 
-export const GAS_URL = "https://script.google.com/macros/s/AKfycby232LaXbc2TC-BXLJlZB9XjFGdzsl5LLnPELJ90lDHww2OzWLD8j2ngZWlEt9n1B0gFA/exec";
-export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
+import { GAS_URL } from "./config.js";
+export { GAS_URL };
+export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("YOUR_");
 
 const DOCS_EMBED_MAX_BYTES = 2 * 1024 * 1024;
 
