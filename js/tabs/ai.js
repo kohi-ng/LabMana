@@ -425,7 +425,7 @@ function renderPop() {
       html += `<div class="ai-pop-h">Chọn mục gửi kèm <small>${sel.size}/${opts.length}</small></div><div class="ai-ctx-list">`;
       for (const o of opts) {
         if (o.group !== group) { group = o.group; html += `<div class="ai-ctx-group">${esc(group)}</div>`; }
-        html += `<label class="ai-ctx-item"><input type="checkbox" data-act="ctx-item" data-id="${esc(o.id)}" ${sel.has(o.id) ? "checked" : ""}><span>${esc(o.label)}</span></label>`;
+        html += `<label class="ai-ctx-item"><input type="checkbox" data-act="ctx-item" data-id="${esc(o.id)}" ${sel.has(o.id) ? "checked" : ""}><span>${richHtml(o.label)}</span></label>`;
       }
       html += `</div><div class="ai-pop-foot"><button type="button" class="link-btn" data-act="ctx-auto">Tự động (bước đang xem)</button><button type="button" class="link-btn muted" data-act="ctx-none">Bỏ chọn hết</button></div>`;
     }
@@ -436,6 +436,7 @@ function renderPop() {
     <button type="button" class="ai-adv-btn" data-act="adv" aria-expanded="${advOpen}"><span>Tinh chỉnh sâu</span><span class="chev" aria-hidden="true"></span></button>
     ${advOpen ? advancedHtml(cur) : ""}`;
   el.pop.innerHTML = html;
+  renderMath(el.pop);
   const list = el.pop.querySelector(".ai-ctx-list");
   if (list) list.scrollTop = keep;
   el.pop.scrollTop = keepPop;
