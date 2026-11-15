@@ -8,9 +8,11 @@ import { db } from "../firebase.js";
 import { doc, collection, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
 import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, statusCard, downloadFile, $$ } from "../utils.js";
+import { scopeFields, keepOwnership, canManage, currentRole, workspaceLabel } from "../workspace.js";
+import { openShareDialog } from "../sharing.js";
 import { OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
 
-let root, view = "list", exp = null, expId = null, dirty = false;
+let root, view = "list", exp = null, expId = null, dirty = false, viewRaw = null;
 const openSteps = new Set(), previewSteps = new Set(), errSteps = new Set();
 const uploadingImgs = new Set(); // step ids đang upload ảnh (khóa UI của ảnh đó)
 const pendingDriveDeletes = new Set(), newlyUploadedDriveFiles = new Set(), failedDriveDeletes = new Set();
@@ -30,6 +32,9 @@ export function init(el) {
   root.addEventListener("input", onInput);
   root.addEventListener("change", onChange);
   on("experiments", () => { if (view === "list") render(); });
+  on("shared", () => { if (view === "list") render(); });
+  // Đổi workspace: bỏ phiên soạn đang mở (thuộc workspace cũ) để không lưu nhầm sang workspace mới.
+  on("workspace", () => { if (view !== "list") { dirty = false; view = "list"; exp = null; expId = null; viewRaw = null; } render(); });
   on("config", () => { if (view === "editor") render(); });
   on("status", render);
   window.addEventListener("beforeunload", e => { if (dirty) { e.preventDefault(); e.returnValue = ""; } });
@@ -41,33 +46,51 @@ const clone = o => JSON.parse(JSON.stringify(o));
 
 function render() {
   if (!state.ready) { root.innerHTML = statusCard(state); return; }
-  view === "list" ? renderList() : renderEditor();
+  view === "list" ? renderList() : view === "view" ? renderReadOnly() : renderEditor();
 }
 
 /* ---------- Danh sách ---------- */
 function renderList() {
   const items = state.experiments;
+  const shared = state.sharedExperiments;
   root.innerHTML = `
-    <div class="page-head"><h2>Kế hoạch</h2></div>
+    <div class="page-head"><h2>Kế hoạch</h2><p class="muted small">Không gian: <b>${esc(workspaceLabel())}</b></p></div>
     <div class="btn-row">
       <button class="btn primary" data-act="new">Bài mới</button>
       <button class="btn" data-act="import">Nhập JSON</button>
       <input type="file" id="pl-import" accept="application/json,.json" hidden>
     </div>
     ${!isDriveConfigured ? `<p class="muted small">Chưa cấu hình Google Drive: ảnh chưa tải lên được.</p>` : ""}
-    ${items.length ? `<div class="list">${items.map(card).join("")}</div>` : `<div class="empty">Chưa có bài thí nghiệm.</div>`}`;
+    ${items.length ? `<div class="list">${items.map(card).join("")}</div>` : `<div class="empty">Chưa có bài thí nghiệm trong không gian này.</div>`}
+    ${shared.length ? `<h3 style="margin:22px 0 6px">Được chia sẻ với tôi <span class="badge">chỉ xem</span></h3>
+      <div class="list">${shared.map(card).join("")}</div>` : ""}`;
 }
 function card(e) {
   const n = normalizeExperiment(e);
   const steps = n.sections.reduce((a, s) => a + s.steps.length, 0);
-  return `<div class="row" data-id="${esc(e.id)}" style="display:block">
-    <div class="row-title">${esc(n.title || "(không tên)")}</div>
-    <div class="row-meta">${n.sections.length} thí nghiệm · ${steps} thao tác</div>
+  const mine = canManage(e);
+  const sharedCount = (e.shared_user_ids?.length || 0) + (e.shared_group_ids?.length || 0);
+  return `<div class="row" data-id="${esc(e.id)}" data-shared="${e.shared_view ? 1 : ""}" style="display:block">
+    <div class="row-title">${esc(n.title || "(không tên)")}${sharedCount && !e.shared_view ? `<span class="badge shared-tag">đã chia sẻ</span>` : ""}</div>
+    <div class="row-meta">${n.sections.length} thí nghiệm · ${steps} thao tác${!mine && !e.shared_view ? " · do thành viên khác tạo" : ""}</div>
     <div class="row-actions">
-      <button class="link-btn" data-act="open">Mở</button>
-      <button class="link-btn" data-act="dup">Nhân bản</button>
-      <button class="link-btn danger" data-act="del">Xóa</button>
+      <button class="link-btn" data-act="open">${mine ? "Mở" : "Xem"}</button>
+      <button class="link-btn" data-act="dup">${e.shared_view ? "Chép về không gian của tôi" : "Nhân bản"}</button>
+      ${mine ? `<button class="link-btn" data-act="share">Chia sẻ</button><button class="link-btn danger" data-act="del">Xóa</button>` : ""}
     </div></div>`;
+}
+
+/** Xem chỉ-đọc: bài của thành viên khác trong nhóm, hoặc bài được chia sẻ (Viewer). */
+function renderReadOnly() {
+  const n = normalizeExperiment(viewRaw);
+  root.innerHTML = `
+    <div class="sticky-bar"><button class="link-btn" data-act="back">Danh sách</button><span class="spacer"></span><span class="badge">chỉ xem</span></div>
+    <h2 style="margin:12px 0 4px">${esc(n.title || "(không tên)")}</h2>
+    ${n.description ? `<p class="muted">${esc(n.description)}</p>` : ""}
+    ${n.sections.map((sec, si) => `<section class="sec-block"><div class="sec-head"><span class="sec-no">TN ${si + 1}</span> <b>${richHtml(sec.section_name)}</b></div>
+      ${sec.steps.map((st, ti) => `<article class="step"><div class="step-head"><span class="step-no">${si + 1}.${ti + 1}</span> ${st.title ? `<b>${richHtml(st.title)}</b>` : ""}</div>
+        <div class="step-preview">${richHtml(st.text)}</div></article>`).join("")}</section>`).join("")}`;
+  renderMath(root);
 }
 
 /* ---------- Trình soạn thảo ---------- */
@@ -398,15 +421,21 @@ async function onClick(e) {
       openSteps.add(exp.sections[0].steps[0].id); view = "editor"; render(); break;
     case "import": root.querySelector("#pl-import").click(); break;
     case "open": {
-      const raw = state.experiments.find(x => x.id === card.dataset.id); if (!raw) return;
+      const raw = (card.dataset.shared ? state.sharedExperiments : state.experiments).find(x => x.id === card.dataset.id); if (!raw) return;
+      if (!canManage(raw)) { viewRaw = raw; view = "view"; render(); break; }
       exp = normalizeExperiment(clone(raw)); expId = raw.id; exp.created_at_ms = raw.created_at_ms || null;
       dirty = false; openSteps.clear(); previewSteps.clear(); errSteps.clear(); view = "editor"; render(); break;
     }
     case "dup": {
-      const raw = state.experiments.find(x => x.id === card.dataset.id); if (!raw) return;
-      const copy = serializeExperiment(normalizeExperiment(clone(raw)));
+      const raw = (card.dataset.shared ? state.sharedExperiments : state.experiments).find(x => x.id === card.dataset.id); if (!raw) return;
+      const copy = { ...serializeExperiment(normalizeExperiment(clone(raw))), ...scopeFields() };   // bản sao thuộc workspace hiện tại, chủ = người bấm
       copy.title += " (bản sao)"; copy.created_at_ms = copy.updated_at_ms = Date.now();
       try { await setDoc(doc(collection(db, "experiments")), copy); toast("Đã nhân bản", "success"); } catch (err) { toast("Lỗi: " + (err.code || err.message), "error"); }
+      break;
+    }
+    case "share": {
+      const raw = state.experiments.find(x => x.id === card.dataset.id);
+      if (raw && canManage(raw)) await openShareDialog(raw);
       break;
     }
     case "del":
@@ -417,6 +446,7 @@ async function onClick(e) {
 
     /* thanh công cụ */
     case "back":
+      if (view === "view") { view = "list"; viewRaw = null; render(); break; }
       if (dirty && !(await confirmBox("Có thay đổi chưa lưu. Thoát và bỏ thay đổi?", "Bỏ thay đổi"))) return;
       await discardPendingPlanImages();
       dirty = false; pendingDriveDeletes.clear(); view = "list"; render(); break;
@@ -478,6 +508,10 @@ async function save() {
   data.updated_at_ms = Date.now();
   data.created_at_ms = exp.created_at_ms || Date.now();
   const ref = expId ? doc(db, "experiments", expId) : doc(collection(db, "experiments"));
+  const existing = expId ? state.experiments.find(x => x.id === expId) : null;
+  if (expId && !existing) return toast("Không tìm thấy bài này trong không gian hiện tại (có thể bạn đã đổi nhóm). Hãy mở lại từ danh sách.", "error", 5000);
+  // Bài mới → gắn workspace hiện tại; bài cũ → giữ nguyên chủ/nhóm/danh sách chia sẻ (Rules cấm đổi).
+  Object.assign(data, existing ? keepOwnership(existing) : scopeFields());
   try {
     await setDoc(ref, data);
     expId = ref.id; exp.created_at_ms = data.created_at_ms; dirty = false;

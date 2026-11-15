@@ -5,9 +5,11 @@ import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove
 import { esc, richHtml, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
 import { driveCreateReport, isDriveConfigured } from "../drive.js";
 import { normalizeExperiment, flatten } from "../plan-logic.js";
+import { scopeWhere, settingsKey, isAdminHere } from "../workspace.js";
 
 let root;
-const CFG = () => doc(db, "config", "lab");
+// Danh sách thành viên THỰC HÀNH theo workspace (cá nhân hoặc nhóm): workspace_settings/{personal_<uid> | group_<groupId>}.
+const CFG = () => doc(db, "workspace_settings", settingsKey());
 // Ảnh dự phòng gửi kèm báo cáo: giới hạn ký tự của data URL (Firestore vốn giới hạn 1 MiB/tài liệu).
 const INLINE_PHOTO_MAX_CHARS = 4_000_000;
 const reportForm = {
@@ -21,7 +23,7 @@ let reportBusy = false, lastReport = null;
 
 export function init(el) {
   root = el;
-  ["config", "status", "experiments", "runs"].forEach(event => on(event, render));
+  ["config", "status", "experiments", "runs", "workspace"].forEach(event => on(event, render));
   root.addEventListener("click", onClick);
   root.addEventListener("input", onReportInput);
   root.addEventListener("change", onReportInput);
@@ -29,6 +31,8 @@ export function init(el) {
   render();
 }
 export function onShow() { render(); }
+
+const canEditTeam = () => isAdminHere();
 
 function localDate() {
   const now = new Date();
@@ -46,14 +50,15 @@ function render() {
   root.innerHTML = `
     <div class="page-head"><h2>Cài đặt</h2></div>
     <div class="section"><h3>Thành viên</h3>
-      <div class="inline">
+      <p class="tiny muted">Không gian: <b>${esc(state.workspace.name)}</b>${canEditTeam() ? "" : " · chỉ Quản trị nhóm mới sửa danh sách"}</p>
+      ${canEditTeam() ? `<div class="inline">
         <input class="inp" id="st-names" placeholder="Họ tên - MSSV (nhiều người: cách nhau dấu phẩy)" autocomplete="off">
         <button class="btn primary" data-act="add">Thêm</button>
-      </div>
+      </div>` : ""}
       <ul class="members">${team.length ? team.map(n => `<li><span class="nm">${esc(n)}</span>
         ${state.teamIds[n] ? `<span class="mssv">${esc(state.teamIds[n])}</span>` : '<span class="mssv none">Chưa có MSSV</span>'}
-        <button class="link-btn" data-act="rename" data-name="${esc(n)}">Sửa</button>
-        <button class="link-btn danger" data-act="del" data-name="${esc(n)}">Xóa</button></li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
+        ${canEditTeam() ? `<button class="link-btn" data-act="rename" data-name="${esc(n)}">Sửa</button>
+        <button class="link-btn danger" data-act="del" data-name="${esc(n)}">Xóa</button>` : ""}</li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
     </div>
 
     <div class="section report-card"><h3>Xuất báo cáo</h3>
@@ -97,7 +102,7 @@ function render() {
       ${lastReport ? `<p class="report-result"><span>Đã tạo: ${esc(lastReport.name)}</span><a class="btn primary" href="${esc(lastReport.url)}" target="_blank" rel="noopener noreferrer">Xem báo cáo</a></p>` : ""}
     </div>
 
-    <p class="tiny muted" style="margin-top:24px">LabMana v2.0 · Thiết bị <code>${esc((auth?.currentUser?.uid || "").slice(0, 6))}</code></p>`;
+    <p class="tiny muted" style="margin-top:24px">LabMana v3.0 · ${esc(auth?.currentUser?.email || "")} · <code>${esc((auth?.currentUser?.uid || "").slice(0, 6))}</code></p>`;
   root.querySelector("#st-names").value = keep;
 }
 
@@ -123,6 +128,7 @@ function parsePersonLine(value) {
 }
 
 async function addNames() {
+  if (!canEditTeam()) return toast("Chỉ Quản trị nhóm được sửa danh sách thành viên.", "warn");
   const inp = root.querySelector("#st-names");
   // Mỗi mục có dạng "Họ tên" hoặc "Họ tên - MSSV"; gộp trùng theo tên, ưu tiên mục có MSSV.
   const byName = new Map();
@@ -250,13 +256,13 @@ async function collectReportData() {
   const incomplete = String(reportForm.peopleText || "").split(/\r?\n/).map(line => line.trim()).filter(line => line && !parsePersonLine(line).id);
   if (incomplete.length) throw new Error(`Còn ${incomplete.length} dòng chưa có MSSV (“${incomplete[0]}”). Hãy điền MSSV hoặc xóa dòng đó trong ô Họ và tên - MSSV.`);
 
-  const runsSnapshot = await getDocs(query(collection(db, "runs"), where("exp_id", "==", raw.id)));
+  const runsSnapshot = await getDocs(query(collection(db, "runs"), where("exp_id", "==", raw.id), ...scopeWhere()));
   const runs = runsSnapshot.docs.map(item => ({ id: item.id, ...item.data() }))
     .sort((a, b) => (b.created_at_ms || 0) - (a.created_at_ms || 0));
   const run = runs[0];
   if (!run) throw new Error("Bài này chưa có lượt thực hiện hoặc nhật ký nào.");
 
-  const logsSnapshot = await getDocs(query(collection(db, "execution_logs"), where("run_id", "==", run.id)));
+  const logsSnapshot = await getDocs(query(collection(db, "execution_logs"), where("run_id", "==", run.id), ...scopeWhere()));
   const logs = {};
   logsSnapshot.forEach(item => {
     const log = item.data();
