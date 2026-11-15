@@ -80,7 +80,7 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
   const renderPopover=()=>{
     popover.hidden=!popOpen;modelTrigger.setAttribute("aria-expanded",String(popOpen));if(!popOpen)return;
     const models=settings.models||[],activeModel=settings.model;
-    popover.innerHTML=`<div class="ai-pop-h">Mô hình</div>${models.map(model=>`<button type="button" class="ai-opt ${model===activeModel?"on":""}" data-role="model-option" data-val="${esc(model)}"><span>${esc(model.replace(/^gemini-/,"").replace(/-flash-lite$/," Lite").replace(/-flash$/," Flash"))}</span><i>${model===activeModel?"✓":""}</i></button>`).join("")}<div class="ai-pop-sep"></div><button type="button" class="ai-adv-btn" data-role="advanced-toggle" aria-expanded="${advOpen}"><span>Tinh chỉnh sâu</span><span class="chev">${advOpen?"⌃":"⌄"}</span></button>${advOpen?`<div class="ai-adv"><div class="ai-adv-title">Tinh chỉnh cho <b>${esc(activeModel.replace(/^gemini-/,""))}</b></div>
+    popover.innerHTML=`<div class="ai-pop-h">Mô hình</div>${models.map(model=>`<button type="button" class="ai-opt ${model===activeModel?"on":""}" data-role="model-option" data-val="${esc(model)}"><span>${esc(model.replace(/^gemini-/,"").replace(/-flash-preview$/," Flash Preview").replace(/-flash-lite$/," Lite").replace(/-flash$/," Flash"))}</span><i>${model===activeModel?"✓":""}</i></button>`).join("")}<div class="ai-pop-sep"></div><button type="button" class="ai-adv-btn" data-role="advanced-toggle" aria-expanded="${advOpen}"><span>Tinh chỉnh sâu</span><span class="chev">${advOpen?"⌃":"⌄"}</span></button>${advOpen?`<div class="ai-adv"><div class="ai-adv-title">Tinh chỉnh cho <b>${esc(activeModel.replace(/^gemini-/,""))}</b></div>
 <div class="ai-field"><div class="ai-field-h"><span>maxOutputTokens</span><input type="number" class="ai-num" data-role="tokens" min="64" max="32768" step="128" value="${settings.maxOutputTokens}"></div><div class="ai-chips">${[1024,2048,3072,4096].map(n=>`<button type="button" class="ai-chip ${settings.maxOutputTokens===n?"on":""}" data-tune="maxOutputTokens" data-val="${n}">${n}</button>`).join("")}</div></div>
 <div class="ai-field"><div class="ai-field-h"><span>Suy luận ngầm (thinkingBudget)</span><em>${settings.thinkingBudget}</em></div><div class="ai-chips">${[[0,"Tắt (0)"],[128,"Nhẹ (128)"],[256,"Vừa (256)"],[512,"Sâu (512)"]].map(([n,l])=>`<button type="button" class="ai-chip ${settings.thinkingBudget===n?"on":""}" data-tune="thinkingBudget" data-val="${n}">${l}</button>`).join("")}</div></div>
 <div class="ai-field"><div class="ai-field-h"><span>Sáng tạo (temperature)</span><em data-role="temperature-label">${Number(settings.temperature).toFixed(2)}</em></div><input type="range" class="ai-range" data-role="temperature" min="0" max="1" step="0.05" value="${settings.temperature}"></div><div class="ai-pop-foot"><button type="button" class="link-btn" data-role="tuning-reset">Mặc định</button><span class="ai-pop-note">Lưu riêng theo từng mô hình.</span></div></div>`:""}`;
@@ -98,9 +98,9 @@ export async function openAICompose({ experiment, stepId, textarea, onApply }) {
       const response = await ai.composeForPlanner({
         prompt: promptText, context,
         model: settings.model,
-        maxOutputTokens: node.querySelector('[data-role="tokens"]').value,
+        maxOutputTokens: settings.maxOutputTokens,
         thinkingBudget: settings.thinkingBudget,
-        temperature: node.querySelector('[data-role="temperature"]').value
+        temperature: settings.temperature
       });
       draft = cleanOutput(response.text);
       saveDraft(draft);
