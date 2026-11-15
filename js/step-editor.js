@@ -143,7 +143,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
   });
   const result=await openModal({
     title: "", node,
-    buttons:[{label:"Đóng",value:null},{label:"Áp dụng & Đóng",kind:"primary",value:()=>source.value}],
+    buttons:[{label:"Đóng",value:null},{label:"Áp dụng",kind:"primary",value:()=>source.value}],
     onMount(body){
       const modal=body.closest(".modal");
       if(modal){
