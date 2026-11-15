@@ -827,3 +827,18 @@ button.row:active{ background: var(--surface-2); }
 .lab3d-prog i{ display:block; height:100%; width:0; background:#DC2626; }
 .lab3d-err{ padding:14px; font-size:.8125rem; color:var(--err); background:var(--err-soft); border-radius:var(--r-lg); }
 @media (prefers-reduced-motion: reduce){ .lab3d-play{ animation:none; } }
+
+
+/* Lab 3D: playback speed, fullscreen and mobile stage sizing */
+.lab3d-view{aspect-ratio:16/11;min-height:280px}
+.lab3d-bar{flex-wrap:wrap}
+.lab3d-bar>[data-a="speed"],.lab3d-bar>[data-a="fullscreen"]{width:auto;min-width:44px;padding:0 10px;border-radius:10px;font-size:.8125rem;font-weight:600}
+.lab3d:fullscreen{display:flex;flex-direction:column;width:100vw;height:100dvh;max-width:none;max-height:none;border:0;border-radius:0;background:#F8FAFC;padding:env(safe-area-inset-top) 0 env(safe-area-inset-bottom)}
+.lab3d:fullscreen .lab3d-view{flex:1;min-height:0;aspect-ratio:auto}
+.lab3d:fullscreen .lab3d-cap,.lab3d:fullscreen .lab3d-bar,.lab3d:fullscreen .lab3d-prog{flex:none}
+.ai-pop{height:fit-content;min-height:0;padding-bottom:4px}
+@media(max-width:639px){
+  .lab3d-view{aspect-ratio:4/3;min-height:300px}
+  .lab3d-bar{gap:5px;padding:5px 8px 8px}
+  .lab3d-bar>[data-a="speed"],.lab3d-bar>[data-a="fullscreen"]{min-width:42px;height:36px;padding:0 8px}
+}

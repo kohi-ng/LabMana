@@ -558,6 +558,7 @@ export function mount(host, anim) {
     <div class="lab3d-cams">${VIEWS.map(([k, n], i) => `<button type="button" data-v="${k}" class="${i ? "" : "on"}">${n}</button>`).join("")}</div></div>
     <div class="lab3d-cap"></div>
     <div class="lab3d-bar"><button type="button" data-a="prev" aria-label="Bước trước">⏮</button><button type="button" data-a="play" aria-label="Tạm dừng / Phát lại">⏸</button><button type="button" data-a="next" aria-label="Bước tiếp">⏭</button>
+    <button type="button" data-a="speed" aria-label="Tốc độ phát: x1">x1</button><button type="button" data-a="fullscreen" aria-label="Toàn màn hình">⛶</button>
     <div class="lab3d-dots"></div></div><div class="lab3d-prog"><i></i></div></div>`;
   const $ = s => host.querySelector(s), canvas = $("canvas");
   let renderer;
@@ -576,6 +577,7 @@ export function mount(host, anim) {
     const pm = new THREE_.PMREMGenerator(renderer); scene.environment = pm.fromScene(env, .02).texture; pm.dispose();
   }
 
+  const card = $(".lab3d");
   const hud = $(".lab3d-hud"), cap = $(".lab3d-cap"), dots = $(".lab3d-dots"), prog = $(".lab3d-prog i"), playBtn = $("[data-a=play]");
   dots.innerHTML = steps.map((s, i) => `<button type="button" data-i="${i}" aria-label="Bước ${i + 1}"></button>`).join("");
 
@@ -626,12 +628,31 @@ export function mount(host, anim) {
     else if (b.dataset.a === "prev") { tl.pause(); const i = stepAt(tl.time()); go(tl.time() - steps[i].t > .6 ? i : i - 1); }
     else if (b.dataset.a === "next") { tl.pause(); go(stepAt(tl.time()) + 1); }
     else if (b.dataset.a === "play") { if (tl.progress() >= 1) tl.restart(); else tl.paused(!tl.paused()); ui(); }
+    else if (b.dataset.a === "speed") {
+      const speeds = [1, 1.25, 1.5, .5];
+      const current = tl.timeScale();
+      const index = speeds.findIndex(x => Math.abs(x - current) < .001);
+      const speed = speeds[(index + 1) % speeds.length];
+      tl.timeScale(speed); b.textContent = `x${speed}`; b.setAttribute("aria-label", `Tốc độ phát: x${speed}`);
+    }
+    else if (b.dataset.a === "fullscreen") {
+      if (document.fullscreenElement === card) document.exitFullscreen?.();
+      else card.requestFullscreen?.().catch(() => {});
+    }
   });
   tl.eventCallback("onUpdate", ui); tl.eventCallback("onComplete", ui);
 
   const view$ = $(".lab3d-view");
   const resize = () => { const w = view$.clientWidth || 380, h = view$.clientHeight || 230; renderer.setSize(w, h, false); camera.aspect = w / h; camera.updateProjectionMatrix(); };
   const ro = new ResizeObserver(resize); ro.observe(view$); resize();
+  const fullscreenBtn = $("[data-a=fullscreen]");
+  const onFullscreenChange = () => {
+    const active = document.fullscreenElement === card;
+    fullscreenBtn.textContent = active ? "↙" : "⛶";
+    fullscreenBtn.setAttribute("aria-label", active ? "Thoát toàn màn hình" : "Toàn màn hình");
+    requestAnimationFrame(resize);
+  };
+  document.addEventListener("fullscreenchange", onFullscreenChange);
   let raf = 0, last = performance.now(), dead = false, shown = "";
   const loop = now => {
     if (dead) return; raf = requestAnimationFrame(loop);
@@ -640,5 +661,5 @@ export function mount(host, anim) {
     const h = hudText(); if (h !== shown) { shown = h; hud.textContent = h; }
   };
   tl.progress(0); ui(); raf = requestAnimationFrame(loop); tl.play();
-  return { destroy() { dead = true; cancelAnimationFrame(raf); ro.disconnect(); tl.kill(); sim.dispose(); renderer.dispose(); host.innerHTML = ""; } };
+  return { destroy() { dead = true; cancelAnimationFrame(raf); ro.disconnect(); document.removeEventListener("fullscreenchange", onFullscreenChange); if (document.fullscreenElement === card) document.exitFullscreen?.(); tl.kill(); sim.dispose(); renderer.dispose(); host.innerHTML = ""; } };
 }
