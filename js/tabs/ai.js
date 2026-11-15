@@ -21,7 +21,7 @@ const MODEL_DEFAULTS = {
   "gemini-3.6-flash":       { temperature: 0.25, maxOutputTokens: 3072, thinkingBudget: 256 },
   "gemini-3-flash-preview": { temperature: 0.25, maxOutputTokens: 2048, thinkingBudget: 256 },
   "gemini-3.1-flash-lite":  { temperature: 0.3,  maxOutputTokens: 2048, thinkingBudget: 128 },
-  "gemini-3.5-flash-lite":  { temperature: 0.3,  maxOutputTokens: 1536, thinkingBudget: 0 }
+  "gemini-3.5-flash-lite":  { temperature: 0.3,  maxOutputTokens: 1536, thinkingBudget: 128 }
 };
 const FALLBACK_STATUS = new Set([429, 500, 503]);
 const TURN_CHOICES = [1, 3, 5, 10];
