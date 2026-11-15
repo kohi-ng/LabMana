@@ -129,6 +129,7 @@ function act(a, val) {
       if (c?.assay) { S.conv.from = "ww"; S.conv.v.value = String(c.assay); S.conv.v.d = String(c.density); }
       render(); break;
     }
+    case "stage": toggleStage(); break;
     case "copy":
       try { navigator.clipboard?.writeText(val).then(() => toast(`Đã sao chép ${val}`, "success", 1400)).catch(() => {}); } catch { /* ignore */ }
       break;
@@ -155,6 +156,7 @@ const mixInput = () => ({
 });
 
 function render({ top = false } = {}) {
+  destroyStage();
   const st = root.scrollTop;
   root.innerHTML = `<div class="bt">${modesHtml()}${S.mode === "mix" ? mixHtml() : convHtml()}</div>`;
   root.scrollTop = top ? 0 : st;
@@ -196,8 +198,9 @@ function maxStep() {
   return computeMix(mixInput()).status === "ok" ? 4 : 3;
 }
 function stepperHtml() {
-  // Chỉ hiện bước đang làm
-  return `<div class="bt-progress"><span>Bước ${S.step}/${STEPS.length}</span><b>${STEPS[S.step - 1][1]}</b></div>`;
+  // Chỉ hiện bước đang làm; ở Bước 4/4 có nút Play đỏ mở mô phỏng 3D thao tác pha chế
+  const play = S.step === 4 ? `<button type="button" class="lab3d-play" data-act="stage" aria-expanded="false" aria-label="Xem mô phỏng 3D thao tác pha chế" title="Xem mô phỏng 3D"><span aria-hidden="true">▶</span></button>` : "";
+  return `<div class="bt-progress"><span>Bước ${S.step}/${STEPS.length}</span><b>${STEPS[S.step - 1][1]}</b>${play}</div>`;
 }
 function summaryHtml() {
   const x = CHEMS[S.chem];
@@ -281,7 +284,8 @@ function refreshLive() {
 function step4() {
   const r = computeMix(mixInput());
   const items = safetyItems(S.chem);
-  return `<div class="bt-hero"><div class="bt-hero-k">${esc(r.hero.label)}</div>
+  return `<div id="bt-stage" class="lab3d-wrap" hidden></div>
+    <div class="bt-hero"><div class="bt-hero-k">${esc(r.hero.label)}</div>
       <div class="bt-hero-v">${esc(r.hero.value)}</div><div class="bt-hero-s">${esc(r.hero.sub)}</div></div>
     ${r.warns.map(w => `<div class="bt-warn">${esc(w)}</div>`).join("")}
     <div class="bt-rows">${r.rows.map(([k, v]) => `<div class="bt-row"><span>${esc(k)}</span><b>${esc(v)}</b></div>`).join("")}</div>
@@ -292,6 +296,33 @@ function step4() {
     <div class="safety"><h3>An toàn — ${esc(CHEMS[S.chem].formula || CHEMS[S.chem].name)}</h3><ul>${items.map(t => `<li>${esc(t)}</li>`).join("")}</ul></div>
     <div class="bt-nav"><button type="button" class="btn" data-act="goStep" data-val="3">Sửa thông số</button>
       <button type="button" class="btn primary" data-act="reset">Pha dung dịch khác</button></div>`;
+}
+
+/* ---------- Mô phỏng 3D (js/lab-animator.js, nạp khi bấm Play) ---------- */
+let stage = null;
+function destroyStage() { if (stage) { try { stage.handle.destroy(); } catch { /* ignore */ } stage = null; } }
+async function toggleStage() {
+  const wrap = root.querySelector("#bt-stage"), btn = root.querySelector(".lab3d-play");
+  if (!wrap || !btn) return;
+  const g = window.gsap;
+  if (stage) { // đóng: trượt gọn rồi giải phóng WebGL
+    const done = () => { destroyStage(); wrap.hidden = true; wrap.style.height = ""; };
+    btn.classList.remove("on"); btn.setAttribute("aria-expanded", "false");
+    if (g) g.to(wrap, { height: 0, opacity: 0, duration: .35, ease: "power2.inOut", onComplete: done }); else done();
+    return;
+  }
+  const r = computeMix(mixInput());
+  if (r.status !== "ok" || !r.anim) return;
+  btn.classList.add("on"); btn.setAttribute("aria-expanded", "true");
+  wrap.hidden = false;
+  try {
+    const mod = await import("../lab-animator.js");
+    stage = { handle: mod.mount(wrap, r.anim) };
+    if (g) g.fromTo(wrap, { height: 0, opacity: 0 }, { height: "auto", opacity: 1, duration: .45, ease: "power2.out" });
+  } catch (e) {
+    wrap.hidden = true; btn.classList.remove("on"); btn.setAttribute("aria-expanded", "false");
+    toast("Không tải được mô phỏng 3D", "error", 2200);
+  }
 }
 
 /* ---------- Chế độ Quy đổi ---------- */

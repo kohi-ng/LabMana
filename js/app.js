@@ -120,3 +120,8 @@ progressMenu.addEventListener("click", event => {
   if (location.hash !== "#sop") show("sop");
   sop.goToProgress(button.dataset.progressSection || null, button.dataset.progressStep || null);
 });
+
+/* Offline-first: Service Worker lưu sẵn vỏ ứng dụng, KaTeX, Three.js và GSAP (mô phỏng 3D chạy được khi mất mạng) */
+if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+  window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(() => { /* không bắt buộc */ }));
+}

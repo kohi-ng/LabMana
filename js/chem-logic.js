@@ -303,7 +303,7 @@ export function computeMix(inp) {
 
   const warns = [];
   const rows = [];
-  let hero, steps, basis;
+  let hero, steps, basis, anim;
 
   if (solid) {
     const pur = pF.val;
@@ -324,6 +324,7 @@ export function computeMix(inp) {
         LABEL_STEP
       ];
       basis = String.raw`$m_{\text{cân}}=\dfrac{w_{\text{đích}}\cdot m_{\text{cuối}}}{P/100}$ — với $P$ là độ tinh khiết (%).`;
+      anim = { mode: "solid-mass", soluteAmount: weigh, soluteUnit: "g", solventAmount: water, finalMass: amount, finalVolume: null, soluteVolume: null };
     } else {
       pure = tgt.gL * amount / 1000;
       weigh = pure * 100 / pur;
@@ -341,6 +342,7 @@ export function computeMix(inp) {
       basis = mw && (tU === "M" || tU === "mM" || tU === "N")
         ? String.raw`$m_{\text{cân}}=\dfrac{C_M\cdot V\cdot M}{P/100}$ — với $M$ là khối lượng mol của đúng công thức đang cân.`
         : String.raw`$m_{\text{cân}}=\dfrac{C\cdot V}{P/100}$ — với $C$ quy về g/L.`;
+      anim = { mode: "solid-vol", soluteAmount: weigh, soluteUnit: "g", solventAmount: amount, finalMass: null, finalVolume: amount, soluteVolume: null };
     }
     if (weigh < 0.02) warns.push("Lượng cân rất nhỏ (< 20 mg) — sai số cân lớn. Nên tăng lượng dung dịch pha hoặc pha dung dịch đậm hơn rồi pha loãng.");
     if (chem.formula.includes("·")) warns.push(`${lbl} là muối ngậm nước — khối lượng mol đã tính cả nước kết tinh; không thay bằng muối khan.`);
@@ -368,6 +370,7 @@ export function computeMix(inp) {
         LABEL_STEP
       ];
       basis = String.raw`$V_{\text{gốc}}=\dfrac{C_{\text{đích}}\cdot V_{\text{cuối}}}{C_{\text{gốc}}}$ — hai nồng độ cùng quy về g/L.`;
+      anim = { mode: "dilute-vol", soluteAmount: Vs, soluteUnit: "mL", solventAmount: amount - Vs, finalMass: null, finalVolume: amount, soluteVolume: Vs };
       if (Vs < 0.1) warns.push("Thể tích cần lấy quá nhỏ (< 0,1 mL) — khó đạt chính xác. Nên pha dung dịch trung gian (pha loãng 10–100 lần) rồi pha tiếp, hoặc tăng thể tích cuối.");
       hero = { label: "Lấy dung dịch gốc", value: fmtVol(Vs), sub: `${lbl} ${fmt(sF.val)} ${UNITS[sU].sym} → ${fmt(T.val)} ${UNITS[tU].sym} × ${finalTxt}` };
     } else {
@@ -389,6 +392,7 @@ export function computeMix(inp) {
         LABEL_STEP
       ];
       basis = String.raw`$m_{\text{gốc}}=\dfrac{w_{\text{đích}}\cdot m_{\text{cuối}}}{w_{\text{gốc}}}$ — pha theo khối lượng, khối lượng có tính cộng.`;
+      anim = { mode: "dilute-mass", soluteAmount: Ms, soluteUnit: "g", solventAmount: water, finalMass: amount, finalVolume: null, soluteVolume: d ? Ms / d : null };
       hero = { label: "Lấy dung dịch gốc", value: fmtMass(Ms), sub: `${lbl} ${fmt(sF.val)} ${UNITS[sU].sym} → ${fmt(T.val)} ${UNITS[tU].sym} × ${finalTxt}` };
     }
     if (chem.assay) warns.push("Nồng độ và khối lượng riêng mặc định chỉ là giá trị tham khảo — đối chiếu nhãn chai/SDS ở đúng nhiệt độ rồi chỉnh nếu khác.");
@@ -404,5 +408,6 @@ export function computeMix(inp) {
     if (r.v != null) equiv.push(`${fmt(r.v)} ${UNITS[u].sym}`);
   }
 
-  return { status: "ok", hero, rows, equiv, warns, steps, basis };
+  anim = { ...anim, chemId: inp.chem, soluteFormula: lbl, isAcid: kind === "acid", exothermic: heat, targetText: `${fmt(T.val)} ${UNITS[tU].sym}` };
+  return { status: "ok", hero, rows, equiv, warns, steps, basis, anim };
 }
