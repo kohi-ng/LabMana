@@ -5,6 +5,7 @@ import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove
 import { esc, richHtml, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
 import { driveCreateReport, isDriveConfigured } from "../drive.js";
 import { normalizeExperiment, flatten, secTagSp } from "../plan-logic.js";
+import { wakeSupported, wakeIsOn, setWake } from "../wake-lock.js";
 
 let root;
 const CFG = () => doc(db, "config", "lab");
@@ -25,6 +26,12 @@ export function init(el) {
   root.addEventListener("click", onClick);
   root.addEventListener("input", onReportInput);
   root.addEventListener("change", onReportInput);
+  root.addEventListener("change", async e => {
+    if (e.target.id !== "st-wake") return;
+    const box = e.target, ok = await setWake(box.checked);
+    if (!ok) { box.checked = false; setWake(false); toast("Không bật được giữ sáng màn hình", "error", 2200); }
+    else toast(box.checked ? "Đã bật giữ sáng màn hình" : "Đã tắt giữ sáng màn hình", "success", 1600);
+  });
   root.addEventListener("keydown", e => { if (e.key === "Enter" && e.target.id === "st-names") { e.preventDefault(); addNames(); } });
   render();
 }
@@ -44,7 +51,12 @@ function render() {
   if (!reportForm.titleEdited) reportForm.reportTitle = selectedExperiment?.title || "";
   if (!reportForm.peopleEdited) reportForm.peopleText = defaultPeopleText();
   root.innerHTML = `
-    <div class="page-head"><h2>Cài đặt</h2></div>
+    <div class="page-head head-row"><h2>Cài đặt</h2>
+      <label class="wake-switch ${wakeSupported() ? "" : "off"}" title="${wakeSupported() ? "Không tự tắt màn hình khi đang dùng LABMANA" : "Trình duyệt này không hỗ trợ giữ sáng màn hình"}">
+        <span>Giữ sáng màn hình</span>
+        <input type="checkbox" role="switch" id="st-wake" ${wakeIsOn() && wakeSupported() ? "checked" : ""} ${wakeSupported() ? "" : "disabled"}>
+        <i class="sw" aria-hidden="true"></i>
+      </label></div>
     <div class="section"><h3>Thành viên</h3>
       <div class="inline">
         <input class="inp" id="st-names" placeholder="Họ tên - MSSV (nhiều người: cách nhau dấu phẩy)" autocomplete="off">

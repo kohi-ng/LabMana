@@ -12,6 +12,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap">
   <link rel="stylesheet" href="css/style.css">
+  <!-- Intro chỉ chạy ở phiên mới (tab/cửa sổ mới); tải lại trong cùng phiên thì bỏ qua -->
+  <script>try{if(!sessionStorage.getItem("labmana.intro")){sessionStorage.setItem("labmana.intro","1");document.documentElement.classList.add("intro-on");}}catch(e){}</script>
 
   <!-- Các script "defer" chạy đúng thứ tự, TRƯỚC module js/app.js -->
   <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
@@ -22,6 +24,8 @@
   <script defer src="https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"></script>
 </head>
 <body>
+  <div id="intro" aria-hidden="true"><canvas></canvas><div class="intro-logo">LABMANA</div></div>
+  <script src="js/intro.js"></script>
   <header class="topbar">
     <button id="progress-menu-toggle" class="brand brand-btn" type="button" aria-expanded="false" aria-controls="progress-menu" aria-label="LABMANA — mở tiến trình">
       <span>LABMANA</span><span class="chev" aria-hidden="true"></span>

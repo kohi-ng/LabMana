@@ -7,6 +7,7 @@ import * as settings from "./tabs/settings.js";
 import * as calc from "./tabs/calc.js";
 import * as ai from "./tabs/ai.js";
 import { normalizeExperiment, secTagSp } from "./plan-logic.js";
+import { restoreWake } from "./wake-lock.js";
 
 const TABS = { planner, sop, calc, ai, settings };
 const inited = {};
@@ -58,6 +59,10 @@ if (!TABS[first]) { try { first = localStorage.getItem("labmana.tab"); } catch {
 show(TABS[first] ? first : "sop");
 updateConn();
 startStore();
+restoreWake();
+// Intro (chỉ ở phiên mới): báo app đã sẵn sàng; intro xong thì vào tab Quy trình
+window.__introAppReady?.();
+window.__intro?.then(() => show("sop"));
 
 /* ---------------- Tiến trình — logo LABMANA, xổ dọc xuống ---------------- */
 function openProgressMenu() {

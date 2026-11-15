@@ -1,9 +1,9 @@
 // LabMana — Service Worker (offline-first). Pre-cache vỏ ứng dụng + thư viện CDN (KaTeX, Three.js, GSAP, font).
-const VERSION = "labmana-v4-3d-9";
+const VERSION = "labmana-v4-3d-10";
 const SHELL = [
   "./", "index.html", "formbaocao.html", "css/style.css",
   "js/app.js", "js/store.js", "js/utils.js", "js/firebase.js", "js/drive.js", "js/chem-logic.js", "js/plan-logic.js",
-  "js/step-editor.js", "js/ai-compose.js", "js/lab-animator.js",
+  "js/step-editor.js", "js/ai-compose.js", "js/lab-animator.js", "js/intro.js", "js/wake-lock.js",
   "js/tabs/planner.js", "js/tabs/sop.js", "js/tabs/calc.js", "js/tabs/ai.js", "js/tabs/settings.js"
 ];
 const CDN = [
