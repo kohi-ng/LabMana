@@ -128,8 +128,8 @@ function stepBody(s, flat) {
   if (s.assigned_role && !state.team.includes(s.assigned_role))
     roleOpts.push(`<option value="${esc(s.assigned_role)}" selected>${esc(s.assigned_role)} (không còn trong cài đặt)</option>`);
   return `<div class="step-body">
-    <label class="lbl">Các bước tiến hành
-      <div class="toolbar step-editor-actions">
+    <div class="lbl-t">Các bước tiến hành</div>
+    <div class="toolbar step-editor-actions">
         <button type="button" class="step-editor-trigger" data-act="step-editor">✏️ Biên soạn</button>
         <button type="button" class="ai-compose-trigger" data-act="ai-compose">✦ AI Compose</button>
       </div>
