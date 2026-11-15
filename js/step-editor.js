@@ -148,12 +148,16 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
       const modal=body.closest(".modal");
       if(modal){
         modal.classList.add("step-editor-modal");
-        const backdrop=modal.parentElement,viewport=window.visualViewport;\n        backdrop.classList.add("step-editor-backdrop");
+        const backdrop=modal.parentElement,viewport=window.visualViewport;
+        backdrop.classList.add("step-editor-backdrop");
         const fit=()=>{
           if(!viewport)return;
           modal.style.height=Math.max(280,viewport.height-12)+"px";
           modal.style.maxHeight=modal.style.height;
-          backdrop.style.top=Math.max(0,viewport.offsetTop)+"px";\n          backdrop.style.height=viewport.height+"px";\n          backdrop.style.bottom="auto";\n          backdrop.style.alignItems="center";
+          backdrop.style.top=Math.max(0,viewport.offsetTop)+"px";
+          backdrop.style.height=viewport.height+"px";
+          backdrop.style.bottom="auto";
+          backdrop.style.alignItems="center";
         };
         viewport?.addEventListener("resize",fit);
         viewport?.addEventListener("scroll",fit);
