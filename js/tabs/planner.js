@@ -10,19 +10,12 @@ import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigure
 import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, statusCard, downloadFile, $$ } from "../utils.js";
 import { OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
 import { openAICompose } from "../ai-compose.js";
+import { openStepEditor } from "../step-editor.js";
 
 let root, view = "list", exp = null, expId = null, dirty = false;
 const openSteps = new Set(), previewSteps = new Set(), errSteps = new Set();
 const uploadingImgs = new Set(); // step ids đang upload ảnh (khóa UI của ảnh đó)
 const pendingDriveDeletes = new Set(), newlyUploadedDriveFiles = new Set(), failedDriveDeletes = new Set();
-const aiUndoSnapshots = new Map(); // stepId → nội dung trước khi áp dụng AI, chỉ tồn tại trong phiên
-
-const SPECIALS = ["°C", "±", "×", "→", "⇌", "Δ", "µ", "²", "³", "⁻", "₂", "₃"];
-const SNIPPETS = [
-  { l: "Hóa học", t: "$\\ce{}$", b: 2 },
-  { l: "Phân số", t: "$\\frac{a}{b}$", b: 0 },
-  { l: "C_M", t: "$C_{M}$", b: 0 }
-];
 const INPUT_FIELDS = new Set(["title", "description", "section_name", "step_title", "text", "input_label", "input_unit", "rule-value", "obs_label", "exp_label"]);
 const CHANGE_FIELDS = new Set(["assigned_role", "req_input", "input_type", "req_photo", "rule-op", "rule-goto", "obs_enabled", "exp_enabled"]);
 
@@ -136,12 +129,9 @@ function stepBody(s, flat) {
     roleOpts.push(`<option value="${esc(s.assigned_role)}" selected>${esc(s.assigned_role)} (không còn trong cài đặt)</option>`);
   return `<div class="step-body">
     <label class="lbl">Các bước tiến hành
-      <div class="toolbar">
-        ${SPECIALS.map(c => `<button type="button" data-act="ins" data-ins="${esc(c)}" data-back="0">${esc(c)}</button>`).join("")}
-        ${SNIPPETS.map(x => `<button type="button" data-act="ins" data-ins="${esc(x.t)}" data-back="${x.b}">${esc(x.l)}</button>`).join("")}
-        <button type="button" data-act="table">Bảng</button>
+      <div class="toolbar step-editor-actions">
+        <button type="button" class="step-editor-trigger" data-act="step-editor">✏️ Biên soạn</button>
         <button type="button" class="ai-compose-trigger" data-act="ai-compose">✦ AI Compose</button>
-        ${aiUndoSnapshots.has(s.id) ? `<button type="button" class="ai-undo-trigger" data-act="undo-ai">Hoàn tác</button>` : ""}
       </div>
       <textarea class="inp" rows="4" data-f="text" placeholder="Hướng dẫn thao tác. Công thức: $x^2$, hóa học: $\\ce{H2SO4}$">${esc(s.text)}</textarea>
     </label>
@@ -248,49 +238,6 @@ function moveStep(secId, stepId, dir) {
     const [st] = sec.steps.splice(i, 1);
     dir > 0 ? exp.sections[t].steps.unshift(st) : exp.sections[t].steps.push(st);
   }
-}
-
-function insertText(stepId, text, back = 0) {
-  const ta = root.querySelector(`[data-step="${stepId}"] textarea[data-f="text"]`);
-  if (!ta) return;
-  const s = ta.selectionStart ?? ta.value.length, e = ta.selectionEnd ?? s;
-  ta.value = ta.value.slice(0, s) + text + ta.value.slice(e);
-  const pos = s + text.length - back;
-  ta.focus(); ta.setSelectionRange(pos, pos);
-  ta.dispatchEvent(new Event("input", { bubbles: true }));
-}
-
-async function createTable(stepId) {
-  const node = document.createElement("div");
-  node.innerHTML = `<div class="grid2">
-    <label class="lbl">Số dòng dữ liệu<input class="inp" id="table-rows" type="number" min="1" max="20" value="3"></label>
-    <label class="lbl">Số cột<input class="inp" id="table-cols" type="number" min="2" max="8" value="2"></label>
-  </div>`;
-  const dimensions = await openModal({
-    title: "Tạo bảng",
-    node,
-    buttons: [
-      { label: "Hủy", value: null },
-      {
-        label: "Chèn bảng", kind: "primary",
-        value: () => ({ rows: Number(node.querySelector("#table-rows").value), cols: Number(node.querySelector("#table-cols").value) }),
-        validate: () => {
-          const rows = Number(node.querySelector("#table-rows").value);
-          const cols = Number(node.querySelector("#table-cols").value);
-          if (!Number.isInteger(rows) || rows < 1 || rows > 20 || !Number.isInteger(cols) || cols < 2 || cols > 8) {
-            toast("Bảng cần 1–20 dòng dữ liệu và 2–8 cột.", "warn");
-            return false;
-          }
-          return true;
-        }
-      }
-    ]
-  });
-  if (!dimensions) return;
-  const header = `| ${Array.from({ length: dimensions.cols }, (_, i) => `Cột ${i + 1}`).join(" | ")} |`;
-  const separator = `| ${Array(dimensions.cols).fill("---").join(" | ")} |`;
-  const row = `| ${Array(dimensions.cols).fill("").join(" | ")} |`;
-  insertText(stepId, `\n${header}\n${separator}\n${Array(dimensions.rows).fill(row).join("\n")}\n`);
 }
 
 /* ---------- Sự kiện ---------- */
@@ -452,30 +399,27 @@ async function onClick(e) {
       if (f.step.text.trim() && !(await confirmBox("Xóa thao tác này?", "Xóa"))) return;
       f.sec.steps.splice(f.i, 1); markDirty(); render(); break;
     }
-    case "ins": insertText(sid, btn.dataset.ins, +btn.dataset.back || 0); break;
-    case "table": await createTable(sid); break;
+    case "step-editor": {
+      const ta = stepEl?.querySelector('textarea[data-f="text"]');
+      if (!ta) return;
+      const nextText = await openStepEditor({ value: ta.value, title: "✏️ Biên soạn thao tác " + (btn.closest("[data-step]")?.querySelector(".step-no")?.textContent || "") });
+      if (typeof nextText === "string") {
+        ta.value = nextText;
+        ta.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+      break;
+    }
     case "ai-compose": {
       const ta = stepEl?.querySelector('textarea[data-f="text"]');
       if (!ta) return;
       await openAICompose({
         experiment: exp, stepId: sid, textarea: ta,
         onApply: nextText => {
-          aiUndoSnapshots.set(sid, ta.value);
           ta.value = nextText;
           ta.dispatchEvent(new Event("input", { bubbles: true }));
           render();
         }
       });
-      break;
-    }
-    case "undo-ai": {
-      if (!aiUndoSnapshots.has(sid)) return;
-      const previous = aiUndoSnapshots.get(sid);
-      aiUndoSnapshots.delete(sid);
-      const f = findStep(sid);
-      if (f) f.step.text = previous;
-      markDirty();
-      render();
       break;
     }
     case "del-img": {
