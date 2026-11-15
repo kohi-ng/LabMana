@@ -9,11 +9,13 @@ import { doc, collection, setDoc, deleteDoc } from "https://www.gstatic.com/fire
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
 import { esc, uid, snippet, richHtml, renderMath, toast, openModal, confirmBox, statusCard, downloadFile, $$ } from "../utils.js";
 import { OPS, OP_LABELS, END, newStep, newSection, newExperiment, normalizeExperiment, serializeExperiment, validatePlan, flatten } from "../plan-logic.js";
+import { openAICompose } from "../ai-compose.js";
 
 let root, view = "list", exp = null, expId = null, dirty = false;
 const openSteps = new Set(), previewSteps = new Set(), errSteps = new Set();
 const uploadingImgs = new Set(); // step ids đang upload ảnh (khóa UI của ảnh đó)
 const pendingDriveDeletes = new Set(), newlyUploadedDriveFiles = new Set(), failedDriveDeletes = new Set();
+const aiUndoSnapshots = new Map(); // stepId → nội dung trước khi áp dụng AI, chỉ tồn tại trong phiên
 
 const SPECIALS = ["°C", "±", "×", "→", "⇌", "Δ", "µ", "²", "³", "⁻", "₂", "₃"];
 const SNIPPETS = [
@@ -138,6 +140,8 @@ function stepBody(s, flat) {
         ${SPECIALS.map(c => `<button type="button" data-act="ins" data-ins="${esc(c)}" data-back="0">${esc(c)}</button>`).join("")}
         ${SNIPPETS.map(x => `<button type="button" data-act="ins" data-ins="${esc(x.t)}" data-back="${x.b}">${esc(x.l)}</button>`).join("")}
         <button type="button" data-act="table">Bảng</button>
+        <button type="button" class="ai-compose-trigger" data-act="ai-compose">✦ AI Compose</button>
+        ${aiUndoSnapshots.has(s.id) ? `<button type="button" class="ai-undo-trigger" data-act="undo-ai">Hoàn tác</button>` : ""}
       </div>
       <textarea class="inp" rows="4" data-f="text" placeholder="Hướng dẫn thao tác. Công thức: $x^2$, hóa học: $\\ce{H2SO4}$">${esc(s.text)}</textarea>
     </label>
@@ -450,6 +454,30 @@ async function onClick(e) {
     }
     case "ins": insertText(sid, btn.dataset.ins, +btn.dataset.back || 0); break;
     case "table": await createTable(sid); break;
+    case "ai-compose": {
+      const ta = stepEl?.querySelector('textarea[data-f="text"]');
+      if (!ta) return;
+      await openAICompose({
+        experiment: exp, stepId: sid, textarea: ta,
+        onApply: nextText => {
+          aiUndoSnapshots.set(sid, ta.value);
+          ta.value = nextText;
+          ta.dispatchEvent(new Event("input", { bubbles: true }));
+          render();
+        }
+      });
+      break;
+    }
+    case "undo-ai": {
+      if (!aiUndoSnapshots.has(sid)) return;
+      const previous = aiUndoSnapshots.get(sid);
+      aiUndoSnapshots.delete(sid);
+      const f = findStep(sid);
+      if (f) f.step.text = previous;
+      markDirty();
+      render();
+      break;
+    }
     case "del-img": {
       const f = findStep(sid);
       const img = f.step.images[+btn.dataset.i];

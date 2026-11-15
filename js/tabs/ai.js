@@ -275,6 +275,78 @@ async function callGemini() {
   }
 }
 
+
+/* ------------------------------ AI Compose cho Kế hoạch ------------------------------ */
+export async function getPlannerComposeSettings() {
+  if (!config) await loadConfig();
+  const model = currentModel();
+  const p = paramsFor(model);
+  return {
+    models: modelList(),
+    model,
+    maxOutputTokens: 2048,
+    thinkingBudget: 256,
+    temperature: 0.25,
+    configuredMaxOutputTokens: p.maxOutputTokens,
+    configuredThinkingBudget: p.thinkingBudget,
+    configuredTemperature: p.temperature
+  };
+}
+
+/** Gọi Gemini cho một tác vụ độc lập, vẫn dùng thứ tự Cascade chung của tab AI. */
+export async function composeForPlanner({ prompt, context = "", systemInstruction = "", model, maxOutputTokens = 2048, thinkingBudget = 256, temperature = 0.25 }) {
+  if (!config) await loadConfig();
+  const startModel = model || currentModel();
+  const order = cascadeFrom(startModel);
+  let firstFail = null;
+  for (let i = 0; i < order.length; i++) {
+    const active = order[i];
+    const generationConfig = {
+      temperature: clamp(num(temperature, 0.25), 0, 1),
+      maxOutputTokens: clamp(Math.round(num(maxOutputTokens, 2048)), 64, 32768)
+    };
+    const budget = clamp(Math.round(num(thinkingBudget, 256)), 0, 24576);
+    if (budget > 0) generationConfig.thinkingConfig = { thinkingBudget: budget };
+    const instruction = [SYSTEM_BASE, systemInstruction].filter(Boolean).join("\n\n");
+    const userText = [context ? "NGỮ CẢNH BÀI THÍ NGHIỆM:\n" + context : "", "YÊU CẦU SOẠN THẢO:\n" + String(prompt || "").trim()].filter(Boolean).join("\n\n");
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(active)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          system_instruction: { parts: [{ text: instruction }] },
+          contents: [{ role: "user", parts: [{ text: userText }] }],
+          generationConfig
+        })
+      });
+      if (!res.ok) {
+        let detail = "";
+        try { detail = (await res.json())?.error?.message || ""; } catch { /* ignore */ }
+        const err = new Error(`Lỗi ${res.status}${detail ? ": " + detail : ""}`);
+        err.status = res.status;
+        throw err;
+      }
+      const data = await res.json();
+      const cand = data.candidates?.[0];
+      const text = (cand?.content?.parts || []).map(part => part.text || "").join("").trim();
+      if (!text) {
+        if (data.promptFeedback?.blockReason) throw new Error("Yêu cầu bị chặn bởi bộ lọc an toàn của Gemini.");
+        throw new Error("AI không trả về nội dung. Hãy thử prompt ngắn và rõ hơn.");
+      }
+      const note = firstFail ? `${shortName(firstFail.model)} quá tải (HTTP ${firstFail.status}), đã chuyển sang ${shortName(active)}.` : "";
+      return { text, note, model: active };
+    } catch (err) {
+      if ([429, 503, 500].includes(err.status) && i < order.length - 1) {
+        firstFail = firstFail || { model: active, status: err.status };
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Không có mô hình Gemini nào khả dụng.");
+}
+
 /* ------------------------------ Hiển thị tin nhắn ------------------------------ */
 const inline = t => esc(t).replace(/\*\*(.+?)\*\*/g, "<b>$1</b>").replace(/`([^`]+)`/g, "<code>$1</code>");
 
