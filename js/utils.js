@@ -14,60 +14,75 @@ export const snippet = (t, n = 48) => {
 };
 
 /** Văn bản người dùng → HTML an toàn; hỗ trợ *đậm*, danh sách gạch đầu dòng và bảng Markdown đơn giản. */
+/** Markdown an toàn dùng chung cho Planner, AI Compose và Quy trình. Công thức để KaTeX auto-render xử lý sau khi dựng HTML. */
 export function richHtml(t) {
-  const lines = String(t ?? "").split("\n");
-  const html = [];
-  const inline = value => esc(value).replace(/\*([^*\n]+)\*/g, "<strong>$1</strong>");
-  const tableCells = line => {
-    const value = line.trim();
-    if (!value.startsWith("|") || !value.endsWith("|")) return null;
-    return value.slice(1, -1).split("|").map(cell => cell.trim());
+  const lines=String(t??"").replace(/\r\n?/g,"\n").split("\n");
+  const html=[];
+  const inline=value=>esc(value)
+    .replace(/\x60([^\x60]+)\x60/g,"<code>$1</code>")
+    .replace(/\*\*(.+?)\*\*/g,"<strong>$1</strong>")
+    .replace(/\*([^*\n]+)\*/g,"<strong>$1</strong>");
+  const splitCells=line=>{
+    const value=line.trim();
+    if(!value.startsWith("|")||!value.endsWith("|"))return null;
+    const cells=[];let cell="",escaped=false;
+    for(const ch of value.slice(1,-1)){
+      if(ch==="|"&&!escaped){cells.push(cell.trim());cell="";continue;}
+      cell+=ch;
+      escaped=ch==="\\"&&!escaped;
+      if(ch!=="\\")escaped=false;
+    }
+    cells.push(cell.trim());return cells;
   };
-  for (let i = 0; i < lines.length;) {
-    const cells = tableCells(lines[i]);
-    if (cells && cells.length >= 2) {
-      const rows = [];
-      while (i < lines.length) {
-        const row = tableCells(lines[i]);
-        if (!row || row.length < 2) break;
-        rows.push(row);
-        i++;
-      }
-      const header = rows.shift() || [];
-      if (rows.length && rows[0].every(cell => /^:?-{3,}:?$/.test(cell))) rows.shift();
-      html.push(`<div class="table-scroll"><table class="text-table"><thead><tr>${header.map(cell => `<th>${inline(cell)}</th>`).join("")}</tr></thead><tbody>${rows.map(row =>
-        `<tr>${header.map((_, index) => `<td>${inline(row[index] ?? "")}</td>`).join("")}</tr>`
-      ).join("")}</tbody></table></div>`);
+  const isSep=row=>row.length>1&&row.every(cell=>/^:?-{3,}:?$/.test(cell));
+  for(let i=0;i<lines.length;){
+    const line=lines[i],trim=line.trim();
+    const cells=splitCells(line);
+    if(cells&&cells.length>1){
+      const rows=[];
+      while(i<lines.length){const row=splitCells(lines[i]);if(!row||row.length<2)break;rows.push(row);i++;}
+      const header=rows.shift()||[];
+      const align=isSep(rows[0]||[]) ? rows.shift() : null;
+      const cellTag=(cell,index,tag)=>{const a=align?.[index]||"";const style=a.startsWith(":")&&a.endsWith(":")?"center":a.endsWith(":")?"right":a.startsWith(":")?"left":"";return `<${tag}${style?` style="text-align:${style}"`:""}>${inline(cell)}</${tag}>`;};
+      html.push(`<div class="table-scroll"><table class="text-table"><thead><tr>${header.map((cell,j)=>cellTag(cell,j,"th")).join("")}</tr></thead><tbody>${rows.map(row=>`<tr>${header.map((_,j)=>cellTag(row[j]??"",j,"td")).join("")}</tr>`).join("")}</tbody></table></div>`);
       continue;
     }
-    if (/^\s*-\s+/.test(lines[i])) {
-      const items = [];
-      while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
-        items.push(`<li>${inline(lines[i].replace(/^\s*-\s+/, ""))}</li>`);
-        i++;
-      }
-      html.push(`<ul>${items.join("")}</ul>`);
-      continue;
+    const heading=trim.match(/^(#{1,6})\s+(.+?)\s*#*$/);
+    if(heading){const level=Math.min(4,heading[1].length+1);html.push(`<h${level} class="md-heading">${inline(heading[2])}</h${level}>`);i++;continue;}
+    if(/^\s*[-*•]\s+/.test(line)){
+      const items=[];while(i<lines.length&&/^\s*[-*•]\s+/.test(lines[i])){items.push(`<li>${inline(lines[i].replace(/^\s*[-*•]\s+/,""))}</li>`);i++;}
+      html.push(`<ul class="md-list">${items.join("")}</ul>`);continue;
     }
-    html.push(inline(lines[i]));
-    i++;
+    if(/^\s*\d+[.)]\s+/.test(line)){
+      const items=[];while(i<lines.length&&/^\s*\d+[.)]\s+/.test(lines[i])){items.push(`<li>${inline(lines[i].replace(/^\s*\d+[.)]\s+/,""))}</li>`);i++;}
+      html.push(`<ol class="md-list">${items.join("")}</ol>`);continue;
+    }
+    if(!trim){i++;continue;}
+    if(/^\s*(---|___|\*\*\*)\s*$/.test(line)){html.push("<hr>");i++;continue;}
+    const paragraph=[line];i++;
+    while(i<lines.length&&lines[i].trim()&&!splitCells(lines[i])&&!/^\s*(?:#{1,6}\s+|[-*•]\s+|\d+[.)]\s+|---\s*$)/.test(lines[i])){paragraph.push(lines[i]);i++;}
+    html.push(`<p>${paragraph.map(inline).join("<br>")}</p>`);
   }
-  return html.join("<br>");
+  return html.join("");
 }
 export function renderMath(el, tries = 0) {
+  if (!el) return;
   if (typeof window.renderMathInElement === "function") {
     try {
       window.renderMathInElement(el, {
         delimiters: [
           { left: "$$", right: "$$", display: true },
-          { left: "\\(", right: "\\)", display: false },
+          { left: "\\\\[", right: "\\\\]", display: true },
+          { left: "\\\\(", right: "\\\\)", display: false },
           { left: "$", right: "$", display: false }
         ],
-        throwOnError: false
+        throwOnError: false,
+        trust: false,
+        ignoredTags: ["script", "noscript", "style", "textarea", "pre", "code", "option"]
       });
-    } catch (e) { console.warn("KaTeX:", e); }
-  } else if (tries < 20) {
-    setTimeout(() => renderMath(el, tries + 1), 250); // CDN chưa tải xong
+    } catch (e) { console.warn("KaTeX / mhchem:", e); }
+  } else if (tries < 30) {
+    setTimeout(() => renderMath(el, tries + 1), 200);
   }
 }
 
