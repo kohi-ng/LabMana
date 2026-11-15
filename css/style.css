@@ -811,9 +811,9 @@ button.row:active{ background: var(--surface-2); }
 .lab3d-hud{ position:absolute; left:8px; top:8px; max-width:calc(100% - 16px); padding:4px 10px; border-radius:999px; background:rgba(10,16,26,.62); border:1px solid rgba(255,255,255,.16);
   -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); font-size:.75rem; font-weight:600; color:#E6EEF8; pointer-events:none; font-variant-numeric:tabular-nums; }
 .lab3d-hud:empty{ display:none; }
-.lab3d-cams{ position:absolute; left:6px; right:6px; bottom:6px; display:flex; gap:4px; flex-wrap:wrap; justify-content:center; }
-.lab3d-cams button{ font:inherit; font-size:.75rem; min-height:44px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.2); background:rgba(10,16,26,.6); color:#DCE6F2; cursor:pointer;
-  -webkit-backdrop-filter:blur(6px); backdrop-filter:blur(6px); }
+.lab3d-cams{ display:flex; gap:6px; padding:6px 8px; background:#0e1520; overflow-x:auto; -webkit-overflow-scrolling:touch; scrollbar-width:none; }
+.lab3d-cams button{ flex:none; }
+.lab3d-cams button{ font:inherit; font-size:.75rem; min-height:44px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.2); background:rgba(255,255,255,.08); color:#DCE6F2; cursor:pointer; }
 .lab3d-cams button:hover{ background:rgba(30,42,60,.8); }
 .lab3d-cams button.on{ background:var(--accent); border-color:var(--accent); color:#fff; }
 .lab3d-reset{ position:absolute; right:8px; top:8px; min-height:44px; padding:0 12px; border-radius:999px; border:1px solid rgba(255,255,255,.2); background:rgba(10,16,26,.62); color:#E6EEF8; font:inherit; font-size:.75rem; font-weight:600; cursor:pointer; }

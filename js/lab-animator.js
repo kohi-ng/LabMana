@@ -688,7 +688,8 @@ export function mount(host, anim) {
   host.innerHTML = `<div class="lab3d" tabindex="0" aria-label="Mô phỏng 3D pha chế. Phím Space: phát/tạm dừng, mũi tên: đổi bước, F: toàn màn hình, R: phát lại"><div class="lab3d-view"><canvas></canvas><div class="lab3d-hud"></div>
     <button type="button" class="lab3d-reset" data-a="resetview" aria-label="Đặt lại góc nhìn" hidden>⟲ Đặt lại góc nhìn</button>
     <div class="lab3d-hint" aria-hidden="true">Kéo để xoay · Chụm để thu phóng</div>
-    <div class="lab3d-cams">${VIEWS.map(([k, n], i) => `<button type="button" data-v="${k}" class="${i ? "" : "on"}">${n}</button>`).join("")}</div></div>
+    </div>
+    <div class="lab3d-cams">${VIEWS.map(([k, n], i) => `<button type="button" data-v="${k}" class="${i ? "" : "on"}">${n}</button>`).join("")}</div>
     <div class="lab3d-cap"></div>
     <input class="lab3d-seek" type="range" min="0" max="1000" value="0" step="1" aria-label="Thanh tua mô phỏng">
     <div class="lab3d-bar"><button type="button" data-a="prev" aria-label="Bước trước">⏮</button><button type="button" class="lab3d-playbtn" data-a="play" aria-label="Tạm dừng">⏸ Tạm dừng</button><button type="button" data-a="next" aria-label="Bước tiếp">⏭</button>
