@@ -1,47 +1,4 @@
-# LabMana — Thiết kế dữ liệu (Schema v3)
-
-## 00. Schema v3 — Workspace / RBAC / ACL (đọc phần này trước)
-
-Phần nội dung step/experiment (mục 1–2, 6–7 bên dưới) **không đổi**. v3 thêm metadata phạm vi + các collection phân quyền.
-Quy tắc thực thi nằm ở `firestore.rules`; giải thích ở `docs/ARCHITECTURE.md`.
-
-### Trường phạm vi — bắt buộc trên `experiments`, `runs`, `execution_logs`
-
-```jsonc
-{ "scope": "personal" | "group",
-  "group_id": null | "<groupId>",     // bắt buộc khi scope = group
-  "owner_uid": "<uid>",               // người tạo ban đầu; không đổi được
-  "created_by": "<uid>" }             // giữ nguyên khi người khác ghi tiếp (lịch sử)
-```
-- Client **không** được đổi `scope/group_id/owner_uid/created_by` sau khi tạo (Rules từ chối).
-- `runs` phải cùng `scope/group_id` với `experiments` cha; `execution_logs` cùng với `runs` cha (Rules kiểm tra bằng `get()`).
-- Truy vấn phải kèm `where("scope"…)` + `where("group_id"|"owner_uid"…)` — Rules không phải bộ lọc (`workspace.js: scopeWhere()`).
-- `experiments` thêm tùy chọn `shared_user_ids: string[]` (≤50) và `shared_group_ids: string[]` (≤2) — chỉ người duyệt chia sẻ sửa được.
-- Id `runs` = `experiment_<expId>` (một lượt dùng chung trong workspace); `execution_logs` = `<runId>__<stepId>` như cũ.
-
-### Collection mới
-
-| Path | Nội dung | Ghi chú |
-|---|---|---|
-| `users/{uid}` | `uid, email, display_name, status(active/pending/suspended/disabled), created_at_ms, updated_at_ms, last_login_ms` | user tự tạo (status `active`); chỉ Super Admin đổi `status` |
-| `user_emails/{emailLowercase}` | `uid, email, updated_at_ms` | tra uid để thêm thành viên; chỉ `get` từng email |
-| `group_requests/{id}` | `requested_name, description, requested_by, requested_email, proposed_admin_uid, status(pending/approved/rejected), reason, reviewed_by, reviewed_at_ms, group_id` | Super Admin duyệt |
-| `groups/{groupId}` | `name, description, code (LAB-XXXXX), status(active/suspended), created_by, admin_uid, approved_by, approved_at_ms` | id tự sinh; không xóa vật lý |
-| `memberships/{groupId}__{uid}` | `uid, group_id, role(group_admin/member), status(active/revoked/left), email, display_name, added_by, joined_at_ms` | **nguồn sự thật** về quyền nhóm |
-| `workspace_settings/{personal_<uid> | group_<groupId>}` | `team_members[], team_ids{}, updated_at_ms` | thay `config/lab` (theo workspace) |
-| `resource_shares/{u_<uid>__<expId> | g_<groupId>__<expId>}` | `resource_collection, resource_id, resource_path, source_scope, source_group_id, source_owner_uid, recipient_type(user/group), recipient_id, permission:'read', status(pending/active/rejected/revoked), created_by, approved_by, expires_at, title` | grant Viewer |
-| `audit_logs/{id}` | `actor_uid, actor_email, action, target_type, target_id, group_id, detail, timestamp_ms` | chỉ thêm; Super Admin / Group Admin đọc |
-| `config/*` | (cũ) | chỉ Super Admin đọc để migrate; **không còn lưu khóa API** |
-
-### Chỉ mục
-Mọi truy vấn dùng so sánh bằng (`==`) nên không cần composite index; `audit_logs` chỉ `orderBy(timestamp_ms)` (index đơn tự động).
-
-### Migration từ v2
-Dữ liệu v2 chưa có `scope` ⇒ bị Rules ẩn cho tới khi chạy `migration/migrate.mjs --owner-uid <UID> [--group <id>] --apply`
-(thêm trường, không xóa; idempotent; backup trước). `config/lab.team_members/team_ids` → `workspace_settings/personal_<uid>`
-(hoặc `group_<id>`). `config/lab.team_profiles` không dùng trong code nên không được chuyển.
-
----
+# LabMana — Thiết kế dữ liệu (Schema v2)
 
 ## 0. Những gì đổi so với v1
 
@@ -134,7 +91,7 @@ không điều kiện nào khớp → đi tiếp bước kế tiếp.
 4. Rẽ nhánh: thao tác phải thu thập kiểu **số**; `value` là số; `goto_step_id` tồn tại và nằm
    **sau** thao tác hiện tại.
 
-## 3. Collection `runs/{runId}` — bản ghi thực hiện (kèm trường phạm vi v3 ở mục 00)
+## 3. Collection `runs/{runId}` — bản ghi thực hiện tương thích
 
 ```jsonc
 { "exp_id": "…", "exp_title": "Bài 1 — Phân nhóm IIA, IIIA", "name": "Bài 1 — Phân nhóm IIA, IIIA", "created_at_ms": 1731484800000 }
@@ -162,7 +119,7 @@ ID tài liệu cố định = `runId__stepId` ⇒ **mỗi thao tác chỉ có 1 
 (không phát sinh bản trùng). Tên người thực hiện được lưu dạng **chuỗi chụp lại tại thời điểm
 lưu**, nên đổi tên thành viên sau này không làm thay đổi lịch sử.
 
-## 5. (v2, đã thay) `config/lab` → `workspace_settings/{…}` (xem mục 00)
+## 5. Document `config/lab` (không đổi)
 
 ```jsonc
 { "team_members": ["Nguyễn Văn A", "Trần Thị B"],

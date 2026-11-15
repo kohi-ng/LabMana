@@ -1,6 +1,7 @@
 // ============ Tab AI — cửa sổ chat Gemini (kiểu Gemini), đọc cấu hình từ Firestore config/gemini ============
 import { state } from "../store.js";
-import { geminiGenerate } from "../drive.js";
+import { db, ready, isConfigured } from "../firebase.js";
+import { doc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { esc, snippet, renderMath } from "../utils.js";
 import { normalizeExperiment } from "../plan-logic.js";
 import * as sop from "./sop.js";
@@ -88,11 +89,33 @@ function readCache() {
   } catch { return null; }
 }
 
-/** Cấu hình AI nay là hằng số phía client. Khóa Gemini KHÔNG còn ở client/Firestore: nằm trong Script Properties
- *  của Apps Script (GEMINI_API_KEY) và được gọi qua geminiGenerate() kèm Firebase ID token. */
-async function loadConfig() {
-  config = { activeModel: CASCADE[1], models: [...CASCADE], temperature: 0.25, maxOutputTokens: 2048, thinkingBudget: null };
-  return config;
+/** Đọc config/gemini: ưu tiên cache localStorage, chỉ hỏi Firestore khi chưa có cache (hoặc force). */
+async function loadConfig(force = false) {
+  if (!force) {
+    const cached = readCache();
+    if (cached) { config = cached; return config; }
+  }
+  if (configPromise) return configPromise;
+  configPromise = (async () => {
+    if (!isConfigured) throw new Error("Chưa cấu hình Firebase.");
+    await ready;
+    const snap = await getDoc(doc(db, "config", "gemini"));
+    if (!snap.exists()) throw new Error("Chưa có tài liệu config/gemini trên Firestore.");
+    const d = snap.data() || {};
+    if (!d.apiKey) throw new Error("config/gemini chưa có apiKey.");
+    const models = Array.isArray(d.models) && d.models.length ? d.models.map(String) : [d.activeModel || CASCADE[0]];
+    config = {
+      apiKey: String(d.apiKey),
+      activeModel: String(d.activeModel || models[0]),
+      models,
+      temperature: num(d.temperature, 0.25),
+      maxOutputTokens: num(d.maxOutputTokens, 2048),
+      thinkingBudget: d.thinkingBudget == null || d.thinkingBudget === "" ? null : num(d.thinkingBudget, null)
+    };
+    lsSet(LS_CFG, JSON.stringify(config));
+    return config;
+  })();
+  try { return await configPromise; } finally { configPromise = null; }
 }
 
 /** 5 mô hình chuẩn theo thứ tự ưu tiên, cộng thêm mô hình lạ nếu config/gemini có khai báo. */
@@ -186,17 +209,24 @@ async function requestOnce(model) {
   const p = paramsFor(model);
   const generationConfig = { temperature: p.temperature, maxOutputTokens: p.maxOutputTokens };
   if (p.thinkingBudget != null) generationConfig.thinkingConfig = { thinkingBudget: p.thinkingBudget };
-  let data;
-  try {
-    data = await geminiGenerate(model, {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(config.apiKey)}`;
+  const res = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
       system_instruction: { parts: [{ text: buildSystemInstruction() }] },
       contents: buildContents(p.turns),
       generationConfig
-    });
-  } catch (err) {
-    if (!err.status) { err.status = 0; }
+    })
+  });
+  if (!res.ok) {
+    let detail = "";
+    try { detail = (await res.json())?.error?.message || ""; } catch { /* ignore */ }
+    const err = new Error(`Lỗi ${res.status}${detail ? ": " + detail : ""}`);
+    err.status = res.status;
     throw err;
   }
+  const data = await res.json();
   const cand = data.candidates?.[0];
   const text = (cand?.content?.parts || []).map(part => part.text || "").join("").trim();
   if (!text) {
@@ -216,7 +246,7 @@ function cascadeFrom(start) {
 async function callGemini() {
   if (!config) await loadConfig();
   const order = cascadeFrom(currentModel());
-  let firstFail = null;
+  let firstFail = null, refreshed = false;
   for (let i = 0; i < order.length; i++) {
     const model = order[i];
     try {
@@ -226,6 +256,15 @@ async function callGemini() {
         : "";
       return { text, note };
     } catch (err) {
+      // Khóa/mô hình trong cache có thể đã đổi: tải lại cấu hình từ Firestore đúng 1 lần rồi thử lại cùng mô hình.
+      if (!refreshed && [400, 401, 403, 404].includes(err.status)) {
+        refreshed = true;
+        const before = JSON.stringify(config);
+        try {
+          await loadConfig(true);
+          if (JSON.stringify(config) !== before) { i--; continue; }
+        } catch { /* dùng lỗi gốc */ }
+      }
       if (FALLBACK_STATUS.has(err.status) && i < order.length - 1) {
         firstFail = firstFail || { model, status: err.status };
         continue;

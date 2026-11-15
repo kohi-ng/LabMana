@@ -1,6 +1,5 @@
 // ============ Drive: tải / xóa ảnh qua Google Apps Script Web App ============
 import { blobToBase64, blobToDataUrl } from "./utils.js";
-import { getIdToken } from "./auth.js";
 
 export const GAS_URL = "https://script.google.com/macros/s/AKfycby232LaXbc2TC-BXLJlZB9XjFGdzsl5LLnPELJ90lDHww2OzWLD8j2ngZWlEt9n1B0gFA/exec";
 export const isDriveConfigured = !!GAS_URL && !GAS_URL.startsWith("DÁN_");
@@ -81,8 +80,7 @@ async function driveRequest(payload, { timeoutMs = 90000 } = {}) {
       // text/plain tránh preflight CORS (OPTIONS) mà Apps Script Web App không xử lý được;
       // code.gs vẫn đọc đúng nội dung qua e.postData.contents vì đây vẫn là JSON hợp lệ.
       headers: { "Content-Type": "text/plain;charset=utf-8" },
-      // id_token: Apps Script xác minh danh tính (email/mật khẩu, tài khoản active) trước khi xử lý.
-      body: JSON.stringify({ ...payload, id_token: await getIdToken() }),
+      body: JSON.stringify(payload),
       signal: controller.signal
     });
     if (!response.ok) throw new Error(`Google Apps Script phản hồi lỗi HTTP ${response.status}.`);
@@ -182,17 +180,4 @@ export function driveImageUrl(fileId) {
 
 export function driveFileUrl(fileId) {
   return `https://drive.google.com/file/d/${encodeURIComponent(fileId)}/view`;
-}
-
-/** Gọi Gemini qua Apps Script (khóa API nằm ở Script Properties). Ném lỗi có .status để ai.js tự hạ cấp mô hình. */
-export async function geminiGenerate(model, body) {
-  const result = await driveRequest({ action: "gemini", model, body }, { timeoutMs: 120000 }).catch(err => {
-    err.status = err.status || 0; throw err;
-  });
-  if (result.status && result.status >= 400) {
-    const err = new Error(`Lỗi ${result.status}${result.error ? ": " + result.error : ""}`);
-    err.status = result.status;
-    throw err;
-  }
-  return result.data;
 }

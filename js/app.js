@@ -1,18 +1,14 @@
 // ============ App shell: điều hướng tab + trạng thái kết nối + menu Tiến trình (logo) ============
 import { startStore, on, state } from "./store.js";
-import { startAuth, onSession, session } from "./auth.js";
-import "./auth-ui.js";
-import { ws, onWorkspace, setWorkspace, myGroups, workspaceKey } from "./workspace.js";
 import { $, $$, esc, richHtml, snippet, renderMath } from "./utils.js";
 import * as planner from "./tabs/planner.js";
 import * as sop from "./tabs/sop.js";
 import * as settings from "./tabs/settings.js";
 import * as calc from "./tabs/calc.js";
 import * as ai from "./tabs/ai.js";
-import * as groups from "./tabs/groups.js";
 import { normalizeExperiment } from "./plan-logic.js";
 
-const TABS = { planner, sop, calc, ai, groups, settings };
+const TABS = { planner, sop, calc, ai, settings };
 const inited = {};
 const progressToggle = $("#progress-menu-toggle");
 const progressMenu = $("#progress-menu");
@@ -34,10 +30,6 @@ function show(name) {
 function updateConn() {
   const b = $("#banner");
   b.classList.add("hidden");
-  if (session.status === "active" && state.workspace?.type === "group" && state.workspace.role === "member") {
-    b.innerHTML = `Bạn đang ở nhóm <b>${esc(state.workspace.name)}</b> với vai trò thành viên: xem mọi tài nguyên nhóm, chỉ sửa/xóa kế hoạch do chính bạn tạo.`;
-    b.classList.remove("hidden");
-  }
   if (state.error === "NOT_CONFIGURED") {
     b.innerHTML = "Chưa có <b>firebaseConfig</b>. Mở <code>js/firebase.js</code> và dán cấu hình Firebase (xem README.md).";
     b.classList.remove("hidden");
@@ -49,7 +41,6 @@ window.addEventListener("hashchange", () => show(location.hash.slice(1)));
 window.addEventListener("online", updateConn);
 window.addEventListener("offline", updateConn);
 on("status", updateConn);
-on("workspace", updateConn);
 let progressRenderQueued = false;
 function scheduleProgressMenuRender() {
   if (!progressMenu || progressMenu.hidden || progressRenderQueued) return;
@@ -66,25 +57,7 @@ let first = location.hash.slice(1);
 if (!TABS[first]) { try { first = localStorage.getItem("labmana.tab"); } catch { first = null; } }
 show(TABS[first] ? first : "sop");
 updateConn();
-
-/* ---------------- Phiên đăng nhập + bộ chọn Workspace ---------------- */
-const wsSelect = $("#ws-select");
-function renderWsSelect() {
-  if (session.status !== "active") { wsSelect.hidden = true; return; }
-  const list = myGroups();
-  wsSelect.hidden = false;
-  wsSelect.innerHTML = `<option value="personal">Cá nhân</option>` +
-    list.map(g => `<option value="group:${esc(g.id)}">${esc(g.name || "Nhóm")}</option>`).join("");
-  wsSelect.value = workspaceKey();
-  wsSelect.title = list.length ? "Chọn không gian làm việc" : "Bạn chưa thuộc nhóm nào — vào tab Nhóm để gửi yêu cầu";
-}
-wsSelect.addEventListener("change", () => setWorkspace(wsSelect.value));
-onWorkspace(renderWsSelect);
-onSession(s => {
-  if (s.status === "active") { startStore().then(renderWsSelect); }
-  renderWsSelect();
-});
-startAuth();
+startStore();
 
 /* ---------------- Tiến trình — logo LABMANA, xổ dọc xuống ---------------- */
 function openProgressMenu() {

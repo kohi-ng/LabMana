@@ -1,7 +1,0 @@
-{
-  "name": "labmana",
-  "private": true,
-  "type": "module",
-  "scripts": { "test:rules": "firebase emulators:exec --only firestore --project demo-labmana \"node --test tests/\"" },
-  "devDependencies": { "@firebase/rules-unit-testing": "^3.0.4", "firebase": "^10.12.2", "firebase-tools": "^13.29.0" }
-}

@@ -2,7 +2,6 @@
 // Chỉ hiển thị thao tác đang chọn; menu Tiến trình hỗ trợ điều hướng trực tiếp.
 import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
-import { scopeFields, keepOwnership } from "../workspace.js";
 import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
 import { esc, richHtml, renderMath, toast, openModal, confirmBox, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
@@ -501,9 +500,7 @@ async function save(id) {
   saving.add(id); render();
   try {
     const primaryPhoto = photosToSave[0] || null;
-    // Log mới → gắn workspace hiện tại; log đã có (người khác ghi trước) → giữ nguyên chủ/nhóm (Rules cấm đổi).
     await setDoc(doc(db, "execution_logs", `${state.activeRunId}__${id}`), {
-      ...(old ? keepOwnership(old) : scopeFields()),
       exp_id: run.exp_id, run_id: state.activeRunId, step_id: id, step_label: f.label,
       executed_by_name: name, input_data: input, input_unit: s.require_input?.unit || "",
       observation_text: s.observation?.enabled ? String(d.observation ?? "").trim() : "",
@@ -562,20 +559,18 @@ async function openExperiment(expId) {
     let run = state.runs.find(item => item.exp_id === expId);
     if (!run) {
       const ref = doc(db, "runs", `experiment_${exp.id}`);
-      const fields = {
-        ...scopeFields(),
+      run = { id: ref.id };
+      await setDoc(ref, {
         exp_id: exp.id, exp_title: exp.title, name: exp.title || "Thí nghiệm",
         created_at_ms: Date.now()
-      };
-      run = { id: ref.id, ...fields };   // dùng làm "seed" để giao diện không nhấp nháy trước khi snapshot về
-      await setDoc(ref, fields);
+      });
     }
     selectedByUser = true;
     const firstSection = normalizeExperiment(exp).sections[0];
     selectedSectionId = firstSection?.id || null;
     const firstStep = firstSection?.steps.find(step => !state.logs[step.id] && !hasDraftProgress(step.id)) || firstSection?.steps[0];
     selectedStepId = firstStep?.id || null;
-    setActiveRun(run.id, run.exp_id ? run : null);
+    setActiveRun(run.id);
     render();
     return true;
   } catch (err) {

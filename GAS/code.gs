@@ -27,8 +27,6 @@
  * → ✎ → New version → Deploy lại, nếu không URL cũ vẫn chạy code cũ.
  */
 
-// NÂNG CẤP v3: file này giờ yêu cầu id_token (xem verifyCaller_ cuối file). Phải đặt Script properties rồi
-// chạy authorizeDrive() lại (thêm quyền "kết nối dịch vụ bên ngoài") và Deploy → New version.
 const ROOT_FOLDER_ID = "163F-EZ36tJ7qc9J9NTvIipvQWxOWEtJi";
 
 function authorizeDrive() {
@@ -41,13 +39,8 @@ function authorizeDrive() {
 function doPost(e) {
   try {
     const req = parseRequest_(e);
-    // Mọi hành động đều cần Firebase ID token hợp lệ của tài khoản Email/Password đang active.
-    const caller = verifyCaller_(req.id_token);
-    if (!caller.ok) return json_({ ok: false, error: caller.error });
-    delete req.id_token;
     let result;
-    if (req.action === "gemini") result = handleGemini_(req);
-    else if (req.action === "upload") result = handleUpload_(req);
+    if (req.action === "upload") result = handleUpload_(req);
     else if (req.action === "delete") result = handleDelete_(req);
     else if (req.action === "create_report") result = handleCreateReport_(req.report);
     else result = { ok: false, error: "Hành động không hợp lệ" };
@@ -224,60 +217,4 @@ function isInRootFolder_(file) {
     while (ancestors.hasNext()) pending.push(ancestors.next());
   }
   return false;
-}
-
-/* ---------------- Xác minh danh tính (Firebase ID token) ---------------- */
-// Cài đặt (Project Settings → Script properties):
-//   FIREBASE_WEB_API_KEY = khóa Web của Firebase (giống apiKey trong js/firebase.js)
-//   GEMINI_API_KEY       = khóa Gemini (KHÔNG đặt trong client/Firestore). Nên rotate khóa cũ từng nằm trong config/gemini.
-// Cách xác minh: accounts:lookup kiểm tra token còn hiệu lực + loại bỏ phiên ẩn danh; đọc users/{uid} bằng chính
-// token đó qua Firestore REST nên Firestore Rules được áp dụng (tài khoản phải active hoặc là Super Admin).
-const FIREBASE_PROJECT_ID = "labmana-ecd8e";
-const SUPER_ADMIN_UID = "Eq1ueE9VHoYIbNk3UU5gnQOwJBg1";
-
-function prop_(name) { return PropertiesService.getScriptProperties().getProperty(name) || ""; }
-
-function verifyCaller_(idToken) {
-  if (!idToken) return { ok: false, error: "Thiếu thông tin đăng nhập. Hãy đăng nhập lại LabMana." };
-  const cache = CacheService.getScriptCache();
-  const cacheKey = "tok:" + Utilities.base64EncodeWebSafe(Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, idToken)).slice(0, 40);
-  const hit = cache.get(cacheKey);
-  if (hit) return JSON.parse(hit);
-  const apiKey = prop_("FIREBASE_WEB_API_KEY");
-  if (!apiKey) return { ok: false, error: "Apps Script chưa cấu hình FIREBASE_WEB_API_KEY (Script properties)." };
-  const look = UrlFetchApp.fetch("https://identitytoolkit.googleapis.com/v1/accounts:lookup?key=" + encodeURIComponent(apiKey), {
-    method: "post", contentType: "application/json", muteHttpExceptions: true, payload: JSON.stringify({ idToken: idToken })
-  });
-  if (look.getResponseCode() !== 200) return { ok: false, error: "Phiên đăng nhập không hợp lệ hoặc đã hết hạn. Hãy đăng nhập lại." };
-  const user = (JSON.parse(look.getContentText()).users || [])[0];
-  if (!user || user.disabled) return { ok: false, error: "Tài khoản bị vô hiệu hóa." };
-  const providers = (user.providerUserInfo || []).map(function (p) { return p.providerId; });
-  if (providers.indexOf("password") < 0) return { ok: false, error: "Cần tài khoản Email/Mật khẩu (phiên ẩn danh không được chấp nhận)." };
-  let result = { ok: true, uid: user.localId, email: user.email };
-  if (user.localId !== SUPER_ADMIN_UID) {
-    const doc = UrlFetchApp.fetch("https://firestore.googleapis.com/v1/projects/" + FIREBASE_PROJECT_ID + "/databases/(default)/documents/users/" + user.localId, {
-      headers: { Authorization: "Bearer " + idToken }, muteHttpExceptions: true
-    });
-    const status = doc.getResponseCode() === 200 ? (((JSON.parse(doc.getContentText()).fields || {}).status || {}).stringValue) : null;
-    if (status !== "active") result = { ok: false, error: "Tài khoản chưa được phép sử dụng LabMana." };
-  }
-  cache.put(cacheKey, JSON.stringify(result), 300);   // 5 phút
-  return result;
-}
-
-/* ---------------- Gemini proxy (khóa nằm ở Script properties) ---------------- */
-function handleGemini_(req) {
-  const key = prop_("GEMINI_API_KEY");
-  if (!key) return { ok: false, error: "Apps Script chưa cấu hình GEMINI_API_KEY." };
-  const model = String(req.model || "");
-  if (!/^gemini-[a-z0-9.\-]+$/.test(model)) return { ok: false, error: "Tên mô hình không hợp lệ." };
-  const res = UrlFetchApp.fetch("https://generativelanguage.googleapis.com/v1beta/models/" + model + ":generateContent", {
-    method: "post", contentType: "application/json", muteHttpExceptions: true,
-    headers: { "x-goog-api-key": key }, payload: JSON.stringify(req.body || {})
-  });
-  const code = res.getResponseCode();
-  let body = {};
-  try { body = JSON.parse(res.getContentText()); } catch (err) { /* giữ rỗng */ }
-  if (code >= 400) return { ok: true, status: code, error: (body.error && body.error.message) || "" };
-  return { ok: true, status: 200, data: body };
 }

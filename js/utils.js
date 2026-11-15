@@ -193,9 +193,9 @@ export function statusCard(st) {
   if (!e) return `<div class="empty">Đang kết nối…</div>`;
   if (e === "NOT_CONFIGURED") return `<div class="notice"><h3>Chưa cấu hình Firebase</h3>
     <p>Mở <code>js/firebase.js</code> và dán <code>firebaseConfig</code> của dự án. Xem README.md.</p></div>`;
-  if (/operation-not-allowed|admin-restricted/.test(e)) return `<div class="notice"><h3>Chưa bật đăng nhập Email/Mật khẩu</h3>
-    <p>Firebase Console → Authentication → Sign-in method → bật <b>Email/Password</b>.</p></div>`;
+  if (/operation-not-allowed|admin-restricted/.test(e)) return `<div class="notice"><h3>Chưa bật đăng nhập ẩn danh</h3>
+    <p>Firebase Console → Authentication → Sign-in method → bật <b>Anonymous</b>.</p></div>`;
   if (/permission-denied/.test(e)) return `<div class="notice"><h3>Bị từ chối quyền</h3>
-    <p>Rules chưa được cập nhật hoặc không gian này không cho phép. Dán <code>firestore.rules</code> vào Firebase Console → Firestore → Rules → Publish, rồi tải lại trang.</p></div>`;
+    <p>Kiểm tra Rules của Firestore (<code>firestore.rules</code>) và Anonymous Auth.</p></div>`;
   return `<div class="notice"><h3>Lỗi kết nối</h3><p><code>${esc(e)}</code></p><p class="muted small">Thử tải lại trang.</p></div>`;
 }

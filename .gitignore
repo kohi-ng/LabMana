@@ -1,5 +1,0 @@
-node_modules/
-migration/backup-*.json
-serviceAccount*.json
-.firebase/
-*.log
