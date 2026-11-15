@@ -26,12 +26,12 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     <div class="se-toolbar">
       <div class="se-toolgroup">
         <button type="button" class="se-tool" data-menu="math">📐 Phép toán <span>⌄</span></button>
-        <div class="se-menu" data-menu-panel="math" hidden>${MATH.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${insert==="$\\\\frac{}{ }$"?3:0}">${esc(label)}</button>`).join("")}</div>
+        <div class="se-menu" data-menu-panel="math" hidden>${MATH.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${label==="Phân số"?3:0}">${esc(label)}</button>`).join("")}</div>
       </div>
       <div class="se-toolgroup">
         <button type="button" class="se-tool" data-menu="chem">🧪 Hóa học <span>⌄</span></button>
         <div class="se-menu se-chem-menu" data-menu-panel="chem" hidden>
-          <div class="se-chem-quick">${CHEM.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${insert==="$\\\\ce{}$"?2:0}">${esc(label)}</button>`).join("")}</div>
+          <div class="se-chem-quick">${CHEM.map(([label,insert])=>`<button type="button" data-insert="${esc(insert)}" data-back="${label==="$\\\\ce{...}$"?2:0}">${esc(label)}</button>`).join("")}</div>
           <div class="se-chem-compose">
             <label>Nồng độ / hàm lượng<input type="text" data-concentration placeholder="VD: 0,1 M hoặc 5%"></label>
             <label>Hóa chất<select data-chemical>${CHEMICALS.map(([formula,name])=>`<option value="${esc(formula)}">${esc(formula)} — ${esc(name)}</option>`).join("")}</select></label>
@@ -57,6 +57,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
   let activeTarget=source,lastStart=0,lastEnd=0,rows=3,cols=3;
   const remember=el=>{if(el && (el===source||el.matches("[data-grid-cell]"))){activeTarget=el;lastStart=el.selectionStart??el.value.length;lastEnd=el.selectionEnd??lastStart;}};
   source.addEventListener("select",()=>remember(source));
+  source.addEventListener("input",()=>remember(source));
   source.addEventListener("keyup",()=>remember(source));
   source.addEventListener("click",()=>remember(source));
   const insert=(text,back=0)=>{
@@ -78,6 +79,7 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     node.querySelector("[data-grid-rows]").value=rows;node.querySelector("[data-grid-cols]").value=cols;drawGrid();
   };
   drawGrid();
+  node.addEventListener("change",e=>{if(e.target.matches("[data-grid-rows],[data-grid-cols]"))updateDims();});
   const previewNow=()=>{
     preview.innerHTML=richHtml(source.value)||'<span class="muted">(chưa có nội dung)</span>';
     renderMath(preview);
@@ -116,8 +118,8 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
         const cells=[...node.querySelectorAll("[data-grid-cell]")];
         const matrix=Array.from({length:rows},(_,r)=>Array.from({length:cols},(_,c)=>cells.find(x=>+x.dataset.r===r&&+x.dataset.c===c)?.value||""));
         const lines=matrix.map(row=>"| "+row.map(v=>v.replace(/\|/g,"\\|").replace(/\n/g," ")).join(" | ")+" |");
-        if(rows===1)lines.push("| "+Array(cols).fill("---").join(" | ")+" |");
-        else lines.splice(1,0,"| "+Array(cols).fill("---").join(" | ")+" |");
+        lines.splice(1,0,"| "+Array(cols).fill("---").join(" | ")+" |");
+        if(rows===1)lines.push("| "+Array(cols).fill("").join(" | ")+" |");
         insert("\n"+lines.join("\n")+"\n");return;
       }
       node.querySelector("[data-grid-rows]").value=rows;node.querySelector("[data-grid-cols]").value=cols;drawGrid();return;
