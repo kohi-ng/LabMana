@@ -35,18 +35,18 @@ export function richHtml(t) {
       }
       const header = rows.shift() || [];
       if (rows.length && rows[0].every(cell => /^:?-{3,}:?$/.test(cell))) rows.shift();
-      html.push(\`<div class="table-scroll"><table class="text-table"><thead><tr>\${header.map(cell => \`<th>\${inline(cell)}</th>\`).join("")}</tr></thead><tbody>\${rows.map(row =>
-        \`<tr>\${header.map((_, index) => \`<td>\${inline(row[index] ?? "")}</td>\`).join("")}</tr>\`
-      ).join("")}</tbody></table></div>\`);
+      html.push(`<div class="table-scroll"><table class="text-table"><thead><tr>\${header.map(cell => `<th>\${inline(cell)}</th>`).join("")}</tr></thead><tbody>\${rows.map(row =>
+        `<tr>\${header.map((_, index) => `<td>\${inline(row[index] ?? "")}</td>`).join("")}</tr>`
+      ).join("")}</tbody></table></div>`);
       continue;
     }
-    if (/^\\s*-\\s+/.test(lines[i])) {
+    if (/^\s*-\s+/.test(lines[i])) {
       const items = [];
-      while (i < lines.length && /^\\s*-\\s+/.test(lines[i])) {
-        items.push(\`<li>\${inline(lines[i].replace(/^\\s*-\\s+/, ""))}</li>\`);
+      while (i < lines.length && /^\s*-\s+/.test(lines[i])) {
+        items.push(`<li>\${inline(lines[i].replace(/^\s*-\s+/, ""))}</li>`);
         i++;
       }
-      html.push(\`<ul>\${items.join("")}</ul>\`);
+      html.push(`<ul>\${items.join("")}</ul>`);
       continue;
     }
     html.push(inline(lines[i]));
