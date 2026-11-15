@@ -96,7 +96,8 @@ export async function openStepEditor({ value = "", title = "Biên soạn thao t�
     preview.innerHTML=richHtml(source.value)||'<span class="muted">(chưa có nội dung)</span>';
     renderMath(preview);
   };
-  node.addEventListener("pointerdown",e=>{\n    if(e.target.closest("[data-menu],[data-insert],[data-chem-action],[data-grid]"))e.preventDefault();\n  });\n  node.addEventListener("click",e=>{
+  node.addEventListener("pointerdown",e=>{
+    if(e.target.closest("[data-menu],[data-insert],[data-chem-action],[data-grid]"))e.preventDefault();\n  });\n  node.addEventListener("click",e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.dataset.menu){
       const key=b.dataset.menu,panel=node.querySelector(`[data-menu-panel="${key}"]`);
