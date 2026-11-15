@@ -14,7 +14,9 @@
  * 2. Vào https://script.google.com → New project → dán CẢ BA file trong thư mục GAS/:
  *    code.gs, report.gs và math-render.gs (cùng một project, không cần import).
  * 3. Dán ID thư mục vào ROOT_FOLDER_ID bên dưới.
- * 4. Chạy hàm authorizeDrive() một lần trong editor và chấp thuận quyền Google Drive.
+ * 4. Chạy hàm authorizeDrive() một lần trong editor và chấp thuận quyền Google Drive
+ *    (và quyền "kết nối dịch vụ bên ngoài" — report.gs dùng UrlFetchApp để lấy thumbnail
+ *    khi ảnh quá nặng/HEIC). Mỗi khi thêm quyền mới phải chạy lại rồi Deploy phiên bản mới.
  * 5. Deploy → New deployment → chọn loại "Web app".
  *      - Execute as: Me
  *      - Who has access: Anyone
@@ -23,8 +25,6 @@
  *
  * Mỗi lần sửa code.gs, report.gs hoặc math-render.gs: phải Deploy → Manage deployments
  * → ✎ → New version → Deploy lại, nếu không URL cũ vẫn chạy code cũ.
- * report.gs có gọi UrlFetchApp để lấy ảnh JPEG nhỏ khi file gốc không nhúng được
- * (HEIC, WebP, ảnh quá nặng). Lần deploy đầu sau thay đổi này hãy chấp thuận quyền mới.
  */
 
 const ROOT_FOLDER_ID = "163F-EZ36tJ7qc9J9NTvIipvQWxOWEtJi";
@@ -75,29 +75,58 @@ function doGet(e) {
 }
 
 /* ---------------- Xử lý nghiệp vụ ---------------- */
+function uploadResult_(file, shareError) {
+  const id = file.getId();
+  return { ok: true, file_id: id, name: file.getName(), url: driveImageUrl_(id), share_error: shareError || "" };
+}
+
 function handleUpload_(req) {
+  // Client thử lại cùng upload_id khi không nhận được xác nhận: trả lại file đã tạo thay vì tạo bản trùng.
+  const cache = CacheService.getScriptCache();
+  const uploadKey = req.upload_id ? "up:" + String(req.upload_id).slice(0, 80) : "";
+  if (uploadKey) {
+    const cachedId = cache.get(uploadKey);
+    if (cachedId) {
+      try {
+        const existing = DriveApp.getFileById(cachedId);
+        if (!existing.isTrashed()) return uploadResult_(existing, "");
+      } catch (err) { /* file đã mất: tải lại bình thường */ }
+    }
+  }
   const meta = req.meta || {};
   const folder = getOrCreateSubFolder_(buildFolderPath_(req.kind, meta));
   const bytes = Utilities.base64Decode(req.base64);
   const mime = req.mime || "image/jpeg";
   const blob = Utilities.newBlob(bytes, mime, buildFileName_(req.kind, meta, req.file_name, req.original_name, mime));
   const file = folder.createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-  const id = file.getId();
-  return {
-    ok: true,
-    file_id: id,
-    name: file.getName(),
-    url: driveImageUrl_(id)
-  };
+  // Một số tài khoản Workspace chặn chia sẻ "Anyone with the link": nếu setSharing ném lỗi thì file vẫn
+  // đã nằm trong Drive, nên trả file_id kèm cảnh báo thay vì báo lỗi (tránh ảnh mồ côi + lưu dự phòng).
+  let shareError = "";
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  } catch (err) {
+    shareError = String(err);
+    console.warn("setSharing lỗi cho " + file.getId() + ": " + shareError);
+  }
+  if (uploadKey) {
+    try { cache.put(uploadKey, file.getId(), 21600); } catch (err) { /* cache lỗi không được chặn upload */ }
+  }
+  return uploadResult_(file, shareError);
 }
 
 function handleDelete_(req) {
   if (!req.file_id) return { ok: false, error: "Thiếu file_id" };
+  let file;
   try {
-    const file = DriveApp.getFileById(req.file_id);
+    file = DriveApp.getFileById(req.file_id);
+  } catch (err) {
+    // File không còn trên Drive (ví dụ đã bị xóa tay): mục tiêu "xóa" đã đạt nên coi là thành công,
+    // để app không báo "chưa xóa được khỏi Drive" mãi cho một ảnh vốn đã không còn.
+    return { ok: true, already_gone: true };
+  }
+  try {
     if (!isInRootFolder_(file)) return { ok: false, error: "Ảnh không thuộc thư mục LabMana." };
-    file.setTrashed(true);
+    if (!file.isTrashed()) file.setTrashed(true);
     return { ok: true };
   } catch (err) {
     return { ok: false, error: String(err) };
@@ -149,7 +178,12 @@ function getOrCreateSubFolder_(pathParts) {
 
 function getOrCreateChild_(parent, name) {
   const it = parent.getFoldersByName(name);
-  if (it.hasNext()) return it.next();
+  // getFoldersByName có thể trả cả thư mục đã bị xóa (nằm trong thùng rác): bỏ qua chúng,
+  // nếu không ảnh mới sẽ rơi vào thư mục "đã xóa" và coi như mất.
+  while (it.hasNext()) {
+    const folder = it.next();
+    if (!folder.isTrashed()) return folder;
+  }
   return parent.createFolder(name);
 }
 

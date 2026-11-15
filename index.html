@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#f5f5f7">
-  <title>LabMana</title>
+  <meta name="theme-color" content="#ffffff">
+  <title>LABMANA</title>
 
   <!-- KaTeX + mhchem (công thức & phương trình hóa học) -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
@@ -20,38 +20,32 @@
 </head>
 <body>
   <header class="topbar">
-    <div class="brand"><span class="dot"></span>LabMana</div>
-    <div class="topbar-actions">
-      <button id="progress-menu-toggle" class="progress-menu-toggle" type="button" aria-expanded="false" aria-controls="progress-menu">Tiến trình</button>
-    </div>
+    <button id="progress-menu-toggle" class="brand brand-btn" type="button" aria-expanded="false" aria-controls="progress-menu" aria-label="LABMANA — mở tiến trình">
+      <span>LABMANA</span><span class="chev" aria-hidden="true"></span>
+    </button>
+    <nav class="topbar-actions" aria-label="Kế hoạch và cài đặt">
+      <button type="button" class="top-tab" data-tab="planner">Kế hoạch</button>
+      <button type="button" class="top-tab" data-tab="settings">Cài đặt</button>
+    </nav>
   </header>
 
-  <aside id="progress-menu" class="progress-menu" aria-label="Tiến trình thí nghiệm" hidden></aside>
+  <aside id="progress-menu" class="progress-menu" aria-label="Tiến trình" hidden></aside>
   <div id="progress-backdrop" class="progress-backdrop"></div>
   <div id="banner" class="banner hidden"></div>
 
   <main id="app">
     <section id="tab-planner" class="tab" hidden></section>
     <section id="tab-sop" class="tab" hidden></section>
+    <section id="tab-calc" class="tab" hidden></section>
+    <section id="tab-ai" class="tab" hidden></section>
     <section id="tab-settings" class="tab" hidden></section>
   </main>
 
   <nav class="bottom-nav" aria-label="Điều hướng chính">
-    <button data-tab="planner"><span>Kế hoạch</span></button>
-    <button data-tab="sop"><span>Quy trình</span></button>
-    <button data-tab="settings"><span>Cài đặt</span></button>
+    <button data-tab="sop">Quy trình</button>
+    <button data-tab="calc">Pha chế</button>
+    <button data-tab="ai">AI</button>
   </nav>
-
-  <!-- Bartender: nút nổi góc màn hình, mở cửa sổ tra cứu nhanh — xem mọi tab -->
-  <button id="calc-fab" class="calc-fab" aria-label="Mở Bartender" title="Bartender">⚗️</button>
-  <div id="calc-sheet-backdrop" class="calc-sheet-backdrop"></div>
-  <div id="calc-sheet" class="calc-sheet" role="dialog" aria-modal="true" aria-label="Bartender">
-    <div class="calc-sheet-head">
-      <h3>⚗️ Bartender</h3>
-      <button class="icon-btn" id="calc-sheet-close" aria-label="Đóng">✕</button>
-    </div>
-    <div class="calc-sheet-body" id="calc-sheet-body"></div>
-  </div>
 
   <div id="modal-root"></div>
   <div id="toast-root"></div>

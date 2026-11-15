@@ -21,25 +21,27 @@ bước sẽ được ghi nhận tự động. Nếu chưa ủy quyền, khi lư
   hợp dự phòng có thể làm ảnh lưu trong Firestore lớn hơn). Tên ảnh gồm tên bài, thí nghiệm/bước,
   tên tùy chọn (nếu nhập) và thời gian; link Drive hiển thị dưới ảnh kèm nút sao chép.
   `GAS/code.gs` nhận/xóa ảnh; sau khi đổi mã cần triển khai phiên bản mới của Apps Script Web App.
-- **Xuất báo cáo** trong Cài đặt: nhập danh sách thành viên (mỗi dòng `Họ tên - MSSV`), nhóm,
-  ngày và học kỳ/năm học; ô **Bài số** in sau “BÀI SỐ:” trong Docs (mặc định là tên bài, bấm vào để sửa). Chọn bài để xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
-  Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích, ảnh và sửa
-  mẫu ghép cột thao tác bằng `{title}`, `{text}`, `{value}`, `{unit}`. Số bước luôn đứng ở đầu ô,
-  nên không đưa `{label}` vào mẫu (sẽ bị bỏ để khỏi in hai lần). Ảnh của mỗi bước
+- **Thành viên nhóm** (Cài đặt): nhập `Họ tên - MSSV` (nhiều người cách nhau bằng dấu phẩy); MSSV lưu ở
+  `config/lab.team_ids` và bổ sung/sửa được bằng nút ✎.
+- **Xuất báo cáo** trong Cài đặt: ô `Họ và tên - MSSV` tự điền từ danh sách thành viên (bấm vào để sửa), ô
+  `Bài số` tự lấy tên bài làm mặc định và được in nguyên văn thay cho dòng “BÀI SỐ: …”; nhập thêm nhóm,
+  ngày và học kỳ/năm học; chọn bài để xem trước mẫu HTML hoặc tạo Google Docs từ nhật ký. Ảnh Drive được chèn vào cột hiện tượng.
+  Phần “Nội dung ghép vào báo cáo” cho phép bật/tắt số liệu, hiện tượng, giải thích và ảnh. Cột “Các bước
+  tiến hành” gồm số bước (in đậm), tiêu đề và hướng dẫn thao tác. Ảnh của mỗi bước
   được gắn ngay dưới hiện tượng tương ứng khi số ảnh khớp số dòng hoặc số đoạn trong ô đó; sau khi tạo có nút mở Google Docs.
   Apps Script project cần đủ `GAS/code.gs`, `GAS/report.gs` và `GAS/math-render.gs`; triển khai phiên bản mới sau khi sửa.
 - **Giao diện Apple-style sáng**: nền trắng/xám sáng, bo góc mềm, không dùng biểu tượng ở thanh tab.
 - **Tab Quy trình**: danh sách bài đã lên kế hoạch; chọn bài rồi dùng các nút tròn dưới tên bài để
   chuyển thí nghiệm và các nút bước để chuyển thao tác. Màn hình chỉ hiện thao tác đang chọn, không
   phải cuộn qua danh sách nhiều bước. Menu **Tiến trình** cũng mở thẳng tới thí nghiệm/thao tác.
-- **Bartender dạng nút nổi có thể kéo thả** ở góc màn hình, bấm vào mở cửa sổ tra cứu/tính toán
+- **Pha chế** (tính pha dung dịch + quy đổi đơn vị) là một tab riêng ở thanh dưới; **AI** là tab chat Gemini (cấu hình đọc từ Firestore `config/gemini`)
   nhanh mà không rời khỏi tab đang làm — mở rộng danh mục hóa chất theo đúng các chất dùng
   xuyên suốt giáo trình (KMnO₄, K₂Cr₂O₇, Na₂S₂O₃·5H₂O, phèn nhôm-kali, muối Mohr…).
 
 ## Cấu trúc
 
 ```
-index.html            khung + Bottom Nav 3 tab + FAB Bartender
+index.html            khung + topbar (logo = Tiến trình, Kế hoạch, Cài đặt) + Bottom Nav 3 tab (Quy trình, Pha chế, AI)
 css/style.css         giao diện Apple-style sáng, mobile-first
 js/app.js             điều hướng tab, trạng thái kết nối, FAB sheet
 js/firebase.js        ⚙️ DÁN firebaseConfig Ở ĐÂY; đăng nhập ẩn danh; cache ngoại tuyến
@@ -49,7 +51,8 @@ js/utils.js           modal, toast, chuyển ảnh sang base64, chọn tên, KaT
 js/plan-logic.js       logic thuần: validate, flatten, rẽ nhánh, computeFlow
 js/tabs/planner.js    Tab 1 — Kế hoạch (Thí nghiệm → Thao tác, ảnh qua Drive)
 js/tabs/sop.js        Tab 2 — Quy trình (một thao tác mỗi màn hình + data logger)
-js/tabs/calc.js       Bartender (chạy trong FAB sheet)
+js/tabs/calc.js       Tab Pha chế
+js/tabs/ai.js         Tab AI (chat Gemini)
 js/tabs/settings.js   Tab 3 — Cài đặt (thành viên, xuất báo cáo)
 GAS/code.gs           Apps Script — nhận/xóa ảnh, gọi xuất báo cáo
 GAS/report.gs         Apps Script — tạo Google Docs từ nhật ký

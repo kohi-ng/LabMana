@@ -122,10 +122,11 @@ lưu**, nên đổi tên thành viên sau này không làm thay đổi lịch s�
 ## 5. Document `config/lab` (không đổi)
 
 ```jsonc
-{ "team_members": ["Nguyễn Văn A", "Trần Thị B"] }
+{ "team_members": ["Nguyễn Văn A", "Trần Thị B"],
+  "team_ids": { "Nguyễn Văn A": "123456" } }   // MSSV theo tên; thành viên chưa có MSSV thì không có khóa
 ```
-Thêm/xóa dùng `arrayUnion/arrayRemove` (an toàn khi nhiều thiết bị sửa cùng lúc); đổi tên dùng
-transaction.
+Thêm/xóa dùng `arrayUnion/arrayRemove` (an toàn khi nhiều thiết bị sửa cùng lúc); sửa tên/MSSV dùng
+transaction. `team_members` vẫn là mảng tên (tương thích dữ liệu cũ); `team_ids` là trường thêm, có thể vắng.
 
 ## 6. Tương thích ngược với dữ liệu v1
 

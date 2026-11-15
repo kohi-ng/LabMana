@@ -17,7 +17,7 @@ const pendingDriveDeletes = new Set(), newlyUploadedDriveFiles = new Set(), fail
 
 const SPECIALS = ["°C", "±", "×", "→", "⇌", "Δ", "µ", "²", "³", "⁻", "₂", "₃"];
 const SNIPPETS = [
-  { l: "𝐇₂O hóa học", t: "$\\ce{}$", b: 2 },
+  { l: "Hóa học", t: "$\\ce{}$", b: 2 },
   { l: "Phân số", t: "$\\frac{a}{b}$", b: 0 },
   { l: "C_M", t: "$C_{M}$", b: 0 }
 ];
@@ -48,25 +48,25 @@ function render() {
 function renderList() {
   const items = state.experiments;
   root.innerHTML = `
-    <div class="page-head"><h2>Kế hoạch thí nghiệm</h2></div>
+    <div class="page-head"><h2>Kế hoạch</h2></div>
     <div class="btn-row">
-      <button class="btn primary" data-act="new">＋ Bài mới</button>
-      <button class="btn" data-act="import">⬆ Nhập JSON</button>
+      <button class="btn primary" data-act="new">Bài mới</button>
+      <button class="btn" data-act="import">Nhập JSON</button>
       <input type="file" id="pl-import" accept="application/json,.json" hidden>
     </div>
-    ${!isDriveConfigured ? `<div class="banner" style="margin:0 0 12px">⚠️ Chưa cấu hình Google Drive cho ảnh — xem hướng dẫn triển khai trong <code>code.gs</code>. Soạn bài vẫn dùng được, chỉ ảnh minh họa chưa tải lên được.</div>` : ""}
-    ${items.length ? items.map(card).join("") : `<div class="empty">Chưa có bài thí nghiệm nào.<br>Bấm "＋ Bài mới" để bắt đầu.</div>`}`;
+    ${!isDriveConfigured ? `<p class="muted small">Chưa cấu hình Google Drive: ảnh chưa tải lên được.</p>` : ""}
+    ${items.length ? `<div class="list">${items.map(card).join("")}</div>` : `<div class="empty">Chưa có bài thí nghiệm.</div>`}`;
 }
 function card(e) {
   const n = normalizeExperiment(e);
   const steps = n.sections.reduce((a, s) => a + s.steps.length, 0);
-  return `<div class="card" data-id="${esc(e.id)}">
-    <div class="item-title">${esc(n.title || "(không tên)")}</div>
-    <div class="muted small">${n.sections.length} thí nghiệm · ${steps} thao tác</div>
-    <div class="btn-row">
-      <button class="btn sm primary" data-act="open">Mở</button>
-      <button class="btn sm" data-act="dup">Nhân bản</button>
-      <button class="btn sm" data-act="del" style="color:var(--err)">Xóa</button>
+  return `<div class="row" data-id="${esc(e.id)}" style="display:block">
+    <div class="row-title">${esc(n.title || "(không tên)")}</div>
+    <div class="row-meta">${n.sections.length} thí nghiệm · ${steps} thao tác</div>
+    <div class="row-actions">
+      <button class="link-btn" data-act="open">Mở</button>
+      <button class="link-btn" data-act="dup">Nhân bản</button>
+      <button class="link-btn danger" data-act="del">Xóa</button>
     </div></div>`;
 }
 
@@ -75,18 +75,18 @@ function renderEditor() {
   const flat = flatten(exp);
   root.innerHTML = `
     <div class="sticky-bar">
-      <button class="btn sm" data-act="back">← Danh sách</button>
-      <span class="dirty ${dirty ? "" : "hidden"}">chưa lưu</span>
+      <button class="link-btn" data-act="back">Danh sách</button>
+      <span class="dirty ${dirty ? "" : "hidden"}">Chưa lưu</span>
       <span class="spacer"></span>
-      <button class="btn sm" data-act="export">⬇ JSON</button>
-      <button class="btn sm primary" data-act="save">💾 Lưu</button>
+      <button class="link-btn" data-act="export">Xuất JSON</button>
+      <button class="btn sm primary" data-act="save">Lưu</button>
     </div>
-    <div class="card">
-      <label class="lbl">Tên bài thí nghiệm<input class="inp" data-f="title" value="${esc(exp.title)}" placeholder="VD: Bài 1 — Phân nhóm IIA, IIIA"></label>
-      <label class="lbl">Mô tả / mục tiêu<textarea class="inp" rows="2" data-f="description">${esc(exp.description)}</textarea></label>
+    <div>
+      <label class="lbl">Tên bài<input class="inp" data-f="title" value="${esc(exp.title)}" placeholder="VD: Bài 1 — Phân nhóm IIA, IIIA"></label>
+      <label class="lbl">Mô tả<textarea class="inp" rows="2" data-f="description">${esc(exp.description)}</textarea></label>
     </div>
     ${exp.sections.map((s, i) => sectionHtml(s, i, flat)).join("")}
-    <button class="btn block" data-act="add-sec">＋ Thêm thí nghiệm</button>`;
+    <button class="btn block" data-act="add-sec" style="margin-top:18px">Thêm thí nghiệm</button>`;
   $$("[data-preview]", root).forEach(el => {
     const f = findStep(el.dataset.preview);
     if (f) { el.innerHTML = richHtml(f.step.text) || '<span class="muted">(trống)</span>'; renderMath(el); }
@@ -95,67 +95,68 @@ function renderEditor() {
 }
 
 function sectionHtml(sec, si, flat) {
-  return `<section class="card" data-sec="${sec.id}">
+  return `<section class="sec-block" data-sec="${sec.id}">
     <div class="sec-head"><span class="sec-no">TN ${si + 1}</span>
-      <input class="inp" data-f="section_name" value="${esc(sec.section_name)}" placeholder="Tên thí nghiệm, VD: tính chất của muối kim loại kiềm thổ">
-      <div class="mini">
-        <button class="icon-btn" data-act="move-sec" data-dir="-1" title="Lên">▲</button>
-        <button class="icon-btn" data-act="move-sec" data-dir="1" title="Xuống">▼</button>
-        <button class="icon-btn danger" data-act="del-sec" title="Xóa thí nghiệm">🗑</button>
-      </div></div>
+      <input class="inp" data-f="section_name" value="${esc(sec.section_name)}" placeholder="Tên thí nghiệm">
+    </div>
+    <div class="sec-tools">
+      <button class="link-btn muted" data-act="move-sec" data-dir="-1">Lên</button>
+      <button class="link-btn muted" data-act="move-sec" data-dir="1">Xuống</button>
+      <button class="link-btn danger" data-act="del-sec">Xóa thí nghiệm</button>
+    </div>
     <div class="steps">${sec.steps.map((st, ti) => stepHtml(st, `${si + 1}.${ti + 1}`, flat)).join("")}</div>
-    <button class="btn block" data-act="add-step">＋ Thêm thao tác</button>
+    <button class="btn block" data-act="add-step">Thêm thao tác</button>
   </section>`;
 }
 
 function stepHtml(s, label, flat) {
   const open = openSteps.has(s.id);
-  const badges = [
-    s.assigned_role ? `<span class="badge">👤 ${esc(s.assigned_role)}</span>` : "",
-    s.require_input ? '<span class="badge">🔢</span>' : "",
-    s.require_photo ? '<span class="badge">📷</span>' : "",
-    s.branch_logic.length ? `<span class="badge">⤳ ${s.branch_logic.length}</span>` : ""
-  ].join("");
-  return `<article class="step ${open ? "open" : ""} ${errSteps.has(s.id) ? "err" : ""}" data-step="${s.id}">
+  const tags = [
+    s.assigned_role ? esc(s.assigned_role) : "",
+    s.require_input ? "Số liệu" : "",
+    s.require_photo ? "Ảnh" : "",
+    s.branch_logic.length ? "Rẽ nhánh" : ""
+  ].filter(Boolean).join(" · ");
+  return `<article class="step ${errSteps.has(s.id) ? "err" : ""}" data-step="${s.id}">
     <div class="step-head" data-act="toggle-step">
       <span class="step-no">${label}</span>
-      <input class="step-title-field" data-f="step_title" value="${esc(s.title)}" placeholder="Tiêu đề riêng (tùy chọn)" aria-label="Tiêu đề riêng cho thao tác ${label}">
-      <span class="badges">${badges}</span><span class="chev">${open ? "▾" : "▸"}</span></div>
+      <input class="step-title-field" data-f="step_title" value="${esc(s.title)}" placeholder="Tiêu đề (tùy chọn)" aria-label="Tiêu đề thao tác ${label}">
+      <span class="row-end">${open ? "Thu gọn" : "Mở"}</span></div>
+    ${tags && !open ? `<div class="step-tags" style="margin:-6px 0 8px 3em">${tags}</div>` : ""}
     ${open ? stepBody(s, flat) : ""}</article>`;
 }
 
 function stepBody(s, flat) {
   const ri = s.require_input;
-  const roleOpts = [`<option value="">— Cả nhóm / không gán —</option>`]
+  const roleOpts = [`<option value="">Cả nhóm</option>`]
     .concat(state.team.map(r => `<option value="${esc(r)}" ${s.assigned_role === r ? "selected" : ""}>${esc(r)}</option>`));
   if (s.assigned_role && !state.team.includes(s.assigned_role))
-    roleOpts.push(`<option value="${esc(s.assigned_role)}" selected>⚠ ${esc(s.assigned_role)} (không còn trong cài đặt)</option>`);
+    roleOpts.push(`<option value="${esc(s.assigned_role)}" selected>${esc(s.assigned_role)} (không còn trong cài đặt)</option>`);
   return `<div class="step-body">
     <label class="lbl">Các bước tiến hành
       <div class="toolbar">
         ${SPECIALS.map(c => `<button type="button" data-act="ins" data-ins="${esc(c)}" data-back="0">${esc(c)}</button>`).join("")}
         ${SNIPPETS.map(x => `<button type="button" data-act="ins" data-ins="${esc(x.t)}" data-back="${x.b}">${esc(x.l)}</button>`).join("")}
-        <button type="button" data-act="table">▦ Tạo bảng</button>
+        <button type="button" data-act="table">Bảng</button>
       </div>
-      <textarea class="inp" rows="4" data-f="text" placeholder="Viết hướng dẫn thao tác. Công thức: $x^2$ — hóa học: $\\ce{H2SO4}$">${esc(s.text)}</textarea>
+      <textarea class="inp" rows="4" data-f="text" placeholder="Hướng dẫn thao tác. Công thức: $x^2$, hóa học: $\\ce{H2SO4}$">${esc(s.text)}</textarea>
     </label>
-    <button class="btn sm" data-act="toggle-preview">${previewSteps.has(s.id) ? "🙈 Ẩn xem trước" : "👁 Xem trước"}</button>
+    <button class="link-btn" style="margin-left:-8px" data-act="toggle-preview">${previewSteps.has(s.id) ? "Ẩn xem trước" : "Xem trước"}</button>
     ${previewSteps.has(s.id) ? `<div class="preview" data-preview="${s.id}"></div>` : ""}
 
-    <div class="lbl-t" style="margin-top:12px">Ảnh minh họa</div>
+    <div class="lbl-t">Ảnh minh họa</div>
     ${imagesHtml(s)}
-    <label class="btn sm">🖼 Thêm ảnh<input type="file" accept="image/*" multiple hidden data-f="add_img" ${uploadingImgs.has(s.id) ? "disabled" : ""}></label>
+    <label class="btn sm">Thêm ảnh<input type="file" accept="image/*" multiple hidden data-f="add_img" ${uploadingImgs.has(s.id) ? "disabled" : ""}></label>
 
-    <div class="lbl-t" style="margin-top:14px">Ghi nhận khi thực hiện <span class="muted small" style="font-weight:400">(theo mẫu báo cáo)</span></div>
+    <div class="lbl-t">Ghi nhận khi thực hiện</div>
     ${fieldToggleRow("obs", s.observation, "Hiện tượng quan sát thực tế")}
     ${fieldToggleRow("exp", s.explanation, "Giải thích và PTPƯ minh họa")}
 
-    <label class="lbl">Ủy quyền bước này (không bắt buộc)
+    <label class="lbl">Giao cho
       <select class="inp" data-f="assigned_role">${roleOpts.join("")}</select>
-      ${state.team.length ? "" : '<span class="muted small">Thêm thành viên trong Cài đặt để ủy quyền.</span>'}
     </label>
 
-    <label class="check"><input type="checkbox" data-f="req_input" ${ri ? "checked" : ""}> 🔢 Cần nhập số liệu định lượng</label>
+    <label class="check"><input type="checkbox" data-f="req_input" ${ri ? "checked" : ""}> Nhập số liệu</label>
     ${ri ? `<div class="sub">
       <div class="grid2">
         <label class="lbl">Tên đại lượng<input class="inp" data-f="input_label" value="${esc(ri.label)}" placeholder="VD: V NaOH tiêu tốn"></label>
@@ -166,13 +167,13 @@ function stepBody(s, flat) {
         <option value="text" ${ri.type === "text" ? "selected" : ""}>Văn bản</option></select></label>
       ${ri.type === "number" ? branchHtml(s, flat) : ""}
     </div>` : ""}
-    <label class="check"><input type="checkbox" data-f="req_photo" ${s.require_photo ? "checked" : ""}> 📷 Bắt buộc chụp ảnh khi thực hiện</label>
+    <label class="check"><input type="checkbox" data-f="req_photo" ${s.require_photo ? "checked" : ""}> Bắt buộc chụp ảnh</label>
 
     <div class="step-actions">
-      <button class="btn sm" data-act="move-step" data-dir="-1">▲</button>
-      <button class="btn sm" data-act="move-step" data-dir="1">▼</button>
-      <button class="btn sm" data-act="dup-step">Nhân bản</button>
-      <button class="btn sm" data-act="del-step" style="color:var(--err)">🗑 Xóa thao tác</button>
+      <button class="link-btn muted" data-act="move-step" data-dir="-1">Lên</button>
+      <button class="link-btn muted" data-act="move-step" data-dir="1">Xuống</button>
+      <button class="link-btn" data-act="dup-step">Nhân bản</button>
+      <button class="link-btn danger" data-act="del-step">Xóa thao tác</button>
     </div></div>`;
 }
 
@@ -187,8 +188,9 @@ function imagesHtml(s) {
   const uploading = uploadingImgs.has(s.id);
   return `<div class="imgs">
     ${s.images.map((im, i) => `<div class="img-item">
-      <div class="img"><img src="${esc(im.file_id ? driveImageUrl(im.file_id) : im.url)}" alt="" loading="lazy"><button class="x" data-act="del-img" data-i="${i}" aria-label="Xóa ảnh">✕</button></div>
-      ${im.file_id ? `<a class="img-link" href="${esc(driveFileUrl(im.file_id))}" target="_blank" rel="noopener noreferrer">Mở ảnh trên Drive ↗</a>` : ""}
+      <div class="img"><img src="${esc(im.file_id ? driveImageUrl(im.file_id) : im.url)}" alt="" loading="lazy"></div>
+      ${im.file_id ? `<a class="img-link" href="${esc(driveFileUrl(im.file_id))}" target="_blank" rel="noopener noreferrer">Mở trên Drive</a>` : ""}
+      <button class="link-btn danger" style="padding:0;min-height:36px" data-act="del-img" data-i="${i}">Xóa ảnh</button>
     </div>`).join("")}
     ${uploading ? `<div class="img uploading"><img src="" alt=""><div class="spin"><div class="spin-ring dark"></div></div></div>` : ""}
   </div>`;
@@ -197,13 +199,13 @@ function imagesHtml(s) {
 function gotoOptions(stepId, selected, flat) {
   const idx = flat.findIndex(f => f.step.id === stepId);
   const later = flat.slice(idx + 1);
-  let html = `<option value="">— chọn bước đích —</option>`;
+  let html = `<option value="">Chọn bước đích</option>`;
   later.forEach(f => {
     html += `<option value="${f.step.id}" ${selected === f.step.id ? "selected" : ""}>Bước ${f.label} — ${esc(snippet(f.step.text, 30))}</option>`;
   });
-  html += `<option value="${END}" ${selected === END ? "selected" : ""}>⏹ Kết thúc bài</option>`;
+  html += `<option value="${END}" ${selected === END ? "selected" : ""}>Kết thúc bài</option>`;
   if (selected && selected !== END && !later.some(f => f.step.id === selected))
-    html += `<option value="${esc(selected)}" selected>⚠ (bước không còn hợp lệ)</option>`;
+    html += `<option value="${esc(selected)}" selected>(bước không còn hợp lệ)</option>`;
   return html;
 }
 
@@ -214,11 +216,10 @@ function branchHtml(s, flat) {
       <input class="inp sm" data-f="rule-value" inputmode="decimal" placeholder="X" value="${esc(r.value)}"></div>
     <div class="rule-line"><span>thì nhảy tới</span>
       <select class="inp sm grow" data-f="rule-goto">${gotoOptions(s.id, r.goto_step_id, flat)}</select>
-      <button class="icon-btn danger" data-act="del-rule" data-i="${i}">✕</button></div></div>`).join("");
-  return `<div class="branch"><div class="lbl-t">⤳ Rẽ nhánh logic</div>
-    ${rules || '<p class="muted small">Chưa có điều kiện: luôn đi tiếp bước kế tiếp.</p>'}
-    <button class="btn sm" data-act="add-rule">＋ Thêm điều kiện</button>
-    <p class="muted small">Xét từ trên xuống, điều kiện khớp đầu tiên được áp dụng; không khớp → đi tiếp bước kế. Chỉ nhảy tới bước phía sau.</p></div>`;
+      <button class="link-btn danger" data-act="del-rule" data-i="${i}">Xóa</button></div></div>`).join("");
+  return `<div class="branch"><div class="lbl-t" style="margin-top:4px">Rẽ nhánh</div>
+    ${rules}
+    <button class="btn sm" data-act="add-rule">Thêm điều kiện</button></div>`;
 }
 
 /* ---------- Tiện ích dữ liệu ---------- */
@@ -260,9 +261,9 @@ async function createTable(stepId) {
   node.innerHTML = `<div class="grid2">
     <label class="lbl">Số dòng dữ liệu<input class="inp" id="table-rows" type="number" min="1" max="20" value="3"></label>
     <label class="lbl">Số cột<input class="inp" id="table-cols" type="number" min="2" max="8" value="2"></label>
-  </div><p class="muted small">Bảng sẽ được chèn tại vị trí con trỏ. Bạn có thể sửa tiêu đề và nội dung trực tiếp trong khung.</p>`;
+  </div>`;
   const dimensions = await openModal({
-    title: "Tạo bảng trong kế hoạch",
+    title: "Tạo bảng",
     node,
     buttons: [
       { label: "Hủy", value: null },
@@ -377,7 +378,7 @@ async function addImages(stepId, files) {
     if (failures.length) {
       toast(`Đã tải ${files.length - failures.length}/${files.length} ảnh. Lỗi: ${failures.join("; ")}`, "error", 7000);
     } else {
-      toast(`Đã tải ${files.length} ảnh lên Drive ✔`, "success");
+      toast(`Đã tải ${files.length} ảnh lên Drive`, "success");
     }
   } finally { uploadingImgs.delete(stepId); render(); }
 }
@@ -508,7 +509,7 @@ async function save() {
       }
     }
     render();
-    toast(deleteWarning ? "Đã lưu kế hoạch, nhưng có ảnh chưa xóa được khỏi Drive." : "Đã lưu kế hoạch ✔",
+    toast(deleteWarning ? "Đã lưu kế hoạch, nhưng có ảnh chưa xóa được khỏi Drive." : "Đã lưu kế hoạch",
       deleteWarning ? "warn" : "success", 5000);
   } catch (err) { console.error(err); toast("Lưu thất bại: " + (err.code || err.message), "error", 4500); }
 }

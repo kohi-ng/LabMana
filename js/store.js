@@ -10,6 +10,7 @@ const LS_RUN = "labmana.activeRun";
 export const state = {
   ready: false, error: null,
   team: [],
+  teamIds: {},          // tên thành viên → MSSV (config/lab.team_ids)
   experiments: [], experimentsLoaded: false,
   runs: [], runsLoaded: false,
   activeRunId: (() => { try { return localStorage.getItem(LS_RUN) || null; } catch { return null; } })(),
@@ -69,6 +70,7 @@ export async function startStore() {
 
   onSnapshot(doc(db, "config", "lab"), snap => {
     state.team = (snap.data()?.team_members || []).map(String);
+    state.teamIds = Object.fromEntries(Object.entries(snap.data()?.team_ids || {}).map(([name, id]) => [String(name), String(id ?? "")]));
     emit("config");
   }, fail);
 
