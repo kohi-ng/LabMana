@@ -941,7 +941,9 @@ html.intro-on body{ overflow:hidden; }
 /* caro gọn: ô chỉ có số bước; tiêu đề hiện ở danh sách bên dưới */
 .ai-ctx-col{ flex:1 0 84px; min-width:84px; }
 .ai-ctx-colh{ justify-content:flex-start; }
-.ai-ctx-cell{ flex-direction:row; align-items:center; min-height:44px; padding:6px 8px 6px 34px; }
-.ai-ctx-cell input{ top:50%; transform:translateY(-50%); }
+.ai-ctx-cell{ appearance:none; width:100%; flex-direction:row; align-items:center; justify-content:flex-start; min-height:44px; padding:6px 8px; border:0; border-bottom:1px solid var(--line); background:#fff; font:inherit; text-align:left; color:inherit; }
+.ai-ctx-cell:active{ background:var(--surface-2); }
+.ai-ctx-cell.on{ background:var(--accent-soft); }
+.ai-ctx-cell:focus-visible{ outline:2px solid var(--accent); outline-offset:-2px; }
 .ai-ctx-prev-i{ grid-template-columns:34px 1fr; padding:7px 10px; }
 .ai-ctx-prev-i span{ color: var(--ink); }
