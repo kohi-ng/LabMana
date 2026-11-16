@@ -171,6 +171,7 @@ function ctxOptions() {
           group: `${secTagSp(si)} · ${secName}`,
           label: `${label} ${step.title ? plain(step.title) : snippet(step.text, 50)}`,
           text: lines.join("\n"),
+          si, ti, num: label, secTag: secTagSp(si), short: step.title ? plain(step.title) : snippet(step.text, 40),
           stepId: step.id
         });
       });
@@ -403,12 +404,35 @@ function advancedHtml(model) {
   </div>`;
 }
 
+/** Dạng caro: mỗi phần (CB, TN1, TN2…) là một cột; các bước 0.1, 0.2… / 1.1, 1.2… xổ dọc xuống, mỗi ô có tick.
+ *  Tiêu đề cột bấm để chọn/bỏ cả phần. Bên dưới là nội dung chữ của các bước đã tick. */
+function ctxGridHtml(stepOpts, sel) {
+  if (!stepOpts.length) return "";
+  const cols = [];
+  stepOpts.forEach(o => { (cols[o.si] ||= { si: o.si, tag: o.secTag, name: o.group.split(" · ").slice(1).join(" · "), items: [] }).items.push(o); });
+  const live = cols.filter(Boolean);
+  const grid = live.map(c => {
+    const n = c.items.filter(o => sel.has(o.id)).length;
+    return `<div class="ai-ctx-col"><button type="button" class="ai-ctx-colh ${n === c.items.length ? "all" : ""}" data-act="ctx-col" data-sec="${c.si}" title="${esc(c.name)} — bấm để chọn/bỏ cả cột">
+      <b>${esc(c.tag)}</b><small>${n}/${c.items.length}</small></button>` +
+      c.items.map(o => `<label class="ai-ctx-cell ${sel.has(o.id) ? "on" : ""}" title="${esc(o.num + " " + o.short)}"><input type="checkbox" data-act="ctx-item" data-id="${esc(o.id)}" ${sel.has(o.id) ? "checked" : ""}>
+        <span class="ai-ctx-num">${esc(o.num)}</span><span class="ai-ctx-short">${esc(o.short)}</span></label>`).join("") + `</div>`;
+  }).join("");
+  const picked = stepOpts.filter(o => sel.has(o.id));
+  const clip = t => { const s = String(t).replace(/^\[[^\]]*\]\n?/, "").trim(); return s.length > 320 ? s.slice(0, 320) + "…" : s; };
+  const preview = picked.length
+    ? `<div class="ai-ctx-prev-h">Nội dung gửi kèm (${picked.length} bước)</div><div class="ai-ctx-prev">${picked.map(o => `<div class="ai-ctx-prev-i"><b>${esc(o.num)}</b><span>${esc(clip(o.text))}</span></div>`).join("")}</div>`
+    : `<div class="ai-ctx-prev-h">Chưa tick bước nào — bấm vào ô số bước để chèn nội dung bên dưới.</div>`;
+  return `<div class="ai-ctx-gridwrap"><div class="ai-ctx-grid">${grid}</div></div>${preview}`;
+}
+
 function renderPop() {
   el.pop.hidden = !popOpen;
   el.backdrop.hidden = !popOpen;
   if (!popOpen) return;
   const keepPop = el.pop.scrollTop;
-  const keep = el.pop.querySelector(".ai-ctx-list")?.scrollTop || 0;
+  const gw = el.pop.querySelector(".ai-ctx-gridwrap"), keepGrid = gw ? [gw.scrollTop, gw.scrollLeft] : [0, 0];
+  const pv = el.pop.querySelector(".ai-ctx-prev"), keepPrev = pv?.scrollTop || 0;
   const models = modelList();
   const cur = currentModel();
   let html = `<div class="ai-pop-h">Mô hình</div>${models.map(m =>
@@ -423,13 +447,11 @@ function renderPop() {
     if (!opts.length) {
       html += `<div class="ai-pop-note">Chưa có gì để đính kèm. Mở một bài ở tab Quy trình hoặc nhập thông số ở tab Pha chế.</div>`;
     } else {
-      let group = null;
-      html += `<div class="ai-pop-h">Chọn mục gửi kèm <small>${sel.size}/${opts.length}</small></div><div class="ai-ctx-list">`;
-      for (const o of opts) {
-        if (o.group !== group) { group = o.group; html += `<div class="ai-ctx-group">${esc(group)}</div>`; }
-        html += `<label class="ai-ctx-item"><input type="checkbox" data-act="ctx-item" data-id="${esc(o.id)}" ${sel.has(o.id) ? "checked" : ""}><span>${richHtml(o.label)}</span></label>`;
-      }
-      html += `</div><div class="ai-pop-foot"><button type="button" class="link-btn" data-act="ctx-auto">Tự động (bước đang xem)</button><button type="button" class="link-btn muted" data-act="ctx-none">Bỏ chọn hết</button></div>`;
+      html += `<div class="ai-pop-h">Chọn mục gửi kèm <small>${sel.size}/${opts.length}</small></div>`;
+      const bt = opts.find(o => o.id === "bartender");
+      if (bt) html += `<div class="ai-ctx-list"><div class="ai-ctx-group">Pha chế</div><label class="ai-ctx-item"><input type="checkbox" data-act="ctx-item" data-id="${esc(bt.id)}" ${sel.has(bt.id) ? "checked" : ""}><span>${richHtml(bt.label)}</span></label></div>`;
+      html += ctxGridHtml(opts.filter(o => o.stepId), sel);
+      html += `<div class="ai-pop-foot"><button type="button" class="link-btn" data-act="ctx-auto">Tự động (bước đang xem)</button><button type="button" class="link-btn muted" data-act="ctx-none">Bỏ chọn hết</button></div>`;
     }
   } else {
     html += `<div class="ai-pop-note">Đang tắt: AI chỉ trả lời như trợ lý hóa học chung, không biết bạn đang làm bước nào.</div>`;
@@ -439,8 +461,8 @@ function renderPop() {
     ${advOpen ? advancedHtml(cur) : ""}`;
   el.pop.innerHTML = html;
   renderMath(el.pop);
-  const list = el.pop.querySelector(".ai-ctx-list");
-  if (list) list.scrollTop = keep;
+  const gw2 = el.pop.querySelector(".ai-ctx-gridwrap"); if (gw2) { gw2.scrollTop = keepGrid[0]; gw2.scrollLeft = keepGrid[1]; }
+  const pv2 = el.pop.querySelector(".ai-ctx-prev"); if (pv2) pv2.scrollTop = keepPrev;
   el.pop.scrollTop = keepPop;
 }
 
@@ -525,6 +547,12 @@ export function init(host) {
         tuning = {}; saveTuning(); renderPop(); break;
       case "ctx-auto": ctxSel = null; renderPop(); break;
       case "ctx-none": ctxSel = new Set(); renderPop(); break;
+      case "ctx-col": {   // chọn / bỏ cả một cột (CB, TN1…)
+        const opts = ctxOptions(), ids = opts.filter(o => o.stepId && String(o.si) === t.dataset.sec).map(o => o.id);
+        const sel = new Set(effectiveSelection(opts)), all = ids.every(id => sel.has(id));
+        ids.forEach(id => all ? sel.delete(id) : sel.add(id));
+        ctxSel = sel; renderPop(); break;
+      }
     }
   });
   root.addEventListener("input", e => {
