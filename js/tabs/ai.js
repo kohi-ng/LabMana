@@ -424,11 +424,12 @@ function ctxGridHtml(stepOpts, sel) {
   return `<div class="ai-ctx-gridwrap"><div class="ai-ctx-grid">${grid}</div></div>${preview}`;
 }
 
-function renderPop() {
+function renderPop(resetScroll = false) {
   el.pop.hidden = !popOpen;
   el.backdrop.hidden = !popOpen;
   if (!popOpen) return;
-  const keepPop = el.pop.scrollTop;
+  // Khi bật/tắt chèn ngữ cảnh, đưa popover về đầu để luôn thấy danh sách model.
+  const keepPop = resetScroll ? 0 : el.pop.scrollTop;
   const gw = el.pop.querySelector(".ai-ctx-gridwrap"), keepGrid = gw ? [gw.scrollTop, gw.scrollLeft] : [0, 0];
   const pv = el.pop.querySelector(".ai-ctx-prev"), keepPrev = pv?.scrollTop || 0;
   const models = modelList();
@@ -538,7 +539,7 @@ export function init(host) {
         renderPop(); updateBar(); break;
       case "ctx-toggle":
         ctxOn = !ctxOn; lsSet(LS_CTX, ctxOn ? "1" : "0");
-        renderPop(); updateBar(); break;
+        renderPop(true); updateBar(); break;
       case "adv": advOpen = !advOpen; renderPop(); break;
       case "set": setTuning(currentModel(), t.dataset.key, Number(t.dataset.val)); renderPop(); break;
       case "reset":
