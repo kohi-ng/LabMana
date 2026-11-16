@@ -415,9 +415,8 @@ function ctxGridHtml(stepOpts, sel) {
     const n = c.items.filter(o => sel.has(o.id)).length;
     const count = c.items.filter(o => sel.has(o.id)).length;
     const all = count === c.items.length;
-    return `<div class="ai-ctx-col"><label class="ai-ctx-colh ${all ? "all" : ""}">
-        <input type="checkbox" data-act="ctx-col" data-si="${c.si}" ${all ? "checked" : ""} aria-label="Chọn toàn bộ cột ${esc(c.tag)}">
-        <b>${esc(c.tag)}</b></label>` +
+    return `<div class="ai-ctx-col"><button type="button" class="ai-ctx-colh ${all ? "all" : ""} ${count > 0 && !all ? "partial" : ""}" data-act="ctx-col-toggle" data-si="${c.si}" aria-pressed="${all}" title="Chọn/bỏ chọn toàn bộ cột ${esc(c.tag)}">
+        <b>${esc(c.tag)}</b></button>` +
       c.items.map(o => `<button type="button" class="ai-ctx-cell ${sel.has(o.id) ? "on" : ""}" data-act="ctx-step" data-id="${esc(o.id)}" aria-pressed="${sel.has(o.id)}" title="${esc(o.num + " " + o.short)}">
         <span class="ai-ctx-num">${esc(o.num)}</span></button>`).join("") + `</div>`;
   }).join("");
@@ -465,11 +464,6 @@ function renderPop(resetScroll = false) {
   el.pop.innerHTML = html;
   renderMath(el.pop);
   const gw2 = el.pop.querySelector(".ai-ctx-gridwrap"); if (gw2) { gw2.scrollTop = keepGrid[0]; gw2.scrollLeft = keepGrid[1]; }
-  el.pop.querySelectorAll('input[data-act="ctx-col"]').forEach(input => {
-    const opts = ctxOptions().filter(o => o.stepId && String(o.si) === input.dataset.si);
-    const count = opts.filter(o => effectiveSelection(ctxOptions()).has(o.id)).length;
-    input.indeterminate = count > 0 && count < opts.length;
-  });
   const pv2 = el.pop.querySelector(".ai-ctx-prev"); if (pv2) pv2.scrollTop = keepPrev;
   el.pop.scrollTop = keepPop;
 }
@@ -555,6 +549,13 @@ export function init(host) {
         tuning = {}; saveTuning(); renderPop(); break;
       case "ctx-auto": ctxSel = null; renderPop(); break;
       case "ctx-none": ctxSel = new Set(); renderPop(); break;
+      case "ctx-col-toggle": {
+        const opts = ctxOptions().filter(o => o.stepId && String(o.si) === t.dataset.si);
+        const sel = new Set(effectiveSelection(ctxOptions()));
+        const all = opts.length > 0 && opts.every(o => sel.has(o.id));
+        opts.forEach(o => all ? sel.delete(o.id) : sel.add(o.id));
+        ctxSel = sel; renderPop(); break;
+      }
       case "ctx-step": {
         const sel = new Set(effectiveSelection(ctxOptions()));
         sel.has(t.dataset.id) ? sel.delete(t.dataset.id) : sel.add(t.dataset.id);
@@ -575,14 +576,6 @@ export function init(host) {
     if (t.dataset?.act === "tokens") {
       setTuning(currentModel(), "maxOutputTokens", clamp(Math.round(num(t.value, baseParams(currentModel()).maxOutputTokens)), 64, 32768));
       return renderPop();
-    }
-    if (t.dataset?.act === "ctx-col") {
-      const opts = ctxOptions().filter(o => o.stepId && String(o.si) === t.dataset.si);
-      const sel = new Set(effectiveSelection(ctxOptions()));
-      opts.forEach(o => t.checked ? sel.add(o.id) : sel.delete(o.id));
-      ctxSel = sel;
-      renderPop();
-      return;
     }
     if (t.dataset?.act !== "ctx-item") return;
     const sel = new Set(effectiveSelection(ctxOptions()));
