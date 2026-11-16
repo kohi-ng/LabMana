@@ -937,3 +937,11 @@ html.intro-on body{ overflow:hidden; }
 .ai-ctx-prev-i:last-child{ border-bottom:0; }
 .ai-ctx-prev-i b{ color: var(--accent-ink); }
 .ai-ctx-prev-i span{ white-space:pre-wrap; overflow-wrap:anywhere; color: var(--ink-soft); }
+
+/* caro gọn: ô chỉ có số bước; tiêu đề hiện ở danh sách bên dưới */
+.ai-ctx-col{ flex:1 0 84px; min-width:84px; }
+.ai-ctx-colh{ justify-content:flex-start; }
+.ai-ctx-cell{ flex-direction:row; align-items:center; min-height:44px; padding:6px 8px 6px 34px; }
+.ai-ctx-cell input{ top:50%; transform:translateY(-50%); }
+.ai-ctx-prev-i{ grid-template-columns:34px 1fr; padding:7px 10px; }
+.ai-ctx-prev-i span{ color: var(--ink); }

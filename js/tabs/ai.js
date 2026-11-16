@@ -171,7 +171,7 @@ function ctxOptions() {
           group: `${secTagSp(si)} · ${secName}`,
           label: `${label} ${step.title ? plain(step.title) : snippet(step.text, 50)}`,
           text: lines.join("\n"),
-          si, ti, num: label, secTag: secTagSp(si), short: step.title ? plain(step.title) : snippet(step.text, 40),
+          si, ti, num: label, secTag: si === 0 ? "CB" : `TN${si}`, short: step.title ? plain(step.title) : snippet(step.text, 40),
           stepId: step.id
         });
       });
@@ -414,15 +414,14 @@ function ctxGridHtml(stepOpts, sel) {
   const grid = live.map(c => {
     const n = c.items.filter(o => sel.has(o.id)).length;
     return `<div class="ai-ctx-col"><button type="button" class="ai-ctx-colh ${n === c.items.length ? "all" : ""}" data-act="ctx-col" data-sec="${c.si}" title="${esc(c.name)} — bấm để chọn/bỏ cả cột">
-      <b>${esc(c.tag)}</b><small>${n}/${c.items.length}</small></button>` +
+      <b>${esc(c.tag)}</b></button>` +
       c.items.map(o => `<label class="ai-ctx-cell ${sel.has(o.id) ? "on" : ""}" title="${esc(o.num + " " + o.short)}"><input type="checkbox" data-act="ctx-item" data-id="${esc(o.id)}" ${sel.has(o.id) ? "checked" : ""}>
-        <span class="ai-ctx-num">${esc(o.num)}</span><span class="ai-ctx-short">${esc(o.short)}</span></label>`).join("") + `</div>`;
+        <span class="ai-ctx-num">${esc(o.num)}</span></label>`).join("") + `</div>`;
   }).join("");
   const picked = stepOpts.filter(o => sel.has(o.id));
-  const clip = t => { const s = String(t).replace(/^\[[^\]]*\]\n?/, "").trim(); return s.length > 320 ? s.slice(0, 320) + "…" : s; };
   const preview = picked.length
-    ? `<div class="ai-ctx-prev-h">Nội dung gửi kèm (${picked.length} bước)</div><div class="ai-ctx-prev">${picked.map(o => `<div class="ai-ctx-prev-i"><b>${esc(o.num)}</b><span>${esc(clip(o.text))}</span></div>`).join("")}</div>`
-    : `<div class="ai-ctx-prev-h">Chưa tick bước nào — bấm vào ô số bước để chèn nội dung bên dưới.</div>`;
+    ? `<div class="ai-ctx-prev">${picked.map(o => `<div class="ai-ctx-prev-i"><b>${esc(o.num)}</b><span>${esc(o.short)}</span></div>`).join("")}</div>`
+    : `<div class="ai-ctx-prev-h">Tick một bước để hiện tiêu đề bên dưới.</div>`;
   return `<div class="ai-ctx-gridwrap"><div class="ai-ctx-grid">${grid}</div></div>${preview}`;
 }
 
