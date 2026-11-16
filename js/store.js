@@ -4,13 +4,16 @@ import {
   doc, collection, onSnapshot, query, where, orderBy, limit
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { toast } from "./utils.js";
+import { setCustomChems } from "./chem-logic.js";
 
-const LS_RUN = "labmana.activeRun";
+const LS_RUN = "labmana.activeRun", LS_CHEMS = "labmana.customChems";
+const readChemCache = () => { try { const v = JSON.parse(localStorage.getItem(LS_CHEMS) || "[]"); return Array.isArray(v) ? v : []; } catch { return []; } };
 
 export const state = {
   ready: false, error: null,
   team: [],
   teamIds: {},          // tên thành viên → MSSV (config/lab.team_ids)
+  customChems: readChemCache(),   // hóa chất pha chế người dùng thêm (config/lab.custom_chems), cache offline
   experiments: [], experimentsLoaded: false,
   runs: [], runsLoaded: false,
   activeRunId: (() => { try { return localStorage.getItem(LS_RUN) || null; } catch { return null; } })(),
@@ -26,6 +29,8 @@ export function on(evt, fn) {
 function emit(evt) {
   subs[evt]?.forEach(fn => { try { fn(state); } catch (e) { console.error(e); } });
 }
+
+setCustomChems(state.customChems);   // có ngay danh sách từ cache trước khi Firebase trả về
 
 let toastedErr = false;
 function fail(err) {
@@ -71,6 +76,11 @@ export async function startStore() {
   onSnapshot(doc(db, "config", "lab"), snap => {
     state.team = (snap.data()?.team_members || []).map(String);
     state.teamIds = Object.fromEntries(Object.entries(snap.data()?.team_ids || {}).map(([name, id]) => [String(name), String(id ?? "")]));
+    if (Array.isArray(snap.data()?.custom_chems)) {
+      state.customChems = snap.data().custom_chems;
+      try { localStorage.setItem(LS_CHEMS, JSON.stringify(state.customChems)); } catch { /* ignore */ }
+      setCustomChems(state.customChems);
+    } else if (snap.exists() && state.customChems.length) { state.customChems = []; try { localStorage.removeItem(LS_CHEMS); } catch { /* ignore */ } setCustomChems([]); }
     emit("config");
   }, fail);
 

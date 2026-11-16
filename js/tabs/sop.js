@@ -2,10 +2,10 @@
 // Chỉ hiển thị thao tác đang chọn; menu Tiến trình hỗ trợ điều hướng trực tiếp.
 import { state, on, setActiveRun } from "../store.js";
 import { db } from "../firebase.js";
-import { doc, collection, setDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { doc, collection, setDoc, updateDoc, deleteDoc, deleteField, serverTimestamp } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { driveUpload, driveDelete, driveImageUrl, driveFileUrl, isDriveConfigured } from "../drive.js";
 import { esc, richHtml, richInline, renderMath, toast, openModal, confirmBox, pickName, statusCard, fmtTime, downloadFile } from "../utils.js";
-import { secTagSp, computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
+import { photoLabel, observationWithNotes, secTagSp, computeFlow, resolveBranch, normalizeExperiment, parseNum, END } from "../plan-logic.js";
 
 let root, raf = 0, selectedByUser = false, selectedSectionId = null, selectedStepId = null;
 let expOpen = false, sectionOpen = false;   // ẩn/hiện: danh sách TN dưới tiêu đề bài; danh sách bước dưới tiêu đề thí nghiệm
@@ -115,16 +115,35 @@ function tocStrip(steps) {
 function hasDraftProgress(id) {
   const draft = drafts[id];
   if (!draft) return false;
-  return (draft.photoItems || []).some(item => item.imgMeta && !item.removed) ||
-    ["value", "observation", "explanation"].some(key => String(draft[key] ?? "").trim() !== "");
+  return ["value", "observation", "explanation"].some(key => String(draft[key] ?? "").trim() !== "");
 }
 
-function isProgressDone(id) { return !!state.logs[id] || hasDraftProgress(id); }
+function isProgressDone(id) { return !!state.logs[id] || hasDraftProgress(id) || runDraftPhotos(id).length > 0; }
 function savedPhotos(log) {
   if (Array.isArray(log?.photos) && log.photos.length) return log.photos.filter(photo => photo?.file_id || photo?.url);
   return log?.photo_file_id || log?.photo_url
     ? [{ file_id: log.photo_file_id || "", url: log.photo_url || "", name: log.photo_name || "" }]
     : [];
+}
+/* ---------- Ảnh: lưu cứng lên Firebase ngay sau khi tải Drive ----------
+ * Bước đã có bản ghi → ảnh nằm trong execution_logs.photos; chưa lưu bước → nằm tạm trong runs.draft_photos[stepId]
+ * (không tạo bản ghi nên không làm bước bị coi là đã xong). Khi bấm Lưu, ảnh được chuyển vào bản ghi. */
+const runDraftPhotos = id => (state.activeRun?.draft_photos?.[id] || []).filter(p => p?.file_id || p?.url);
+const stepPhotos = id => state.logs[id] ? savedPhotos(state.logs[id]) : runDraftPhotos(id);
+const normPhoto = p => ({ file_id: p.file_id || "", url: p.url || "", name: p.name || "", title: String(p.title || "").trim(), note: String(p.note || "").trim(),
+  ...(p.storage_fallback ? { storage_fallback: true } : {}) });
+async function writePhotos(id, photos) {
+  const list = photos.map(normPhoto), first = list[0] || null;
+  if (!state.activeRunId) throw new Error("Chưa chọn lượt thực hiện");
+  if (state.logs[id]) {
+    await updateDoc(doc(db, "execution_logs", `${state.activeRunId}__${id}`), {
+      photos: list,
+      photo_url: first ? (first.url || (first.file_id ? driveImageUrl(first.file_id) : null)) : null,
+      photo_file_id: first?.file_id || null
+    });
+  } else {
+    await updateDoc(doc(db, "runs", state.activeRunId), { [`draft_photos.${id}`]: list.length ? list : deleteField() });
+  }
 }
 function driveLinkHtml(fileId) {
   if (!fileId) return "";
@@ -209,27 +228,20 @@ function stepView(f) {
     const tf = target && target !== END ? curFlat.find(x => x.step.id === target) : null;
     body += `<div class="result-box">
       ${s.require_input ? `<div class="kv"><span>${esc(s.require_input.label || "Giá trị")}</span><b>${esc(log.input_data ?? "")} ${esc(log.input_unit || "")}</b></div>` : ""}
-      ${log.observation_text ? `<div class="obs-label">${esc(s.observation?.label || "Hiện tượng quan sát thực tế")}</div><div>${richHtml(log.observation_text)}</div>` : ""}
+      ${(() => { const obs = observationWithNotes(s.observation?.enabled ? log.observation_text : "", s.observation?.enabled ? savedPhotos(log) : []) || (s.observation?.enabled ? "" : log.observation_text || "");
+        return obs ? `<div class="obs-label">${esc(s.observation?.label || "Hiện tượng quan sát thực tế")}</div><div>${richHtml(obs)}</div>` : ""; })()}
       ${log.explanation_text ? `<div class="exp-label">${esc(s.explanation?.label || "Giải thích và PTPƯ minh họa")}</div><div>${richHtml(log.explanation_text)}</div>` : ""}
-      ${savedPhotos(log).map(photo => {
-        const url = photo.file_id ? driveImageUrl(photo.file_id) : photo.url;
-        return `<div class="saved-photo">
-          <img class="thumb" src="${esc(url)}" data-act="zoom" data-src="${esc(url)}" alt="ảnh">
-          ${photo.file_id ? driveLinkHtml(photo.file_id) : ""}
-        </div>`;
-      }).join("")}
+      <div class="photo-list">${savedPhotos(log).map((photo, i) => photoCardHtml(photo, i, { readonly: true, showNote: !s.observation?.enabled })).join("")}</div>
       ${target ? `<div class="muted small">Rẽ nhánh: ${target === END ? "kết thúc bài" : tf ? "bước " + tf.label : ""}</div>` : ""}
       <div class="by">${esc(log.executed_by_name)} · ${fmtTime(log.timestamp_ms)}</div>
-      <div class="btn-row"><button class="btn sm" data-act="edit">Sửa</button></div></div>`;
+      <div class="btn-row"><button class="btn sm" data-act="edit">Sửa</button><button class="btn sm danger-outline" data-act="delete-log">Xóa kết quả</button></div></div>`;
   }
 
   if (form) {
     const d = drafts[id] || {};
     const ri = s.require_input;
     const num = ri && ri.type === "number";
-    const oldPhotos = isEdit ? savedPhotos(log) : [];
-    const removedPhotos = d.removedPhotos || new Set();
-    const retainedPhotos = oldPhotos.filter(photo => !removedPhotos.has(photoKey(photo)));
+    const keptPhotos = stepPhotos(id);
     const newPhotos = d.photoItems || [];
     const isSaving = saving.has(id);
     const isUploading = uploadingPhoto.has(id);
@@ -245,26 +257,15 @@ function stepView(f) {
       ${s.explanation?.enabled ? `<label class="lbl">${esc(s.explanation.label || "Giải thích và PTPƯ minh họa")}
         <textarea class="inp" rows="2" data-draft="${id}" data-field="explanation" placeholder="Giải thích, PTPƯ: $\\ce{...}$">${esc(d.explanation ?? (isEdit ? log?.explanation_text ?? "" : ""))}</textarea></label>` : ""}
 
+      ${s.observation?.enabled && keptPhotos.some(p => p.note) ? `<div class="obs-notes muted small">Tự thêm vào ô này khi lưu: ${keptPhotos.map((p, i) => (p.note ? esc(photoLabel(p, i)) + ": " + esc(p.note) : "")).filter(Boolean).join(" · ")}</div>` : ""}
       <div class="photo-list">
-        ${retainedPhotos.map(photo => {
-          const url = photo.file_id ? driveImageUrl(photo.file_id) : photo.url;
-          return `<div class="photo-item saved-photo">
-            <img class="thumb" src="${esc(url)}" data-act="zoom" data-src="${esc(url)}" alt="ảnh đã lưu">
-            ${photo.file_id ? driveLinkHtml(photo.file_id) : '<span class="muted small">Ảnh đã lưu</span>'}
-            <button type="button" class="link-btn danger" data-act="remove-saved-photo" data-photo-key="${esc(photoKey(photo))}" ${isSaving || isUploading ? "disabled" : ""}>Xóa ảnh</button>
-          </div>`;
-        }).join("")}
-        ${newPhotos.map((photo, index) => photo.removed ? "" : `<div class="photo-item">
-          <img class="thumb" src="${esc(photo.preview)}" alt="ảnh ${index + 1}">
-          ${photo.imgMeta ? (photo.imgMeta.storage_fallback
-            ? '<span class="muted small">Đã lưu kèm nhật ký</span>'
-            : driveLinkHtml(photo.imgMeta.file_id))
-            : `<label class="lbl">Tên file trên Drive
-                <input class="inp" data-photo-name="${index}" value="${esc(photo.name || "")}" placeholder="Mặc định">
-              </label>
-              <button type="button" class="btn sm primary" data-act="upload-photo" data-photo-index="${index}" ${isSaving || isUploading ? "disabled" : ""}>
-                ${isUploading ? '<span class="spin-ring"></span>&nbsp;Đang tải' : "Tải lên Drive"}
-              </button>`}
+        ${keptPhotos.map((photo, i) => photoCardHtml(photo, i, { disabled: isSaving || isUploading })).join("")}
+        ${newPhotos.map((photo, index) => photo.removed ? "" : `<div class="photo-item pending">
+          <img class="thumb" src="${esc(photo.preview)}" alt="ảnh chưa tải lên">
+          <div class="photo-cap">${esc(`Ảnh ${keptPhotos.length + newPhotos.slice(0, index).filter(x => !x.removed).length + 1}`)} · chưa tải lên</div>
+          <button type="button" class="btn sm primary" data-act="upload-photo" data-photo-index="${index}" ${isSaving || isUploading ? "disabled" : ""}>
+            ${isUploading ? '<span class="spin-ring"></span>&nbsp;Đang tải' : "Tải lên Drive"}
+          </button>
           <button type="button" class="link-btn danger" data-act="remove-new-photo" data-photo-index="${index}" ${isSaving || isUploading ? "disabled" : ""}>Bỏ ảnh</button>
         </div>`).join("")}
       </div>
@@ -273,12 +274,42 @@ function stepView(f) {
           <input type="file" accept="image/*" capture="environment" multiple hidden data-photo="${id}" ${isSaving || isUploading ? "disabled" : ""}></label>
         <button class="btn primary" data-act="save" ${isSaving || isUploading || pendingUpload ? "disabled" : ""}>${isSaving ? "Đang lưu…" : "Lưu"}</button>
       </div>
-      ${pendingUpload ? '<span class="muted small">Tải ảnh lên Drive trước khi lưu.</span>' : ""}
+      ${pendingUpload ? '<span class="muted small">Tải ảnh lên Drive trước khi lưu (ảnh tải xong được lưu cứng lên Firebase ngay).</span>' : ""}
       ${isEdit ? `<button class="btn cancel-edit" data-act="cancel-edit" ${isSaving || isUploading ? "disabled" : ""}>Hủy sửa</button>` : ""}
       </div>`;
   }
 
   return `<article class="sopstep" data-step="${id}">${body}</article>`;
+}
+
+/** Thẻ ảnh: ảnh (bấm để xem / ghi chú), tên "Ảnh N" hoặc tên đã đặt, ghi chú rút gọn, link Drive, nút xóa. */
+function photoCardHtml(photo, i, { readonly = false, showNote = true, disabled = false } = {}) {
+  const url = photo.file_id ? driveImageUrl(photo.file_id) : photo.url, key = photoKey(photo);
+  return `<div class="photo-item saved-photo">
+    <img class="thumb" src="${esc(url)}" data-act="view-photo" data-photo-key="${esc(key)}" alt="${esc(photoLabel(photo, i))}">
+    <button type="button" class="photo-cap" data-act="view-photo" data-photo-key="${esc(key)}" title="Bấm để xem, đổi tên, ghi chú">${esc(photoLabel(photo, i))}</button>
+    ${showNote && photo.note ? `<div class="photo-note">${esc(photo.note)}</div>` : ""}
+    ${photo.file_id ? driveLinkHtml(photo.file_id) : photo.storage_fallback ? '<span class="muted small">Lưu kèm nhật ký</span>' : ""}
+    ${readonly ? "" : `<button type="button" class="link-btn danger" data-act="remove-saved-photo" data-photo-key="${esc(key)}" ${disabled ? "disabled" : ""}>Xóa ảnh</button>`}
+  </div>`;
+}
+
+/** Xem ảnh lớn; đổi tên (xóa tên → quay về "Ảnh N") và thêm ghi chú ngay dưới ảnh, lưu cứng lên Firebase. */
+async function openPhotoViewer(id, key) {
+  const photos = stepPhotos(id), i = photos.findIndex(p => photoKey(p) === key);
+  if (i < 0) return;
+  const p = photos[i], url = p.file_id ? driveImageUrl(p.file_id) : p.url, node = document.createElement("div");
+  node.innerHTML = `<img class="zoom" src="${esc(url)}" alt="">
+    <label class="lbl">Tên ảnh <input class="inp" data-pv="title" maxlength="80" value="${esc(p.title || "")}" placeholder="Ảnh ${i + 1}"></label>
+    <label class="lbl">Ghi chú <textarea class="inp" rows="3" data-pv="note" placeholder="Ghi chú cho ảnh (tự thêm vào ô hiện tượng)">${esc(p.note || "")}</textarea></label>`;
+  const ok = await openModal({ title: photoLabel(p, i), node, buttons: [{ label: "Đóng", value: false }, { label: "Lưu", kind: "primary", value: true }] });
+  if (ok !== true) return;
+  const title = node.querySelector("[data-pv=title]").value.trim(), note = node.querySelector("[data-pv=note]").value.trim();
+  if (title === (p.title || "") && note === (p.note || "")) return;
+  try {
+    await writePhotos(id, stepPhotos(id).map(x => photoKey(x) === key ? { ...x, title, note } : x));
+    toast("Đã lưu ghi chú ảnh", "success", 1800);
+  } catch (err) { console.error(err); toast("Không lưu được ghi chú: " + (err.code || err.message), "error", 4500); }
 }
 
 /* ---------- focus ---------- */
@@ -346,8 +377,13 @@ async function uploadPhoto(id, index) {
       fileName: photo.name, originalName: file.name
     };
     const img = await driveUpload(file, "log", meta);
-    photo.imgMeta = img;
-    photo.file = null;
+    try { await writePhotos(id, [...stepPhotos(id), img]); }       // lưu cứng lên Firebase ngay
+    catch (err) {
+      if (img.file_id) { try { await driveDelete(img.file_id); } catch { /* bỏ qua */ } }
+      throw new Error("đã tải lên Drive nhưng chưa lưu được lên Firebase (" + (err.code || err.message) + "); ảnh được giữ để thử lại");
+    }
+    if (photo.preview) URL.revokeObjectURL(photo.preview);
+    d.photoItems.splice(d.photoItems.indexOf(photo), 1);
     updateStepProgress(id);
     toast(img.storage_fallback
       ? `Drive chưa xác nhận (${img.error || "không rõ lỗi"}). Ảnh được giữ trong nhật ký để lưu bước.`
@@ -377,7 +413,7 @@ async function onClick(e) {
       drafts[id] = {
         value: log?.input_data != null ? String(log.input_data) : "",
         observation: log?.observation_text || "", explanation: log?.explanation_text || "",
-        removedPhotos: new Set(), photoItems: []
+        photoItems: []
       };
       render(); break;
     }
@@ -385,15 +421,9 @@ async function onClick(e) {
     case "select-section": return goToProgress(btn.dataset.section);
     case "toggle-exp": expOpen = !expOpen; render(); break;
     case "toggle-section": sectionOpen = !sectionOpen; render(); break;
-    case "remove-saved-photo": {
-      if (!(await confirmBox("Ảnh sẽ bị gỡ khỏi bản ghi và xóa khỏi Google Drive khi bạn lưu. Tiếp tục?", "Xóa ảnh"))) return;
-      const draft = (drafts[id] ||= {});
-      draft.removedPhotos ||= new Set();
-      draft.removedPhotos.add(btn.dataset.photoKey);
-      render();
-      window.dispatchEvent(new CustomEvent("labmana:progress-change"));
-      break;
-    }
+    case "view-photo": return openPhotoViewer(id, btn.dataset.photoKey);
+    case "remove-saved-photo": return removeSavedPhoto(id, btn.dataset.photoKey);
+    case "delete-log": return deleteLog(id);
     case "remove-new-photo": {
       if (!(await confirmBox("Bạn có chắc muốn bỏ ảnh này khỏi bước?", "Bỏ ảnh"))) return;
       const photo = drafts[id]?.photoItems?.[Number(btn.dataset.photoIndex)];
@@ -413,6 +443,38 @@ async function onClick(e) {
       break;
     case "csv": return exportCsv();
   }
+}
+
+/** Xóa ảnh: gỡ khỏi Firebase ngay + xóa file trên Drive (lỗi Drive chỉ cảnh báo, không giữ ảnh "ma" trong bản ghi). */
+async function removeSavedPhoto(id, key) {
+  if (saving.has(id) || uploadingPhoto.has(id)) return;
+  const photo = stepPhotos(id).find(p => photoKey(p) === key); if (!photo) return;
+  if (!(await confirmBox("Ảnh sẽ bị xóa khỏi bản ghi và khỏi Google Drive. Tiếp tục?", "Xóa ảnh"))) return;
+  uploadingPhoto.add(id); render();
+  try {
+    await writePhotos(id, stepPhotos(id).filter(p => photoKey(p) !== key));
+    if (photo.file_id) { try { await driveDelete(photo.file_id); } catch (err) { console.error(err); toast("Đã gỡ ảnh khỏi bản ghi nhưng chưa xóa được file trên Drive.", "warn", 5000); } }
+    window.dispatchEvent(new CustomEvent("labmana:progress-change"));
+  } catch (err) { console.error(err); toast("Xóa ảnh lỗi: " + (err.code || err.message), "error", 4500); }
+  finally { uploadingPhoto.delete(id); render(); }
+}
+
+/** Xóa toàn bộ kết quả của bước: bản ghi, số liệu, nội dung và mọi ảnh (cả trên Drive). */
+async function deleteLog(id) {
+  const log = state.logs[id]; if (!log || saving.has(id)) return;
+  if (!(await confirmBox("Xóa toàn bộ kết quả của bước này (số liệu, hiện tượng, giải thích và mọi ảnh)? Không thể hoàn tác.", "Xóa kết quả"))) return;
+  saving.add(id); render();
+  try {
+    const photos = savedPhotos(log);
+    await deleteDoc(doc(db, "execution_logs", `${state.activeRunId}__${id}`));
+    try { await updateDoc(doc(db, "runs", state.activeRunId), { [`draft_photos.${id}`]: deleteField() }); } catch { /* chưa có thì bỏ qua */ }
+    let warn = false;
+    for (const p of photos) if (p.file_id) { try { await driveDelete(p.file_id); } catch (err) { console.error(err); warn = true; } }
+    editing.delete(id); clearDraft(id);
+    toast(warn ? "Đã xóa kết quả, nhưng có ảnh chưa xóa được khỏi Drive." : "Đã xóa kết quả bước", warn ? "warn" : "success", 4000);
+    window.dispatchEvent(new CustomEvent("labmana:progress-change"));
+  } catch (err) { console.error(err); toast("Xóa thất bại: " + (err.code || err.message), "error", 4500); }
+  finally { saving.delete(id); render(); }
 }
 
 async function copyDriveLink(url) {
@@ -447,23 +509,10 @@ function clearDraft(id) {
   delete drafts[id];
 }
 
-async function cancelEdit(id) {
-  const draft = drafts[id];
-  const oldFileIds = new Set(savedPhotos(state.logs[id]).map(photo => photo.file_id).filter(Boolean));
+function cancelEdit(id) {
   editing.delete(id);
   clearDraft(id);
   render();
-  let deleteWarning = false;
-  for (const photo of draft?.photoItems || []) {
-    const fileId = photo.imgMeta?.file_id;
-    if (!fileId || oldFileIds.has(fileId)) continue;
-    try { await driveDelete(fileId); }
-    catch (err) {
-      console.error(err);
-      deleteWarning = true;
-    }
-  }
-  if (deleteWarning) toast("Sửa đã hủy, nhưng có ảnh mới chưa xóa được khỏi Drive.", "warn", 5000);
 }
 
 async function save(id) {
@@ -485,11 +534,7 @@ async function save(id) {
   }
   if (uploadingPhoto.has(id)) return toast("Ảnh đang tải lên, vui lòng đợi", "warn");
   if ((d.photoItems || []).some(photo => !photo.removed && !photo.imgMeta)) return toast("Hãy tải ảnh mới lên Drive trước khi lưu bước", "warn");
-  const photosToSave = [
-    ...(isEdit ? savedPhotos(old).filter(photo => !d.removedPhotos?.has(photoKey(photo))) : []),
-    ...(d.photoItems || []).filter(photo => !photo.removed && photo.imgMeta)
-      .map(photo => ({ file_id: photo.imgMeta.file_id || "", url: photo.imgMeta.url || "", name: photo.imgMeta.name || "" }))
-  ];
+  const photosToSave = stepPhotos(id).map(normPhoto);
   if (s.require_photo && !photosToSave.length) {
     return toast("Bước này bắt buộc chụp ảnh", "error");
   }
@@ -510,26 +555,11 @@ async function save(id) {
       photo_file_id: primaryPhoto?.file_id || null,
       timestamp: serverTimestamp(), timestamp_ms: Date.now()
     });
-    const filesToDelete = new Set();
-    const retainedPhotoIds = new Set(photosToSave.map(photo => photo.file_id).filter(Boolean));
-    for (const photo of savedPhotos(old)) {
-      if (photo.file_id && !retainedPhotoIds.has(photo.file_id)) filesToDelete.add(photo.file_id);
-    }
-    for (const photo of d.photoItems || []) {
-      if (photo.removed && photo.imgMeta?.file_id) filesToDelete.add(photo.imgMeta.file_id);
-    }
+    if (state.activeRun?.draft_photos?.[id]) { try { await updateDoc(doc(db, "runs", state.activeRunId), { [`draft_photos.${id}`]: deleteField() }); } catch { /* bỏ qua */ } }
     clearDraft(id); editing.delete(id);
     const next = curFlat.find(item => item.sec.id === f.sec.id && item.ti > f.ti && !state.logs[item.step.id] && !hasDraftProgress(item.step.id));
     selectedStepId = next?.step.id || id;
-    let deleteWarning = "";
-    for (const fileId of filesToDelete) {
-      try { await driveDelete(fileId); }
-      catch (err) {
-        console.error(err);
-        deleteWarning = " Bản ghi đã lưu nhưng có ảnh chưa xóa được khỏi Drive.";
-      }
-    }
-    toast(deleteWarning ? `Đã lưu.${deleteWarning}` : "Đã lưu", deleteWarning ? "warn" : "success", 5000);
+    toast("Đã lưu", "success", 5000);
   } catch (err) {
     console.error(err); toast("Lưu thất bại: " + (err.code || err.message), "error", 4500);
   } finally { saving.delete(id); render(); }

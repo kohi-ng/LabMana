@@ -1,5 +1,6 @@
 // ============ Tab Pha chế — trình hướng dẫn pha chế từng bước + quy đổi đơn vị ============
 import { esc, renderMath, toast } from "../utils.js";
+import { on } from "../store.js";
 import {
   CHEMS, KIND_LABEL, EQ_HINTS, UNITS, UNIT_ORDER, MASS_UNITS,
   fieldPlan, computeMix, computeConvert, safetyItems, fmt
@@ -23,10 +24,15 @@ const norm = s => String(s).toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "
 const alias = t => t.replace(/sunfat|sunphat|sulphat|sulfat/g, "sulfat").replace(/hidroxit|hydroxit|hidroxid/g, "hydroxide").replace(/cacbonat|cacbonate|carbonat/g, "carbonate").replace(/nitrat/g, "nitrate");
 const matches = (id, q) => {
   const tokens = String(q).trim().split(/\s+/).map(t => alias(norm(t))).filter(Boolean);
-  return tokens.every(t => SEARCH_ALIASED[id].includes(t));
+  return tokens.every(t => searchOf(id).includes(t));
 };
-const SEARCH = Object.fromEntries(Object.entries(CHEMS).map(([id, x]) => [id, norm(`${x.formula} ${x.name} ${id} ${KIND_LABEL[x.kind]}`)]));
-const SEARCH_ALIASED = Object.fromEntries(Object.entries(SEARCH).map(([id, t]) => [id, alias(t)]));
+// Chỉ mục tìm kiếm tính theo từng hóa chất (cache) để hóa chất người dùng thêm ở Cài đặt cũng tìm được
+const searchCache = new Map();
+const searchOf = id => {
+  const x = CHEMS[id], key = `${id}|${x.formula}|${x.name}|${x.kind}`;
+  if (!searchCache.has(key)) searchCache.set(key, alias(norm(`${x.formula} ${x.name} ${id} ${KIND_LABEL[x.kind]}`)));
+  return searchCache.get(key);
+};
 
 const S = {
   mode: "mix", step: 1, chem: null, method: null,
@@ -60,6 +66,13 @@ export function init(el) {
       const nb = root.querySelector("#bt-next");
       if (nb && !nb.disabled) nb.click();
     }
+  });
+  // Danh sách hóa chất tự thêm đổi (Cài đặt / đồng bộ Firebase) → làm mới danh sách đang mở, không dựng lại cả tab
+  on("config", () => {
+    if (S.chem && !CHEMS[S.chem]) { Object.assign(S, { step: 1, chem: null, method: null, v: {} }); render({ top: true }); return; }
+    if (S.conv.chem && !CHEMS[S.conv.chem]) S.conv.chem = null;
+    const box = root.querySelector("#bt-chemlist-wrap");
+    if (box) box.innerHTML = chemListHtml(S.mode === "conv" ? "convChem" : "pickChem", S.q);
   });
   render({ top: true });
 }
@@ -103,14 +116,18 @@ function act(a, val) {
       S.stockUnit = val;
       S.v.stock = val === "ww" && x?.assay ? String(x.assay) : "";
       if (val === "ww" && x?.density && !S.v.density) S.v.density = String(x.density);
-      render(); break;
+      renderPanel(); break;
     case "targetUnit": {
       const was = MASS_UNITS.has(S.targetUnit), now = MASS_UNITS.has(val);
       S.targetUnit = val; S.v.target = "";
       if (was !== now) S.v.amount = "";
-      render(); break;
+      renderPanel(); break;
     }
-    case "nHint": S.v.n = val; render(); break;
+    case "nHint": {
+      S.v.n = val;
+      const inp = root.querySelector('[data-v="n"]'); if (inp) { inp.value = val; refreshLive(); } else renderPanel();
+      break;
+    }
     case "next": S.step = 4; render({ top: true }); break;
     case "back": S.step = x?.state === "liquid" ? 1 : 2; render({ top: true }); break;
     case "reset":
@@ -155,6 +172,17 @@ const mixInput = () => ({
   chem: S.chem, method: S.method, stockUnit: S.stockUnit, targetUnit: S.targetUnit, v: S.v, scale: S.scale
 });
 
+/** Cập nhật riêng nội dung bước 3 tại chỗ (giữ nguyên khung, vị trí cuộn, không phát lại hiệu ứng fade → hết chớp). */
+function renderPanel() {
+  const panel = root.querySelector(".bt-panel");
+  if (!panel || S.mode !== "mix" || S.step !== 3) return render();
+  const y = window.scrollY, ae = document.activeElement, focusKey = ae && root.contains(ae) ? (ae.dataset.v ? `[data-v="${ae.dataset.v}"]` : null) : null;
+  panel.innerHTML = step3();
+  refreshLive(); renderMath(panel);
+  if (focusKey) panel.querySelector(focusKey)?.focus({ preventScroll: true });
+  window.scrollTo(0, y);
+}
+
 function render({ top = false } = {}) {
   destroyStage();
   const st = root.scrollTop;
@@ -173,8 +201,8 @@ const modesHtml = () => `<div class="bt-modes" role="tablist">
 /* ---------- Chọn hóa chất (dùng chung cho Pha chế và Quy đổi) ---------- */
 function chemListHtml(actName, q) {
   const qn = norm(q);
-  let ids = Object.keys(CHEMS).filter(id => !qn || matches(id, q));
-  if (!ids.length) ids = ["custom"];
+  let ids = Object.keys(CHEMS).filter(id => id !== "custom" && (!qn || matches(id, q)));
+  if (!qn || matches("custom", q) || !ids.length) ids.push("custom");   // "Hóa chất tự nhập" luôn ở cuối
   const cur = actName === "convChem" ? S.conv.chem : S.chem;
   const row = id => {
     const x = CHEMS[id];

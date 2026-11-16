@@ -114,6 +114,14 @@ export function serializeExperiment(exp) {
 export const secTag = si => si === 0 ? "CB" : `TN${si}`;
 export const secTagSp = si => si === 0 ? "CB" : `TN ${si}`;
 
+/** Tên hiển thị của ảnh: mặc định "Ảnh N"; nếu đã đặt lại tên thì chỉ hiện tên đó (bỏ chữ "Ảnh" + số thứ tự). */
+export const photoLabel = (p, i) => String(p?.title || "").trim() || `Ảnh ${i + 1}`;
+/** "Ảnh 1: ghi chú" — rỗng nếu ảnh chưa có ghi chú. */
+export const photoCaption = (p, i) => { const note = String(p?.note || "").trim(); return note ? `${photoLabel(p, i)}: ${note}` : ""; };
+/** Nội dung ô hiện tượng + các dòng "Ảnh N: ghi chú" của ảnh trong bước. */
+export const observationWithNotes = (text, photos = []) =>
+  [String(text || "").trim(), ...photos.map(photoCaption).filter(Boolean)].filter(Boolean).join("\n");
+
 /** Làm phẳng sections → danh sách bước theo thứ tự thực hiện, kèm nhãn "2.3". */
 export function flatten(exp) {
   const out = [];

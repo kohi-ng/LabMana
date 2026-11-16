@@ -59,6 +59,23 @@ export const CHEMS = {
 };
 
 /** Gợi ý hệ số đương lượng n [n, ghi chú] — chỉ là gợi ý, người dùng phải chọn theo phản ứng. */
+/** Hóa chất người dùng tự thêm (Cài đặt → Hóa chất pha chế): id bắt đầu bằng "u_", gộp vào CHEMS, thay thế hoàn toàn bản cũ mỗi lần gọi. */
+export const CUSTOM_PREFIX = "u_";
+export function setCustomChems(list) {
+  for (const id of Object.keys(CHEMS)) if (id.startsWith(CUSTOM_PREFIX)) delete CHEMS[id];
+  const tail = CHEMS.custom; delete CHEMS.custom;           // "Hóa chất tự nhập" luôn nằm cuối danh sách
+  for (const c of Array.isArray(list) ? list : []) {
+    if (!c || !String(c.id || "").startsWith(CUSTOM_PREFIX) || !String(c.name || "").trim()) continue;
+    const num = v => (v === null || v === undefined || v === "" || !Number.isFinite(+v) || +v <= 0) ? null : +v;
+    const liquid = c.state === "liquid";
+    const x = { name: String(c.name).trim(), formula: String(c.formula || "").trim(), mw: num(c.mw), state: liquid ? "liquid" : "solid",
+      kind: KIND_LABEL[c.kind] ? c.kind : "unknown", refs: String(c.refs || "").trim() || "Hóa chất do người dùng thêm; đối chiếu thông số với nhãn chai/SDS.", user: true };
+    if (liquid) { x.assay = num(c.assay) ?? 100; x.density = num(c.density) ?? 1; } else x.purity = num(c.purity) ?? 100;
+    CHEMS[c.id] = x;
+  }
+  CHEMS.custom = tail;
+}
+
 export const EQ_HINTS = {
   hcl: [[1, "1 H⁺"]],
   h2so4: [[2, "2 H⁺ (trung hòa hoàn toàn)"], [1, "chỉ nấc 1"]],

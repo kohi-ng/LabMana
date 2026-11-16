@@ -2,9 +2,10 @@
 import { state, on } from "../store.js";
 import { auth, db } from "../firebase.js";
 import { doc, collection, query, where, getDocs, setDoc, arrayUnion, arrayRemove, deleteField, runTransaction } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
-import { esc, richHtml, toast, confirmBox, promptBox, statusCard, renderMath } from "../utils.js";
+import { esc, richHtml, toast, confirmBox, promptBox, openModal, statusCard, renderMath } from "../utils.js";
+import { KIND_LABEL, CUSTOM_PREFIX } from "../chem-logic.js";
 import { driveCreateReport, isDriveConfigured } from "../drive.js";
-import { normalizeExperiment, flatten, secTagSp } from "../plan-logic.js";
+import { normalizeExperiment, flatten, secTagSp, photoCaption, parseNum } from "../plan-logic.js";
 import { wakeSupported, wakeIsOn, setWake } from "../wake-lock.js";
 
 let root;
@@ -66,6 +67,15 @@ function render() {
         ${state.teamIds[n] ? `<span class="mssv">${esc(state.teamIds[n])}</span>` : '<span class="mssv none">Chưa có MSSV</span>'}
         <button class="link-btn" data-act="rename" data-name="${esc(n)}">Sửa</button>
         <button class="link-btn danger" data-act="del" data-name="${esc(n)}">Xóa</button></li>`).join("") : '<li class="muted">Chưa có thành viên.</li>'}</ul>
+    </div>
+
+    <div class="section"><h3>Hóa chất pha chế</h3>
+      <p class="muted small">Thêm hóa chất riêng vào danh sách của tab Pha chế (dùng chung cho mọi thiết bị). Đặt sẵn khối lượng mol, độ tinh khiết hoặc nồng độ/khối lượng riêng để khỏi nhập lại.</p>
+      <ul class="members chem-cfg">${(state.customChems || []).length ? state.customChems.map(c => `<li><span class="nm"><b>${esc(c.formula || "—")}</b> ${esc(c.name)}</span>
+        <span class="mssv">${esc(chemMeta(c))}</span>
+        <button class="link-btn" data-act="chem-edit" data-id="${esc(c.id)}">Sửa</button>
+        <button class="link-btn danger" data-act="chem-del" data-id="${esc(c.id)}">Xóa</button></li>`).join("") : '<li class="muted">Chưa thêm hóa chất nào.</li>'}</ul>
+      <button type="button" class="btn block" data-act="chem-add">Thêm hóa chất</button>
     </div>
 
     <div class="section report-card"><h3>Xuất báo cáo</h3>
@@ -167,11 +177,75 @@ async function addNames() {
   } catch (err) { toast("Lỗi: " + (err.code || err.message), "error"); }
 }
 
+/* ---------- Hóa chất pha chế do người dùng thêm ---------- */
+const fmtNum = v => String(+v).replace(".", ",");
+function chemMeta(c) {
+  const parts = [c.state === "liquid" ? "dung dịch/lỏng" : "chất rắn", KIND_LABEL[c.kind] || KIND_LABEL.unknown];
+  if (c.mw) parts.push(`M ${fmtNum(c.mw)}`);
+  if (c.state === "liquid") { if (c.assay) parts.push(`${fmtNum(c.assay)}% w/w`); if (c.density) parts.push(`d ${fmtNum(c.density)}`); }
+  else if (c.purity) parts.push(`${fmtNum(c.purity)}%`);
+  return parts.join(" · ");
+}
+async function saveChems(list) {
+  await Promise.race([setDoc(CFG(), { custom_chems: list }, { merge: true }), new Promise((_, rej) => setTimeout(() => rej(new Error("Hết thời gian chờ")), 8000))]);
+}
+async function deleteChem(id) {
+  const c = state.customChems.find(x => x.id === id); if (!c) return;
+  if (!(await confirmBox(`Xóa hóa chất "${c.name}" khỏi danh sách pha chế?`, "Xóa"))) return;
+  try { await saveChems(state.customChems.filter(x => x.id !== id)); toast("Đã xóa", "success"); }
+  catch (err) { toast("Lỗi: " + (err.code || err.message), "error"); }
+}
+async function editChem(id) {
+  const cur = id ? state.customChems.find(x => x.id === id) : null;
+  const v = cur || { state: "solid", kind: "salt", purity: 100, assay: "", density: "" };
+  const kinds = Object.entries(KIND_LABEL).map(([k, n]) => `<option value="${k}" ${v.kind === k ? "selected" : ""}>${n}</option>`).join("");
+  const node = document.createElement("div"); node.className = "chem-form";
+  node.innerHTML = `
+    <label class="lbl">Công thức<input class="inp" data-cf="formula" value="${esc(v.formula || "")}" placeholder="VD: CuSO₄·5H₂O" autocomplete="off"></label>
+    <label class="lbl">Tên hóa chất<input class="inp" data-cf="name" value="${esc(v.name || "")}" placeholder="VD: Đồng(II) sulfate pentahydrate" autocomplete="off"></label>
+    <div class="chem-form-row">
+      <label class="lbl">Dạng<select class="inp" data-cf="state"><option value="solid" ${v.state !== "liquid" ? "selected" : ""}>Chất rắn</option><option value="liquid" ${v.state === "liquid" ? "selected" : ""}>Dung dịch / lỏng</option></select></label>
+      <label class="lbl">Nhóm (nhãn an toàn)<select class="inp" data-cf="kind">${kinds}</select></label>
+    </div>
+    <label class="lbl">Khối lượng mol M (g/mol) — nên đã gồm nước kết tinh<input class="inp" data-cf="mw" inputmode="decimal" value="${v.mw ? esc(fmtNum(v.mw)) : ""}" placeholder="VD: 249,685" autocomplete="off"></label>
+    <div data-cf-box="solid"><label class="lbl">Độ tinh khiết (%)<input class="inp" data-cf="purity" inputmode="decimal" value="${esc(v.purity != null ? fmtNum(v.purity) : "100")}" placeholder="VD: 99" autocomplete="off"></label></div>
+    <div data-cf-box="liquid" class="chem-form-row">
+      <label class="lbl">Nồng độ gốc (% w/w)<input class="inp" data-cf="assay" inputmode="decimal" value="${v.assay ? esc(fmtNum(v.assay)) : ""}" placeholder="VD: 37" autocomplete="off"></label>
+      <label class="lbl">Khối lượng riêng d (g/mL)<input class="inp" data-cf="density" inputmode="decimal" value="${v.density ? esc(fmtNum(v.density)) : ""}" placeholder="VD: 1,19" autocomplete="off"></label>
+    </div>
+    <label class="lbl">Ghi chú tham khảo (không bắt buộc)<textarea class="inp" rows="2" data-cf="refs" placeholder="VD: hút ẩm, đối chiếu nhãn chai">${esc(cur?.refs || "")}</textarea></label>
+    <div class="chem-form-err" data-cf-err role="alert"></div>`;
+  const q = k => node.querySelector(`[data-cf="${k}"]`), sync = () => node.querySelectorAll("[data-cf-box]").forEach(b => { b.hidden = b.dataset.cfBox !== q("state").value; });
+  q("state").addEventListener("change", sync); sync();
+  const collect = () => {
+    const err = node.querySelector("[data-cf-err]"), num = k => { const t = q(k).value.trim(); return t === "" ? null : parseNum(t); };
+    const out = { id: cur?.id || `${CUSTOM_PREFIX}${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`, formula: q("formula").value.trim(), name: q("name").value.trim(),
+      state: q("state").value, kind: q("kind").value, mw: num("mw"), refs: q("refs").value.trim() };
+    const bad = [];
+    if (!out.name) bad.push("Hãy nhập tên hóa chất.");
+    if (out.mw !== null && !(out.mw > 0)) bad.push("Khối lượng mol phải là số dương.");
+    if (out.state === "solid") { out.purity = num("purity") ?? 100; if (!(out.purity > 0 && out.purity <= 100)) bad.push("Độ tinh khiết phải trong khoảng 0–100%."); }
+    else { out.assay = num("assay"); out.density = num("density");
+      if (!(out.assay > 0 && out.assay <= 100)) bad.push("Hãy nhập nồng độ gốc (% w/w) trong khoảng 0–100.");
+      if (!(out.density > 0)) bad.push("Hãy nhập khối lượng riêng d (g/mL) lớn hơn 0."); }
+    err.textContent = bad.join(" "); return bad.length ? null : out;
+  };
+  const res = await openModal({ title: cur ? "Sửa hóa chất" : "Thêm hóa chất", node, buttons: [{ label: "Hủy", value: null },
+    { label: "Lưu", kind: "primary", validate: () => !!collect(), value: () => collect() }] });
+  if (!res) return;
+  const list = cur ? state.customChems.map(x => x.id === cur.id ? res : x) : [...state.customChems, res];
+  try { await saveChems(list); toast(cur ? "Đã cập nhật hóa chất" : "Đã thêm hóa chất", "success"); }
+  catch (err) { toast("Lỗi: " + (err.code || err.message), "error"); }
+}
+
 async function onClick(e) {
   const btn = e.target.closest("[data-act]");
   if (!btn) return;
   const name = btn.dataset.name;
   if (btn.dataset.act === "add") return addNames();
+  if (btn.dataset.act === "chem-add") return editChem(null);
+  if (btn.dataset.act === "chem-edit") return editChem(btn.dataset.id);
+  if (btn.dataset.act === "chem-del") return deleteChem(btn.dataset.id);
   if (btn.dataset.act === "export-report") return exportReport();
   if (btn.dataset.act === "preview-report") return previewReport();
   if (btn.dataset.act === "del") {
@@ -288,10 +362,11 @@ async function collectReportData() {
       const url = String(photo?.url || "");
       const name = photo?.name || `TN${item.si}_${item.label}_Anh${index + 1}`;
       const code = photoCode(name, item.label, index);
-      if (fileId) return { file_id: fileId, name, code };
+      const caption = item.step.observation?.enabled ? photoCaption(photo, index) : "";   // "Ảnh 1: ghi chú" vào ô hiện tượng
+      if (fileId) return { file_id: fileId, name, code, caption };
       // Ảnh dự phòng (Drive chưa xác nhận lúc tải): gửi kèm nội dung để Apps Script vẫn nhúng được vào Docs.
       if (url.startsWith("data:image/")) {
-        if (url.length <= INLINE_PHOTO_MAX_CHARS) return { file_id: "", name, code, data_url: url };
+        if (url.length <= INLINE_PHOTO_MAX_CHARS) return { file_id: "", name, code, data_url: url, caption };
         droppedPhotos++;
       }
       return null;
@@ -303,7 +378,7 @@ async function collectReportData() {
       // Cột "Các bước tiến hành": tiêu đề + hướng dẫn thao tác (số bước được in đậm riêng ở đầu ô).
       action: `${item.step.title || ""}\n${item.step.text || ""}`.replace(/\n{3,}/g, "\n\n").trim(),
       measurement: reportForm.includeMeasurement && log.input_data != null ? `${log.input_data}${log.input_unit ? ` ${log.input_unit}` : ""}` : "",
-      observation: placePhotoMarkers(observation, reportPhotos),
+      observation: withCaptions(placePhotoMarkers(observation, reportPhotos), reportPhotos),
       explanation: reportForm.includeExplanation ? log.explanation_text || "" : "",
       photos: reportPhotos
     };
@@ -400,6 +475,14 @@ function photoCode(name, stepLabel, index) {
 }
 
 /** Khi số ảnh khớp số đoạn (hoặc số dòng), gắn ảnh ngay dưới hiện tượng đó. Không khớp thì để cuối ô. */
+/** Chèn dòng "Ảnh N: ghi chú" ngay trước mã ảnh tương ứng (bỏ qua nếu ô hiện tượng là bảng). */
+function withCaptions(text, photos) {
+  if (isMarkdownTable(text)) return text;
+  let out = text;
+  photos.forEach(photo => { if (photo.caption && photo.code && out.includes(photo.code)) out = out.replace(photo.code, `${photo.caption}\n${photo.code}`); });
+  return out;
+}
+
 function placePhotoMarkers(observation, photos) {
   const text = String(observation || "").replace(/\s+$/, "");
   if (!photos.length) return text;

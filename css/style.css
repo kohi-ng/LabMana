@@ -419,14 +419,14 @@ button.row:active{ background: var(--surface-2); }
 .bt-quick{ display:flex; flex-wrap:wrap; gap:8px; }
 .bt-qchip{ min-height:40px; padding:0 14px; border:1px solid var(--line-strong); border-radius: var(--r-pill); background: var(--bg); font:inherit; font-weight:600; font-size:.9rem; color: var(--ink); cursor:pointer; touch-action:manipulation; }
 .bt-qchip:active{ background: var(--accent-soft); }
-.bt-chemlist{ display:flex; flex-direction:column; max-height:min(46vh,360px); overflow:auto; margin-top:8px; border-top:1px solid var(--line); overscroll-behavior:contain; }
-.bt-chem{ display:grid; grid-template-columns:minmax(64px,auto) 1fr auto; align-items:center; gap:10px; width:100%; min-height:56px; padding:8px 4px; border:0; border-bottom:1px solid var(--line); background:none; color: var(--ink); font:inherit; text-align:left; cursor:pointer; touch-action:manipulation; }
+.bt-chemlist{ display:flex; flex-direction:column; margin-top:8px; border-top:1px solid var(--line); }   /* khung giãn theo số hóa chất, không cuộn riêng */
+.bt-chem{ display:grid; grid-template-columns:112px minmax(0,1fr) 62px; align-items:start; gap:10px; width:100%; min-height:56px; padding:8px 4px; border:0; border-bottom:1px solid var(--line); background:none; color: var(--ink); font:inherit; text-align:left; cursor:pointer; touch-action:manipulation; }
 .bt-chem:active{ background: var(--surface-2); }
 .bt-chem.on{ background: var(--accent-soft); }
-.bt-chem-f{ font-weight:700; font-size:.9375rem; color: var(--accent-ink); overflow-wrap:anywhere; }
-.bt-chem-n{ display:flex; flex-direction:column; min-width:0; font-size:.9rem; font-weight:500; line-height:1.3; overflow-wrap:anywhere; }
+.bt-chem-f{ font-weight:700; font-size:.9375rem; line-height:1.3; color: var(--accent-ink); overflow-wrap:anywhere; word-break:break-word; min-width:0; }
+.bt-chem-n{ display:flex; flex-direction:column; min-width:0; font-size:.9rem; font-weight:500; line-height:1.3; white-space:normal; overflow-wrap:break-word; }
 .bt-chem-n small{ color: var(--muted); font-weight:400; font-size:.75rem; }
-.bt-tag{ font-size:.75rem; font-weight:500; white-space:nowrap; color: var(--muted); }
+.bt-tag{ font-size:.75rem; font-weight:500; line-height:1.3; text-align:right; justify-self:end; color: var(--muted); }
 .bt-tag.acid{ color: var(--warn); }
 .bt-tag.base{ color: var(--accent-ink); }
 .bt-tag.oxidizer{ color:#7a3796; }
@@ -465,7 +465,7 @@ button.row:active{ background: var(--surface-2); }
 .bt-nhint small{ font-size:.6875rem; font-weight:400; color: var(--ink-soft); }
 .bt-nhint:active{ background: var(--accent-soft); }
 
-.bt-live{ margin:14px 0 0; }
+.bt-live{ margin:14px 0 0; min-height:58px; }   /* giữ chiều cao cố định → không giật khi đổi giữa thông báo và kết quả */
 .bt-live-ok{ display:flex; align-items:baseline; justify-content:space-between; gap:10px; padding:12px 0; border-top:1px solid var(--line); border-bottom:1px solid var(--line); }
 .bt-live-ok span{ font-size:.875rem; color: var(--muted); }
 .bt-live-ok b{ font-size:1.25rem; color: var(--ok); white-space:nowrap; }
@@ -514,7 +514,7 @@ button.row:active{ background: var(--surface-2); }
 
 @media(max-width:380px){
   .bt-hero-v{ font-size:2rem; }
-  .bt-chem{ grid-template-columns:minmax(54px,auto) 1fr; }
+  .bt-chem{ grid-template-columns:96px minmax(0,1fr); }
   .bt-chem .bt-tag{ display:none; }
 }
 
@@ -897,3 +897,21 @@ html.intro-on body{ overflow:hidden; }
 .wake-switch input:checked + .sw{ background:var(--accent); }
 .wake-switch input:checked + .sw::after{ transform:translateX(18px); }
 .wake-switch input:focus-visible + .sw{ outline:2px solid var(--accent); outline-offset:2px; }
+
+
+/* ===================== Ảnh trong bước: tên, ghi chú, xem ảnh ===================== */
+.photo-item{ width:140px; }
+.photo-cap{ display:block; width:100%; padding:2px 0; border:0; background:none; font:inherit; font-size:.8125rem; font-weight:600; color: var(--accent-ink); text-align:left; cursor:pointer; overflow-wrap:anywhere; min-height:28px; }
+.photo-item.pending .photo-cap{ color: var(--muted); cursor:default; font-weight:500; }
+.photo-note{ font-size:.75rem; line-height:1.35; color: var(--ink-soft); overflow-wrap:anywhere; }
+.obs-notes{ margin:-4px 0 8px; line-height:1.4; overflow-wrap:anywhere; }
+.btn.danger-outline{ border-color: var(--err); color: var(--err); background:transparent; margin-left:6px; }
+.modal-body .lbl{ margin-top:12px; }
+.modal-body .zoom + .lbl{ margin-top:14px; }
+
+/* ===================== Cài đặt: thêm hóa chất pha chế ===================== */
+.chem-cfg .nm b{ color: var(--accent-ink); margin-right:4px; }
+.chem-form .lbl{ margin:0 0 12px; }
+.chem-form-row{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+.chem-form [hidden]{ display:none !important; }
+.chem-form-err{ min-height:1.2em; color: var(--err); font-size:.8125rem; }
