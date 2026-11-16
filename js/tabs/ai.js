@@ -413,10 +413,9 @@ function ctxGridHtml(stepOpts, sel) {
   const live = cols.filter(Boolean);
   const grid = live.map(c => {
     const n = c.items.filter(o => sel.has(o.id)).length;
-    return `<div class="ai-ctx-col"><button type="button" class="ai-ctx-colh ${n === c.items.length ? "all" : ""}" data-act="ctx-col" data-sec="${c.si}" title="${esc(c.name)} — bấm để chọn/bỏ cả cột">
-      <b>${esc(c.tag)}</b></button>` +
-      c.items.map(o => `<label class="ai-ctx-cell ${sel.has(o.id) ? "on" : ""}" title="${esc(o.num + " " + o.short)}"><input type="checkbox" data-act="ctx-item" data-id="${esc(o.id)}" ${sel.has(o.id) ? "checked" : ""}>
-        <span class="ai-ctx-num">${esc(o.num)}</span></label>`).join("") + `</div>`;
+    return `<div class="ai-ctx-col"><div class="ai-ctx-colh"><b>${esc(c.tag)}</b></div>` +
+      c.items.map(o => `<button type="button" class="ai-ctx-cell ${sel.has(o.id) ? "on" : ""}" data-act="ctx-step" data-id="${esc(o.id)}" aria-pressed="${sel.has(o.id)}" title="${esc(o.num + " " + o.short)}">
+        <span class="ai-ctx-num">${esc(o.num)}</span></button>`).join("") + `</div>`;
   }).join("");
   const picked = stepOpts.filter(o => sel.has(o.id));
   const preview = picked.length
@@ -546,10 +545,9 @@ export function init(host) {
         tuning = {}; saveTuning(); renderPop(); break;
       case "ctx-auto": ctxSel = null; renderPop(); break;
       case "ctx-none": ctxSel = new Set(); renderPop(); break;
-      case "ctx-col": {   // chọn / bỏ cả một cột (CB, TN1…)
-        const opts = ctxOptions(), ids = opts.filter(o => o.stepId && String(o.si) === t.dataset.sec).map(o => o.id);
-        const sel = new Set(effectiveSelection(opts)), all = ids.every(id => sel.has(id));
-        ids.forEach(id => all ? sel.delete(id) : sel.add(id));
+      case "ctx-step": {
+        const sel = new Set(effectiveSelection(ctxOptions()));
+        sel.has(t.dataset.id) ? sel.delete(t.dataset.id) : sel.add(t.dataset.id);
         ctxSel = sel; renderPop(); break;
       }
     }
