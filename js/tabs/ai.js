@@ -410,7 +410,7 @@ function ctxGridHtml(stepOpts, sel) {
   if (!stepOpts.length) return "";
   const cols = [];
   stepOpts.forEach(o => { (cols[o.si] ||= { si: o.si, tag: o.secTag, name: o.group.split(" · ").slice(1).join(" · "), items: [] }).items.push(o); });
-  const live = cols.filter(Boolean);
+  const live = cols.filter(Boolean), rows = Math.max(...live.map(c => c.items.length));
   const grid = live.map(c => {
     const n = c.items.filter(o => sel.has(o.id)).length;
     const count = c.items.filter(o => sel.has(o.id)).length;
@@ -418,13 +418,14 @@ function ctxGridHtml(stepOpts, sel) {
     return `<div class="ai-ctx-col"><button type="button" class="ai-ctx-colh ${all ? "all" : ""} ${count > 0 && !all ? "partial" : ""}" data-act="ctx-col-toggle" data-si="${c.si}" aria-pressed="${all}" title="Chọn/bỏ chọn toàn bộ cột ${esc(c.tag)}">
         <b>${esc(c.tag)}</b></button>` +
       c.items.map(o => `<button type="button" class="ai-ctx-cell ${sel.has(o.id) ? "on" : ""}" data-act="ctx-step" data-id="${esc(o.id)}" aria-pressed="${sel.has(o.id)}" title="${esc(o.num + " " + o.short)}">
-        <span class="ai-ctx-num">${esc(o.num)}</span></button>`).join("") + `</div>`;
+        <span class="ai-ctx-num">${esc(o.num)}</span></button>`).join("") +
+      Array.from({ length: rows - c.items.length }, () => `<span class="ai-ctx-cell empty" aria-hidden="true"></span>`).join("") + `</div>`;
   }).join("");
   const picked = stepOpts.filter(o => sel.has(o.id));
   const preview = picked.length
-    ? `<div class="ai-ctx-prev">${picked.map(o => `<div class="ai-ctx-prev-i"><b>${esc(o.num)}</b><span>${esc(o.short)}</span></div>`).join("")}</div>`
-    : `<div class="ai-ctx-prev-h">Tick một bước để hiện tiêu đề bên dưới.</div>`;
-  return `<div class="ai-ctx-gridwrap"><div class="ai-ctx-grid">${grid}</div></div>${preview}`;
+    ? `<div class="ai-ctx-prev">${picked.map(o => `<div class="ai-ctx-prev-i" title="${esc(o.num + " " + o.short)}"><b>${esc(o.num)}</b><span>${esc(o.short)}</span></div>`).join("")}</div>`
+    : `<div class="ai-ctx-prev-h">Bấm số bước để chọn · bấm CB / TN để chọn cả cột</div>`;
+  return `<div class="ai-ctx-gridwrap"><div class="ai-ctx-grid" style="--cols:${live.length}">${grid}</div></div>${preview}`;
 }
 
 function renderPop(resetScroll = false) {
